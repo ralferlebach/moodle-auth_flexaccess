@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.2 — 2026-08-17
+- Scope-Erweiterung (Planung/Doku): **Follow-up-Persistierungsmails** als Kernfunktion des Temporary→Persistent-Funnels aufgenommen (ADR-013); Post-Registration-Hook für spätere Cohort-Zuweisung vorgesehen (ADR-015).
+
 ## 0.1.1 — 2026-08-17
 - Version scheme moved to incremental `0.1.x` (release `0.1.1`).
 - **Declared a hard dependency on `enrol_flexaccess`** (access-method policy lives in enrol); this establishes the accepted `auth ↔ enrol` cycle supported by Moodle. Facade calls remain runtime-lazy; per-course fallback to normal login is unchanged.
