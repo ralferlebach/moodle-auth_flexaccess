@@ -15,21 +15,61 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Target-aware FlexAccess entry page scaffold.
+ * FlexAccess temporary-access entry page.
  *
+ * Anonymous entry point: on confirmation it grants temporary access via the enrol controller,
+ * establishes the session for the created temporary user and redirects into the course. The
+ * redirect target is restricted to a local URL.
+ *
+ * @package    auth_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-require('../../config.php');
+require_once(__DIR__ . '/../../config.php');
 
+$courseid = required_param('courseid', PARAM_INT);
 $wantsurl = optional_param('wantsurl', '', PARAM_LOCALURL);
-$PAGE->set_context(context_system::instance());
-$PAGE->set_url(new moodle_url('/auth/flexaccess/access.php', ['wantsurl' => $wantsurl]));
-$PAGE->set_pagelayout('login');
-$PAGE->set_title(get_string('accessprovider', 'auth_flexaccess'));
-$PAGE->set_heading(get_string('accessprovider', 'auth_flexaccess'));
+$confirm = optional_param('confirm', 0, PARAM_BOOL);
+
+$course = get_course($courseid);
+$courseurl = new moodle_url('/course/view.php', ['id' => $courseid]);
+$returnurl = $wantsurl !== '' ? new moodle_url($wantsurl) : $courseurl;
+
+$PAGE->set_context(context_course::instance($courseid));
+$PAGE->set_url(new moodle_url('/auth/flexaccess/access.php', ['courseid' => $courseid]));
+$PAGE->set_pagelayout('standard');
+$PAGE->set_title(get_string('access:title', 'auth_flexaccess'));
+$PAGE->set_heading(format_string($course->fullname));
+
+// A real authenticated user has nothing to do here.
+if (isloggedin() && !isguestuser()) {
+    redirect($returnurl);
+}
+
+$failure = null;
+if ($confirm && confirm_sesskey()) {
+    $result = \enrol_flexaccess\local\access_controller::grant_temporary_access($courseid);
+    if ($result->status === 'granted') {
+        $user = $DB->get_record('user', ['id' => $result->userid], '*', MUST_EXIST);
+        complete_user_login($user);
+        redirect($returnurl, get_string('access:granted', 'auth_flexaccess'));
+    }
+    $failure = $result->status;
+}
 
 echo $OUTPUT->header();
-echo $OUTPUT->notification(get_string('stubnotice', 'auth_flexaccess'), 'info');
+echo $OUTPUT->heading(get_string('access:title', 'auth_flexaccess'));
+
+if ($failure !== null) {
+    echo $OUTPUT->notification(get_string('access:' . $failure, 'auth_flexaccess'), 'error');
+    echo $OUTPUT->continue_button($courseurl);
+} else {
+    $continueurl = new moodle_url('/auth/flexaccess/access.php',
+        ['courseid' => $courseid, 'wantsurl' => $wantsurl, 'confirm' => 1, 'sesskey' => sesskey()]);
+    echo $OUTPUT->confirm(
+        get_string('access:intro', 'auth_flexaccess', format_string($course->fullname)),
+        $continueurl, $courseurl);
+}
+
 echo $OUTPUT->footer();

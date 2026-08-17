@@ -31,7 +31,8 @@ final class provider implements \core_privacy\local\metadata\provider {
      * @param \core_privacy\local\metadata\collection $collection Collection.
      * @return \core_privacy\local\metadata\collection
      */
-    public static function get_metadata(\core_privacy\local\metadata\collection $collection): \core_privacy\local\metadata\collection {
+    public static function get_metadata(
+            \core_privacy\local\metadata\collection $collection): \core_privacy\local\metadata\collection {
         $collection->add_database_table('auth_flexaccess_account', [
             'userid' => 'privacy:metadata:account:userid',
             'accounttype' => 'privacy:metadata:account:accounttype',

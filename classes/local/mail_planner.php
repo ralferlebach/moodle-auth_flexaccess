@@ -15,23 +15,29 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Scheduled task expiring temporary/provisional accounts.
+ * Pure helper deciding how many queued mails may be sent in one run.
  *
+ * @package    auth_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-namespace auth_flexaccess\task;
+namespace auth_flexaccess\local;
 
-/** Account expiry task scaffold. */
-final class expire_accounts extends \core\task\scheduled_task {
-    /** @return string */
-    public function get_name(): string {
-        return get_string('task:expireaccounts', 'auth_flexaccess');
-    }
-
-    /** Execute task. */
-    public function execute(): void {
-        \auth_flexaccess\local\account_service::expire_due();
+/** Computes the number of mails to send under the rolling-hour throttle. */
+final class mail_planner {
+    /**
+     * How many due mails may be sent given remaining capacity.
+     *
+     * @param int|null $remaining Remaining hourly capacity; null means unlimited.
+     * @param int $duecount Number of mails currently due.
+     * @return int
+     */
+    public static function sendable(?int $remaining, int $duecount): int {
+        $duecount = max(0, $duecount);
+        if ($remaining === null) {
+            return $duecount;
+        }
+        return max(0, min($remaining, $duecount));
     }
 }

@@ -32,6 +32,6 @@ final class process_mail_queue extends \core\task\scheduled_task {
 
     /** Execute task. */
     public function execute(): void {
-        // Phase 3: acquire Lock API lock, calculate rolling-hour capacity and process queued semantic mail jobs.
+        \auth_flexaccess\local\mail_worker::run();
     }
 }

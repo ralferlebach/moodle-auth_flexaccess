@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.1.16 — 2026-08-17
+- **Einstiegsseite `access.php`:** anonymer Bestätigungsschritt (sesskey), ruft `enrol_flexaccess\local\access_controller::grant_temporary_access`, meldet den erzeugten temporären Nutzer via `complete_user_login` an und leitet lokal (PARAM_LOCALURL) in den Kurs; Fehlermeldungen für closed/notallowed/notenabled/full. Behebt den bislang toten Link aus `loginpage_idp_list`.
+
+## 0.1.15 — 2026-08-17
+- **`api::create_temporary_user()`**: legt einen temporären Moodle-Nutzer nach Konvention an (auth=flexaccess, generierter Username, kein lokales Passwort, nicht zustellbare Platzhalter-E-Mail + emailstop) und die zugehörigen Account-Metadaten (Ablauf aus enrol-Policy). PHPUnit-Test.
+
+## 0.1.14 — 2026-08-17
+- **Read-only Dashboard-Facaden:** `api::account_stats()`, `api::mailqueue_summary()`, `api::count_mailqueue()`/`list_mailqueue()` (ohne Geheimnisse/Payload). PHPUnit erweitert.
+
+## 0.1.13 — 2026-08-17
+- Lockstep-Versionsschub auf 0.1.13 (keine funktionale Änderung).
+
+## 0.1.12 — 2026-08-17
+- Lockstep-Versionsschub auf 0.1.12 (keine funktionale Änderung).
+
+## 0.1.11 — 2026-08-17
+- **Account-Facade erweitert:** `api::search_accounts()`/`count_accounts()` (Filter nach Substring/Typ/Status, paginiert, join auf user) und `api::admin_convert()`. PHPUnit erweitert (Filter, Suche, Admin-Conversion).
+
+## 0.1.10 — 2026-08-17
+- **M-A2: `api::self_activate()`** — In-Session-Selbstaktivierung eines eingeloggten temporären Nutzers: validiert E-Mail, prüft Duplicate-E-Mail-Policy, setzt E-Mail/Namen und konvertiert via `account_service` (Einschreibung unberührt). Rückgabe: activated/emailtaken/invalidemail/notapplicable. PHPUnit erweitert.
+
+## 0.1.9 — 2026-08-17
+- **expire_accounts-Task real umgesetzt:** `account_service::expire_due()` markiert fällige temporäre Konten als `expired` und suspendiert den Moodle-Nutzer (idempotent, batched); Einschreibung bleibt unberührt. PHPUnit erweitert.
+
+## 0.1.8 — 2026-08-17
+- **A-3: Follow-up-Schleife geschlossen.**
+  - `local\account_service`: `create_temporary()` und `convert_to_authenticated()` (gleiche userid; setzt Typ/State/timeactivated, entfernt Ablauf, bestätigt Moodle-Nutzer; **ändert keine Einschreibung**).
+  - `local\mail_worker`: gedrosselter Queue-Versand (`mail_rate`), Token erst unmittelbar vor Versand via `token_service`, Backoff/Attempts; `process_mail_queue`-Task verdrahtet. Reiner `local\mail_planner`.
+  - `persist.php`: Landing-Page, konsumiert das Token (nur für den passenden eingeloggten Nutzer) und konvertiert das Konto.
+  - PHPUnit: `account_service_test`, `mail_planner_test`, `mail_worker_test` (Drossel + Token + E-Mail-Sink). Kein Schema-Change.
+
+## 0.1.7 — 2026-08-17
+- **A-2 (Token-Primitive):** neuer `local\token_service` — single-use, gehashte (SHA-256), zeitlich begrenzte Tokens (issue/verify/consume) für Aktivierungs-, Follow-up- und Lösch-Links; nur der Hash wird gespeichert. PHPUnit `token_service_test`.
+- **CI-Fix (phpcs):** zu lange Zeilen in `settings.php` und `privacy/provider.php` umgebrochen.
+- **CI-Fix:** pgsql-Workflow-createdb-Zeile entfernt.
+
 ## 0.1.6 — 2026-08-17
 - **A-1 (Follow-up-Funnel) + Contract `auth_flexaccess\api`.**
   - `api::classify_user()` (der Vertrag für mod/enrol/tool; Nutzer ohne FlexAccess-Datensatz gelten als `authenticated user`), `api::get_account()`.

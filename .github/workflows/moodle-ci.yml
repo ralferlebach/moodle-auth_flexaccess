@@ -59,7 +59,6 @@ jobs:
       - name: Install and initialise Moodle
         run: |
           if [ "${{ matrix.db }}" = "pgsql" ]; then
-            createdb -h 127.0.0.1 -U moodle moodle || true
             DBTYPE=pgsql; DBUSER=moodle; DBPASS=moodle; DBPORT=5432
           else
             DBTYPE=mariadb; DBUSER=root; DBPASS=root; DBPORT=3306

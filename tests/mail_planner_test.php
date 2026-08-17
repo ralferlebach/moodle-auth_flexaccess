@@ -15,23 +15,30 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Scheduled task expiring temporary/provisional accounts.
+ * Tests for the FlexAccess mail planner.
  *
+ * @package    auth_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-namespace auth_flexaccess\task;
+namespace auth_flexaccess;
 
-/** Account expiry task scaffold. */
-final class expire_accounts extends \core\task\scheduled_task {
-    /** @return string */
-    public function get_name(): string {
-        return get_string('task:expireaccounts', 'auth_flexaccess');
+use auth_flexaccess\local\mail_planner;
+
+/** Mail planner tests. */
+final class mail_planner_test extends \advanced_testcase {
+    /** Unlimited capacity sends all due mails. */
+    public function test_unlimited(): void {
+        $this->assertSame(5, mail_planner::sendable(null, 5));
+        $this->assertSame(0, mail_planner::sendable(null, 0));
     }
 
-    /** Execute task. */
-    public function execute(): void {
-        \auth_flexaccess\local\account_service::expire_due();
+    /** Limited capacity caps the number sent. */
+    public function test_limited(): void {
+        $this->assertSame(3, mail_planner::sendable(3, 5));
+        $this->assertSame(5, mail_planner::sendable(10, 5));
+        $this->assertSame(0, mail_planner::sendable(0, 5));
+        $this->assertSame(0, mail_planner::sendable(3, 0));
     }
 }
