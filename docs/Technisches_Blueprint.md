@@ -24,7 +24,7 @@
                                   v
                          original course/activity
 
-                mod_flexaccessactivation
+                mod_flexaccess
                           |
                           +----> auth_flexaccess activation_service
 
@@ -70,7 +70,7 @@ Public facade planned as `enrol_flexaccess\api`:
 ### tool_flexaccess
 No ownership of account/enrolment state. It is an admin application layer consuming the public auth/enrol facades. No other FlexAccess plugin depends on it.
 
-### mod_flexaccessactivation
+### mod_flexaccess
 No cross-plugin domain ownership. It consumes the auth facade and, where needed, enrol policy/read services.
 
 ## 3. Data ownership
@@ -93,7 +93,7 @@ Course-category policy overrides.
 ### enrol_flexaccess_restriction
 Role/Cohort allow/deny restrictions for policy scopes.
 
-### flexaccessactivation
+### flexaccess
 Standard activity instance table; no second user-account store.
 
 ### tool_flexaccess
