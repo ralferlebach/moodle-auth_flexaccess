@@ -29,9 +29,13 @@
 
 namespace auth_flexaccess\local;
 
-/** Stateless follow-up scheduling helpers. */
+/**
+ * Stateless follow-up scheduling helpers.
+ */
 final class followup_scheduler {
-    /** Default safety margin before expiry, in seconds. */
+    /**
+     * Default safety margin before expiry, in seconds.
+     */
     public const DEFAULT_SAFETY_MARGIN = 3600;
 
     /**
@@ -43,8 +47,12 @@ final class followup_scheduler {
      * @param int $safetymargin Seconds the follow-up must precede expiry by.
      * @return int|null Effective send time, or null when it cannot be fitted before expiry.
      */
-    public static function due_time(int $createdtime, int $afterseconds, ?int $expirytime,
-            int $safetymargin = self::DEFAULT_SAFETY_MARGIN): ?int {
+    public static function due_time(
+        int $createdtime,
+        int $afterseconds,
+        ?int $expirytime,
+        int $safetymargin = self::DEFAULT_SAFETY_MARGIN
+    ): ?int {
         $planned = $createdtime + max(0, $afterseconds);
         if ($expirytime === null || $expirytime <= 0) {
             return $planned;

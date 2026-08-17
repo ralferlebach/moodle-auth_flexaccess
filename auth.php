@@ -33,7 +33,9 @@ require_once($CFG->libdir . '/authlib.php');
  * redirect security tests are implemented.
  */
 class auth_plugin_flexaccess extends auth_plugin_base {
-    /** Constructor. */
+    /**
+     * Constructor.
+     */
     public function __construct() {
         $this->authtype = 'flexaccess';
         $this->config = get_config('auth_flexaccess');
@@ -53,8 +55,10 @@ class auth_plugin_flexaccess extends auth_plugin_base {
             return false;
         }
         $account = $DB->get_record('auth_flexaccess_account', ['userid' => $user->id]);
-        if (!$account || $account->accounttype !== \auth_flexaccess\local\account_type::AUTHENTICATED_USER
-                || $account->accountstate !== \auth_flexaccess\local\account_state::ACTIVE) {
+        if (
+            !$account || $account->accounttype !== \auth_flexaccess\local\account_type::AUTHENTICATED_USER
+                || $account->accountstate !== \auth_flexaccess\local\account_state::ACTIVE
+        ) {
             return false;
         }
         return validate_internal_user_password($user, $password);
@@ -88,7 +92,9 @@ class auth_plugin_flexaccess extends auth_plugin_base {
         ]];
     }
 
-    /** Login page hook. Kept intentionally non-redirecting in the scaffold. */
+    /**
+     * Login page hook. Kept intentionally non-redirecting in the scaffold.
+     */
     public function pre_loginpage_hook(): void {
         // Phase 1: implement only after validated target resolution and redirect-loop tests exist.
     }

@@ -23,14 +23,22 @@
 
 namespace auth_flexaccess\task;
 
-/** Mail queue task scaffold. */
+/**
+ * Mail queue task scaffold.
+ */
 final class process_mail_queue extends \core\task\scheduled_task {
-    /** @return string */
+    /**
+     * Get the task name.
+     *
+     * @return string
+     */
     public function get_name(): string {
         return get_string('task:processmailqueue', 'auth_flexaccess');
     }
 
-    /** Execute task. */
+    /**
+     * Execute task.
+     */
     public function execute(): void {
         \auth_flexaccess\local\mail_worker::run();
     }

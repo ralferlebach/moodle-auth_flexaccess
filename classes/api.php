@@ -34,11 +34,17 @@ use auth_flexaccess\local\account_service;
 use auth_flexaccess\local\followup_scheduler;
 use auth_flexaccess\local\mail_kind;
 
-/** Cross-plugin facade for FlexAccess account classification and the follow-up funnel. */
+/**
+ * Cross-plugin facade for FlexAccess account classification and the follow-up funnel.
+ */
 final class api {
-    /** Mail-queue table. */
+    /**
+     * Mail-queue table.
+     */
     private const QUEUE_TABLE = 'auth_flexaccess_mailqueue';
-    /** Account table. */
+    /**
+     * Account table.
+     */
     private const ACCOUNT_TABLE = 'auth_flexaccess_account';
 
     /**
@@ -82,8 +88,11 @@ final class api {
      * @param int|null $safetymargin Seconds the follow-up must precede expiry by.
      * @return bool Whether a follow-up was scheduled.
      */
-    public static function request_persistence_followup(int $userid, int $afterseconds,
-            ?int $safetymargin = null): bool {
+    public static function request_persistence_followup(
+        int $userid,
+        int $afterseconds,
+        ?int $safetymargin = null
+    ): bool {
         global $DB;
 
         $account = self::get_account($userid);
@@ -145,8 +154,12 @@ final class api {
      * @param string $lastname Optional last name to set.
      * @return string One of: activated, notapplicable, invalidemail, emailtaken.
      */
-    public static function self_activate(int $userid, string $email, string $firstname = '',
-            string $lastname = ''): string {
+    public static function self_activate(
+        int $userid,
+        string $email,
+        string $firstname = '',
+        string $lastname = ''
+    ): string {
         global $DB;
 
         if (self::classify_user($userid) !== account_type::TEMPORARY_USER) {
@@ -192,15 +205,19 @@ final class api {
      * @param int|null $now Current time.
      * @return int The new user id.
      */
-    public static function create_temporary_user(?int $timeexpires = null, ?int $sourcecourseid = null,
-            ?int $sourcecmid = null, ?int $now = null): int {
+    public static function create_temporary_user(
+        ?int $timeexpires = null,
+        ?int $sourcecourseid = null,
+        ?int $sourcecmid = null,
+        ?int $now = null
+    ): int {
         global $CFG, $DB;
         require_once($CFG->dirroot . '/user/lib.php');
         $now = $now ?? time();
 
         $reference = \core_text::strtoupper(substr(sha1(uniqid('', true)), 0, 8));
         do {
-            $username = 'flexaccess_' . strtolower($reference) . random_string(4);
+            $username = \core_text::strtolower('flexaccess_' . $reference . random_string(4));
         } while ($DB->record_exists('user', ['username' => $username, 'mnethostid' => $CFG->mnet_localhost_id]));
 
         $user = new \stdClass();
@@ -246,7 +263,9 @@ final class api {
     public static function mailqueue_summary(): array {
         global $DB;
         $nextdue = $DB->get_field_sql(
-            "SELECT MIN(nextrun) FROM {" . self::QUEUE_TABLE . "} WHERE status = ?", ['queued']);
+            "SELECT MIN(nextrun) FROM {" . self::QUEUE_TABLE . "} WHERE status = ?",
+            ['queued']
+        );
         return [
             'queued' => $DB->count_records(self::QUEUE_TABLE, ['status' => 'queued']),
             'sent' => $DB->count_records(self::QUEUE_TABLE, ['status' => 'sent']),
@@ -278,9 +297,14 @@ final class api {
     public static function list_mailqueue(string $status = '', int $page = 0, int $perpage = 50): array {
         global $DB;
         $conditions = $status !== '' ? ['status' => $status] : [];
-        $rows = $DB->get_records(self::QUEUE_TABLE, $conditions, 'timecreated DESC',
+        $rows = $DB->get_records(
+            self::QUEUE_TABLE,
+            $conditions,
+            'timecreated DESC',
             'id, recipient, mailtype, status, attempts, timecreated, nextrun, timesent',
-            $page * $perpage, $perpage);
+            $page * $perpage,
+            $perpage
+        );
         return array_values($rows);
     }
 
@@ -294,8 +318,13 @@ final class api {
      * @param int $perpage Page size.
      * @return array<\stdClass>
      */
-    public static function search_accounts(string $query = '', ?string $type = null, ?string $state = null,
-            int $page = 0, int $perpage = 50): array {
+    public static function search_accounts(
+        string $query = '',
+        ?string $type = null,
+        ?string $state = null,
+        int $page = 0,
+        int $perpage = 50
+    ): array {
         global $DB;
         [$where, $params] = self::build_account_filter($query, $type, $state);
         $sql = "SELECT a.id, a.userid, a.accounttype, a.accountstate, a.timecreated, a.timeexpires,

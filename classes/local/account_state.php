@@ -23,11 +23,27 @@
 
 namespace auth_flexaccess\local;
 
-/** Account lifecycle states. */
+/**
+ * Account lifecycle states.
+ */
 final class account_state {
+    /** Ephemeral: a temporary user with no captured contact details. */
     public const EPHEMERAL = 'ephemeral';
+    /** Provisional: a temporary user who has provided contact details. */
     public const PROVISIONAL = 'provisional';
+    /** Active: a confirmed, authenticated account. */
     public const ACTIVE = 'active';
+    /** Expired: a temporary account whose lifetime has passed. */
     public const EXPIRED = 'expired';
+    /** Suspended: an account blocked from access. */
     public const SUSPENDED = 'suspended';
+
+    /**
+     * All account states.
+     *
+     * @return array<string>
+     */
+    public static function values(): array {
+        return [self::EPHEMERAL, self::PROVISIONAL, self::ACTIVE, self::EXPIRED, self::SUSPENDED];
+    }
 }

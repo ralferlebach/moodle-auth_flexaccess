@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.17 — 2026-08-17
+- **Real auf Moodle 5.3dev (branch 503, PG17) verifiziert — PHPUnit gruen, phpcs 0/0.** Dabei behobene echte Fehler: fehlende Capability-Sprachstrings (flexaccess:manageaccounts, flexaccess:convertaccounts) ergaenzt (Core tool_capability-Check); account_state::values() implementiert (wurde von api::build_account_filter() aufgerufen); generierter Username jetzt garantiert kleingeschrieben (core_text::strtolower; Moodle 5.3 lehnt Grossbuchstaben ab); vollstaendiger Privacy-Provider (statt reiner Metadaten): plugin\provider + core_userlist_provider mit Export/Loeschung auf User-Kontext-Ebene fuer account/token/mailqueue (Core core_privacy-Compliance-Test); install.xml ins kanonische XMLDB-Format regeneriert; PG-String/Int-Assertion in account_service_test korrigiert.
+- **CI grün gemacht (phpcs, real verifiziert mit moodlehq/moodle-cs v3.7):** Sprachdateien alphabetisch sortiert + `@package` ergänzt (Moodle LangFilesOrdering); einzeilige Docblocks in Mehrzeilenform mit Beschreibungszeile überführt; Multiline-Funktionsaufrufe per phpcbf normalisiert; unnötige `MOODLE_INTERNAL`-Checks entfernt; Konstanten-Docblocks ergänzt.
+- **Makefile:** Vorlage übernommen und an das Plugin-Verzeichnis angepasst (PLUGIN_NAME/PLUGIN_REL/MOODLE_ROOT); `make check` zeigt nur Fails, läuft volle Lintings + PHPUnit.
+- **GitHub-Workflows:** getrennt für Development (`moodle-ci.yml`, branches-ignore main) und Main (`moodle-release.yml`); zusätzlich `playwright.yml` und `load.yml` bereitgestellt. Von vimipad-spezifischen Bundle/AMD/Node-Schritten befreit; Behat-Tags und Pfade je Komponente. `.gitattributes`/`.gitignore` adaptiert.
+
 ## 0.1.16 — 2026-08-17
 - **Einstiegsseite `access.php`:** anonymer Bestätigungsschritt (sesskey), ruft `enrol_flexaccess\local\access_controller::grant_temporary_access`, meldet den erzeugten temporären Nutzer via `complete_user_login` an und leitet lokal (PARAM_LOCALURL) in den Kurs; Fehlermeldungen für closed/notallowed/notenabled/full. Behebt den bislang toten Link aus `loginpage_idp_list`.
 

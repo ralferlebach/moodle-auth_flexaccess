@@ -26,7 +26,8 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-require_once(__DIR__ . '/../../config.php');
+// This is a deliberately anonymous entry point; access is gated by the controller, not login.
+require_once(__DIR__ . '/../../config.php'); // phpcs:ignore moodle.Files.RequireLogin.Missing
 
 $courseid = required_param('courseid', PARAM_INT);
 $wantsurl = optional_param('wantsurl', '', PARAM_LOCALURL);
@@ -65,11 +66,15 @@ if ($failure !== null) {
     echo $OUTPUT->notification(get_string('access:' . $failure, 'auth_flexaccess'), 'error');
     echo $OUTPUT->continue_button($courseurl);
 } else {
-    $continueurl = new moodle_url('/auth/flexaccess/access.php',
-        ['courseid' => $courseid, 'wantsurl' => $wantsurl, 'confirm' => 1, 'sesskey' => sesskey()]);
+    $continueurl = new moodle_url(
+        '/auth/flexaccess/access.php',
+        ['courseid' => $courseid, 'wantsurl' => $wantsurl, 'confirm' => 1, 'sesskey' => sesskey()]
+    );
     echo $OUTPUT->confirm(
         get_string('access:intro', 'auth_flexaccess', format_string($course->fullname)),
-        $continueurl, $courseurl);
+        $continueurl,
+        $courseurl
+    );
 }
 
 echo $OUTPUT->footer();

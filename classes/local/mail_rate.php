@@ -23,9 +23,13 @@
 
 namespace auth_flexaccess\local;
 
-/** Pure helper for the rolling-hour FlexAccess mail limit. */
+/**
+ * Pure helper for the rolling-hour FlexAccess mail limit.
+ */
 final class mail_rate {
-    /** Allowed limits; zero means unlimited. */
+    /**
+     * Allowed limits; zero means unlimited.
+     */
     public const ALLOWED_LIMITS = [0, 10, 50, 100, 500];
 
     /**

@@ -23,14 +23,22 @@
 
 namespace auth_flexaccess\task;
 
-/** Account expiry task scaffold. */
+/**
+ * Account expiry task scaffold.
+ */
 final class expire_accounts extends \core\task\scheduled_task {
-    /** @return string */
+    /**
+     * Get the task name.
+     *
+     * @return string
+     */
     public function get_name(): string {
         return get_string('task:expireaccounts', 'auth_flexaccess');
     }
 
-    /** Execute task. */
+    /**
+     * Execute task.
+     */
     public function execute(): void {
         \auth_flexaccess\local\account_service::expire_due();
     }

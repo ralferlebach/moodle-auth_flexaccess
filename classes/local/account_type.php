@@ -23,14 +23,24 @@
 
 namespace auth_flexaccess\local;
 
-/** Business-facing account types. */
+/**
+ * Business-facing account types.
+ */
 final class account_type {
-    /** Temporary or not-yet-verified identity. */
+    /**
+     * Temporary or not-yet-verified identity.
+     */
     public const TEMPORARY_USER = 'temporary user';
-    /** Verified/regular identity. */
+    /**
+     * Verified/regular identity.
+     */
     public const AUTHENTICATED_USER = 'authenticated user';
 
-    /** @return array<string> */
+    /**
+     * Return all values.
+     *
+     * @return array<string>
+     */
     public static function values(): array {
         return [self::TEMPORARY_USER, self::AUTHENTICATED_USER];
     }

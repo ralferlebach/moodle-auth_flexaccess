@@ -28,9 +28,13 @@
 
 namespace auth_flexaccess\local;
 
-/** Account creation and conversion. */
+/**
+ * Account creation and conversion.
+ */
 final class account_service {
-    /** Account table. */
+    /**
+     * Account table.
+     */
     private const TABLE = 'auth_flexaccess_account';
 
     /**
@@ -44,8 +48,14 @@ final class account_service {
      * @param int|null $now Current time.
      * @return int New account row id.
      */
-    public static function create_temporary(int $userid, string $referencecode, ?int $timeexpires = null,
-            ?int $sourcecourseid = null, ?int $sourcecmid = null, ?int $now = null): int {
+    public static function create_temporary(
+        int $userid,
+        string $referencecode,
+        ?int $timeexpires = null,
+        ?int $sourcecourseid = null,
+        ?int $sourcecmid = null,
+        ?int $now = null
+    ): int {
         global $DB;
         $now = $now ?? time();
         return (int) $DB->insert_record(self::TABLE, (object) [

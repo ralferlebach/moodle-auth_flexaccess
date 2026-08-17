@@ -24,7 +24,9 @@
 
 namespace auth_flexaccess\local;
 
-/** Computes the number of mails to send under the rolling-hour throttle. */
+/**
+ * Computes the number of mails to send under the rolling-hour throttle.
+ */
 final class mail_planner {
     /**
      * How many due mails may be sent given remaining capacity.

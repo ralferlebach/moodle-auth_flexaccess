@@ -26,15 +26,21 @@ namespace auth_flexaccess;
 
 use auth_flexaccess\local\mail_planner;
 
-/** Mail planner tests. */
+/**
+ * Mail planner tests.
+ */
 final class mail_planner_test extends \advanced_testcase {
-    /** Unlimited capacity sends all due mails. */
+    /**
+     * Unlimited capacity sends all due mails.
+     */
     public function test_unlimited(): void {
         $this->assertSame(5, mail_planner::sendable(null, 5));
         $this->assertSame(0, mail_planner::sendable(null, 0));
     }
 
-    /** Limited capacity caps the number sent. */
+    /**
+     * Limited capacity caps the number sent.
+     */
     public function test_limited(): void {
         $this->assertSame(3, mail_planner::sendable(3, 5));
         $this->assertSame(5, mail_planner::sendable(10, 5));

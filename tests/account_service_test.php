@@ -28,9 +28,13 @@ use auth_flexaccess\local\account_service;
 use auth_flexaccess\local\account_state;
 use auth_flexaccess\local\account_type;
 
-/** Account service tests. */
+/**
+ * Account service tests.
+ */
 final class account_service_test extends \advanced_testcase {
-    /** Creating a temporary account stores temporary/ephemeral metadata. */
+    /**
+     * Creating a temporary account stores temporary/ephemeral metadata.
+     */
     public function test_create_temporary(): void {
         global $DB;
         $this->resetAfterTest();
@@ -40,11 +44,13 @@ final class account_service_test extends \advanced_testcase {
         $this->assertSame(account_type::TEMPORARY_USER, $row->accounttype);
         $this->assertSame(account_state::EPHEMERAL, $row->accountstate);
         $this->assertSame(2000, (int) $row->timeexpires);
-        $this->assertSame($user->id, (int) $row->userid);
+        $this->assertSame((int) $user->id, (int) $row->userid);
         $this->assertSame(account_type::TEMPORARY_USER, \auth_flexaccess\api::classify_user($user->id));
     }
 
-    /** Converting flips the type/state, clears expiry, confirms the user, and is idempotent. */
+    /**
+     * Converting flips the type/state, clears expiry, confirms the user, and is idempotent.
+     */
     public function test_convert_to_authenticated(): void {
         global $DB;
         $this->resetAfterTest();
@@ -64,13 +70,17 @@ final class account_service_test extends \advanced_testcase {
         $this->assertFalse(account_service::convert_to_authenticated($user->id));
     }
 
-    /** Converting an unknown user does nothing. */
+    /**
+     * Converting an unknown user does nothing.
+     */
     public function test_convert_unknown_user(): void {
         $this->resetAfterTest();
         $this->assertFalse(account_service::convert_to_authenticated(999999));
     }
 
-    /** expire_due marks passed temporary accounts expired and suspends the user; others untouched. */
+    /**
+     * expire_due marks passed temporary accounts expired and suspends the user; others untouched.
+     */
     public function test_expire_due(): void {
         global $DB;
         $this->resetAfterTest();
@@ -85,11 +95,15 @@ final class account_service_test extends \advanced_testcase {
 
         $this->assertSame(1, account_service::expire_due($now));
 
-        $this->assertSame(account_state::EXPIRED,
-            $DB->get_field('auth_flexaccess_account', 'accountstate', ['userid' => $due->id]));
+        $this->assertSame(
+            account_state::EXPIRED,
+            $DB->get_field('auth_flexaccess_account', 'accountstate', ['userid' => $due->id])
+        );
         $this->assertEquals(1, (int) $DB->get_field('user', 'suspended', ['id' => $due->id]));
-        $this->assertSame(account_state::EPHEMERAL,
-            $DB->get_field('auth_flexaccess_account', 'accountstate', ['userid' => $future->id]));
+        $this->assertSame(
+            account_state::EPHEMERAL,
+            $DB->get_field('auth_flexaccess_account', 'accountstate', ['userid' => $future->id])
+        );
         $this->assertEquals(0, (int) $DB->get_field('user', 'suspended', ['id' => $future->id]));
 
         // Idempotent: a second run expires nothing more.

@@ -10,21 +10,13 @@ desktop.ini
 *.iml
 *.iws
 
-# Node
+# Node (only if browser/load harnesses are added later)
 node_modules/
 npm-debug.log*
-yarn-error.log*
-yarn.lock
 
 # PHP / Composer
 vendor/
 composer.lock
-
-# AMD build artefacts: these ARE committed. Moodle serves them at runtime and
-# the CI validates them from the repo (thirdpartylibs.xml references the bundled
-# editor). The amd/src sources build init.min.js via Grunt; editor_lazy.min.js is
-# the prebuilt React bundle (esbuild). Both must be present in the repository.
-# (Intentionally NOT ignoring amd/build/.)
 
 # moodle-plugin-ci working directories
 ci/
@@ -48,3 +40,10 @@ behatfaildumps/
 # Local developer overrides
 .env
 .env.local
+
+# Load-test downloads and run artefacts (harness itself is versioned)
+tests/load/apache-jmeter-*/
+tests/load/k6
+tests/load/*.tgz
+tests/load/*.jtl
+tests/load/.load-env

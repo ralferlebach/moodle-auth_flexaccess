@@ -26,9 +26,13 @@ namespace auth_flexaccess;
 
 use auth_flexaccess\local\token_service;
 
-/** Token service tests. */
+/**
+ * Token service tests.
+ */
 final class token_service_test extends \advanced_testcase {
-    /** Only the hash is stored, never the clear-text token. */
+    /**
+     * Only the hash is stored, never the clear-text token.
+     */
     public function test_only_hash_is_stored(): void {
         global $DB;
         $this->resetAfterTest();
@@ -39,7 +43,9 @@ final class token_service_test extends \advanced_testcase {
         $this->assertSame(hash('sha256', $secret), $row->tokenhash);
     }
 
-    /** A valid token verifies for the right purpose and rejects a wrong purpose. */
+    /**
+     * A valid token verifies for the right purpose and rejects a wrong purpose.
+     */
     public function test_verify_purpose(): void {
         $this->resetAfterTest();
         $secret = token_service::issue(7, 'persistence');
@@ -49,7 +55,9 @@ final class token_service_test extends \advanced_testcase {
         $this->assertNull(token_service::verify('', 'persistence'));
     }
 
-    /** An expired token does not verify. */
+    /**
+     * An expired token does not verify.
+     */
     public function test_expired_token(): void {
         $this->resetAfterTest();
         $now = 1000000;
@@ -59,7 +67,9 @@ final class token_service_test extends \advanced_testcase {
         $this->assertNull(token_service::verify($secret, 'persistence', $now + 200));
     }
 
-    /** Consuming a token is single-use and returns the user id. */
+    /**
+     * Consuming a token is single-use and returns the user id.
+     */
     public function test_consume_is_single_use(): void {
         $this->resetAfterTest();
         $secret = token_service::issue(99, 'delete');

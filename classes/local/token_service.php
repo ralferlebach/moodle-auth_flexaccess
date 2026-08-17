@@ -29,11 +29,17 @@
 
 namespace auth_flexaccess\local;
 
-/** Issues, verifies and consumes one-time tokens. */
+/**
+ * Issues, verifies and consumes one-time tokens.
+ */
 final class token_service {
-    /** Token table. */
+    /**
+     * Token table.
+     */
     private const TABLE = 'auth_flexaccess_token';
-    /** Default time-to-live in seconds. */
+    /**
+     * Default time-to-live in seconds.
+     */
     public const DEFAULT_TTL = 86400;
 
     /**

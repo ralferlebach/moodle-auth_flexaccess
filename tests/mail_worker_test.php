@@ -27,7 +27,9 @@ namespace auth_flexaccess;
 use auth_flexaccess\local\mail_kind;
 use auth_flexaccess\local\mail_worker;
 
-/** Mail worker tests. */
+/**
+ * Mail worker tests.
+ */
 final class mail_worker_test extends \advanced_testcase {
     /**
      * Queue a due persistence follow-up for a fresh user.
@@ -54,7 +56,9 @@ final class mail_worker_test extends \advanced_testcase {
         return (int) $user->id;
     }
 
-    /** process_due honours the remaining budget and issues a token per sent mail. */
+    /**
+     * process_due honours the remaining budget and issues a token per sent mail.
+     */
     public function test_process_due_respects_budget(): void {
         global $DB;
         $this->resetAfterTest();
@@ -74,7 +78,9 @@ final class mail_worker_test extends \advanced_testcase {
         $sink->close();
     }
 
-    /** run() applies the configured rolling-hour limit. */
+    /**
+     * run() applies the configured rolling-hour limit.
+     */
     public function test_run_applies_hourly_limit(): void {
         global $DB;
         $this->resetAfterTest();

@@ -27,13 +27,21 @@
 
 namespace auth_flexaccess\local;
 
-/** Enumerates the semantic FlexAccess mail kinds. */
+/**
+ * Enumerates the semantic FlexAccess mail kinds.
+ */
 final class mail_kind {
-    /** E-mail confirmation / activation link. */
+    /**
+     * E-mail confirmation / activation link.
+     */
     public const ACTIVATION = 'activation';
-    /** Persistence reminder in the temporary -> authenticated funnel. */
+    /**
+     * Persistence reminder in the temporary -> authenticated funnel.
+     */
     public const PERSISTENCE_FOLLOWUP = 'persistence_followup';
-    /** One-time account deletion link. */
+    /**
+     * One-time account deletion link.
+     */
     public const ACCOUNT_DELETE = 'account_delete';
 
     /**

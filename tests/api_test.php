@@ -28,7 +28,9 @@ use auth_flexaccess\local\account_state;
 use auth_flexaccess\local\account_type;
 use auth_flexaccess\local\mail_kind;
 
-/** Facade tests. */
+/**
+ * Facade tests.
+ */
 final class api_test extends \advanced_testcase {
     /**
      * Insert a FlexAccess account row for a user.
@@ -53,14 +55,18 @@ final class api_test extends \advanced_testcase {
         ]);
     }
 
-    /** A user without a FlexAccess record is an authenticated user. */
+    /**
+     * A user without a FlexAccess record is an authenticated user.
+     */
     public function test_classify_without_record(): void {
         $this->resetAfterTest();
         $user = $this->getDataGenerator()->create_user();
         $this->assertSame(account_type::AUTHENTICATED_USER, \auth_flexaccess\api::classify_user($user->id));
     }
 
-    /** A temporary FlexAccess user classifies as temporary. */
+    /**
+     * A temporary FlexAccess user classifies as temporary.
+     */
     public function test_classify_temporary(): void {
         $this->resetAfterTest();
         $user = $this->getDataGenerator()->create_user();
@@ -68,18 +74,27 @@ final class api_test extends \advanced_testcase {
         $this->assertSame(account_type::TEMPORARY_USER, \auth_flexaccess\api::classify_user($user->id));
     }
 
-    /** A qualifying temporary user with an e-mail gets exactly one queued follow-up. */
+    /**
+     * A qualifying temporary user with an e-mail gets exactly one queued follow-up.
+     */
     public function test_request_followup_enqueues_once(): void {
         global $DB;
         $this->resetAfterTest();
         $now = time();
         $user = $this->getDataGenerator()->create_user(['email' => 'temp@example.com']);
-        $this->make_account($user->id, account_type::TEMPORARY_USER, account_state::PROVISIONAL,
-            $now, $now + DAYSECS);
+        $this->make_account(
+            $user->id,
+            account_type::TEMPORARY_USER,
+            account_state::PROVISIONAL,
+            $now,
+            $now + DAYSECS
+        );
 
         $this->assertTrue(\auth_flexaccess\api::request_persistence_followup($user->id, DAYSECS, 3600));
-        $rows = $DB->get_records('auth_flexaccess_mailqueue',
-            ['userid' => $user->id, 'mailtype' => mail_kind::PERSISTENCE_FOLLOWUP]);
+        $rows = $DB->get_records(
+            'auth_flexaccess_mailqueue',
+            ['userid' => $user->id, 'mailtype' => mail_kind::PERSISTENCE_FOLLOWUP]
+        );
         $this->assertCount(1, $rows);
         $row = reset($rows);
         $this->assertSame('queued', $row->status);
@@ -88,11 +103,15 @@ final class api_test extends \advanced_testcase {
 
         // Idempotent second call does not enqueue again.
         $this->assertFalse(\auth_flexaccess\api::request_persistence_followup($user->id, DAYSECS, 3600));
-        $this->assertEquals(1, $DB->count_records('auth_flexaccess_mailqueue',
-            ['userid' => $user->id, 'mailtype' => mail_kind::PERSISTENCE_FOLLOWUP]));
+        $this->assertEquals(1, $DB->count_records(
+            'auth_flexaccess_mailqueue',
+            ['userid' => $user->id, 'mailtype' => mail_kind::PERSISTENCE_FOLLOWUP]
+        ));
     }
 
-    /** A converted (authenticated) user is not scheduled. */
+    /**
+     * A converted (authenticated) user is not scheduled.
+     */
     public function test_request_followup_skips_authenticated(): void {
         $this->resetAfterTest();
         $now = time();
@@ -101,17 +120,26 @@ final class api_test extends \advanced_testcase {
         $this->assertFalse(\auth_flexaccess\api::request_persistence_followup($user->id, DAYSECS));
     }
 
-    /** An account too short-lived to fit a reminder is not scheduled. */
+    /**
+     * An account too short-lived to fit a reminder is not scheduled.
+     */
     public function test_request_followup_skips_too_short(): void {
         $this->resetAfterTest();
         $now = time();
         $user = $this->getDataGenerator()->create_user(['email' => 'temp2@example.com']);
-        $this->make_account($user->id, account_type::TEMPORARY_USER, account_state::EPHEMERAL,
-            $now, $now + 1800);
+        $this->make_account(
+            $user->id,
+            account_type::TEMPORARY_USER,
+            account_state::EPHEMERAL,
+            $now,
+            $now + 1800
+        );
         $this->assertFalse(\auth_flexaccess\api::request_persistence_followup($user->id, DAYSECS, 3600));
     }
 
-    /** A temporary user self-activates with a fresh e-mail. */
+    /**
+     * A temporary user self-activates with a fresh e-mail.
+     */
     public function test_self_activate_success(): void {
         global $DB;
         $this->resetAfterTest();
@@ -126,7 +154,9 @@ final class api_test extends \advanced_testcase {
         $this->assertSame('Kim', $fresh->firstname);
     }
 
-    /** A duplicate e-mail is rejected without converting. */
+    /**
+     * A duplicate e-mail is rejected without converting.
+     */
     public function test_self_activate_email_taken(): void {
         $this->resetAfterTest();
         $this->getDataGenerator()->create_user(['email' => 'taken@example.com']);
@@ -137,7 +167,9 @@ final class api_test extends \advanced_testcase {
         $this->assertSame(account_type::TEMPORARY_USER, \auth_flexaccess\api::classify_user($user->id));
     }
 
-    /** An invalid e-mail is rejected. */
+    /**
+     * An invalid e-mail is rejected.
+     */
     public function test_self_activate_invalid_email(): void {
         $this->resetAfterTest();
         $user = $this->getDataGenerator()->create_user();
@@ -145,14 +177,18 @@ final class api_test extends \advanced_testcase {
         $this->assertSame('invalidemail', \auth_flexaccess\api::self_activate($user->id, 'not-an-email'));
     }
 
-    /** An authenticated user is not applicable for self-activation. */
+    /**
+     * An authenticated user is not applicable for self-activation.
+     */
     public function test_self_activate_not_applicable(): void {
         $this->resetAfterTest();
         $user = $this->getDataGenerator()->create_user(['email' => 'auth@example.com']);
         $this->assertSame('notapplicable', \auth_flexaccess\api::self_activate($user->id, 'new@example.com'));
     }
 
-    /** Search filters by substring, type and state; admin_convert converts. */
+    /**
+     * Search filters by substring, type and state; admin_convert converts.
+     */
     public function test_search_count_and_admin_convert(): void {
         $this->resetAfterTest();
         $now = time();
@@ -178,7 +214,9 @@ final class api_test extends \advanced_testcase {
         $this->assertFalse(\auth_flexaccess\api::admin_convert($carol->id));
     }
 
-    /** account_stats and mailqueue_summary aggregate correctly. */
+    /**
+     * account_stats and mailqueue_summary aggregate correctly.
+     */
     public function test_stats_and_mailqueue_summary(): void {
         global $DB;
         $this->resetAfterTest();
@@ -214,7 +252,9 @@ final class api_test extends \advanced_testcase {
         $this->assertCount(1, \auth_flexaccess\api::list_mailqueue('sent'));
     }
 
-    /** create_temporary_user creates a FlexAccess user with temporary account metadata. */
+    /**
+     * create_temporary_user creates a FlexAccess user with temporary account metadata.
+     */
     public function test_create_temporary_user(): void {
         global $DB, $CFG;
         $this->resetAfterTest();

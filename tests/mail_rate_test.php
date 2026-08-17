@@ -23,9 +23,13 @@
 
 namespace auth_flexaccess;
 
-/** Mail-rate helper tests. */
+/**
+ * Mail-rate helper tests.
+ */
 final class mail_rate_test extends \advanced_testcase {
-    /** Test rolling-hour remaining capacity. */
+    /**
+     * Test rolling-hour remaining capacity.
+     */
     public function test_remaining_capacity(): void {
         $this->assertSame(37, \auth_flexaccess\local\mail_rate::remaining(50, 13));
         $this->assertSame(0, \auth_flexaccess\local\mail_rate::remaining(10, 12));

@@ -27,13 +27,21 @@
 
 namespace auth_flexaccess\local;
 
-/** Sends queued FlexAccess mails within the configured throttle. */
+/**
+ * Sends queued FlexAccess mails within the configured throttle.
+ */
 final class mail_worker {
-    /** Queue table. */
+    /**
+     * Queue table.
+     */
     private const TABLE = 'auth_flexaccess_mailqueue';
-    /** Max delivery attempts before a job is marked failed. */
+    /**
+     * Max delivery attempts before a job is marked failed.
+     */
     private const MAX_ATTEMPTS = 5;
-    /** Backoff between attempts, in seconds. */
+    /**
+     * Backoff between attempts, in seconds.
+     */
     private const BACKOFF = 900;
 
     /**
