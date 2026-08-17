@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.3 — 2026-08-17
+- Lockstep-Versionsschub auf 0.1.3 (keine funktionale Änderung; Follow-up-Funnel A-1 folgt).
+
 ## 0.1.2 — 2026-08-17
 - Scope-Erweiterung (Planung/Doku): **Follow-up-Persistierungsmails** als Kernfunktion des Temporary→Persistent-Funnels aufgenommen (ADR-013); Post-Registration-Hook für spätere Cohort-Zuweisung vorgesehen (ADR-015).
 
