@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.4 — 2026-08-17
+- Lockstep-Versionsschub auf 0.1.4 (keine funktionale Änderung).
+
 ## 0.1.3 — 2026-08-17
 - Lockstep-Versionsschub auf 0.1.3 (keine funktionale Änderung; Follow-up-Funnel A-1 folgt).
 
