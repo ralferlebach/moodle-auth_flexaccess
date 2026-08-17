@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.6 — 2026-08-17
+- **A-1 (Follow-up-Funnel) + Contract `auth_flexaccess\api`.**
+  - `api::classify_user()` (der Vertrag für mod/enrol/tool; Nutzer ohne FlexAccess-Datensatz gelten als `authenticated user`), `api::get_account()`.
+  - `api::request_persistence_followup()`: idempotentes Einreihen einer `persistence_followup`-Mail in die bestehende getaktete Mailqueue; nur für unkonvertierte temporäre Nutzer mit zustellbarer Adresse; Sendezeit **vor** dem Account-Ablauf geclampt.
+  - `local\followup_scheduler` (reine Logik: `due_time` mit Clamping, `should_schedule`), `local\mail_kind` (Konstanten).
+  - PHPUnit: `followup_scheduler_test`, `api_test`. Kein Schema-Change; Mailqueue-Privacy war bereits deklariert. Token/Versand bleiben Aufgabe des Mailworkers (ADR-013).
+
 ## 0.1.5 — 2026-08-17
 - Lockstep-Versionsschub auf 0.1.5 (keine funktionale Änderung; kann nun `enrol_flexaccess\api::get_effective_policy` konsumieren).
 
