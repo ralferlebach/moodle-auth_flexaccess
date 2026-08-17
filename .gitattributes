@@ -1,0 +1,10 @@
+# Distribution rules for git archive.
+/.github export-ignore
+/.gitattributes export-ignore
+/.gitignore export-ignore
+/makefile export-ignore
+/phpcs.xml export-ignore
+/docs export-ignore
+/tools export-ignore
+/tests/load export-ignore
+/tests/playwright export-ignore

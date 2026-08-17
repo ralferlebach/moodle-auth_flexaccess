@@ -1,0 +1,24 @@
+# Session start — auth_flexaccess
+
+You are continuing development of **auth_flexaccess** (Authentifizierung und Account-Lifecycle).
+
+Before changing code:
+1. Read `docs/Lastenheft.md`, `docs/Pflichtenheft.md`, and `docs/Technisches_Blueprint.md`.
+2. Read the most recent `docs/sessions/session-*.md` if present.
+3. Inspect the actual code; do not infer implementation from planning docs.
+4. Preserve the architecture boundaries: no Core patch, no direct DB driver, no shared credentials, no unvalidated redirect.
+5. Treat `accounttype` exactly as `temporary user` or `authenticated user`; lifecycle detail belongs in `accountstate`.
+6. Prefer Moodle APIs and public extension points compatible with Moodle 4.5+.
+
+Quality gates:
+- Moodle Coding Standards and complete PHPDoc/boilerplates.
+- Capability, context, sesskey and parameter validation on every entry point.
+- Privacy metadata/export/delete for stored personal data.
+- Bounded/paginated DB reads; no N+1 patterns.
+- PHPUnit for domain/state logic and Behat for user flows.
+- `make check` is a quick local pre-check; GitHub CI is the authoritative release gate.
+
+Current session objective:
+> [Describe the next concrete implementation slice from the blueprint/backlog.]
+
+Access-key rule: temporary-user entry may be gated by a system/course access key. Auth orchestrates the challenge but never owns or receives stored hashes; do not affect normal login/normal guest/self-activation.

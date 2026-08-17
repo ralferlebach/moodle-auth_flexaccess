@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+    <ruleset name="auth_flexaccess">
+        <description>PHPCS configuration for auth_flexaccess.</description>
+        <rule ref="moodle"/>
+        <exclude-pattern>*/tools/*</exclude-pattern>
+        <exclude-pattern>*/vendor/*</exclude-pattern>
+    </ruleset>

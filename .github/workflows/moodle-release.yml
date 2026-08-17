@@ -1,0 +1,8 @@
+name: Moodle Plugin Release Gate
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+jobs:
+  release-gate:
+    uses: ./.github/workflows/moodle-ci.yml

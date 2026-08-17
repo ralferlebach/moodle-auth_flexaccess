@@ -1,0 +1,80 @@
+name: Moodle Plugin CI
+on:
+  push:
+  pull_request:
+env:
+  MOODLE_CI: '^4'
+  PGPASSWORD: moodle
+jobs:
+  ci:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - moodle: MOODLE_405_STABLE
+            php: '8.3'
+            db: mariadb
+          - moodle: MOODLE_405_STABLE
+            php: '8.3'
+            db: pgsql
+          - moodle: MOODLE_501_STABLE
+            php: '8.3'
+            db: mariadb
+          - moodle: MOODLE_502_STABLE
+            php: '8.3'
+            db: pgsql
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MYSQL_ROOT_PASSWORD: root
+        ports: ['3306:3306']
+        options: --health-cmd="mysqladmin ping --silent" --health-interval=10s --health-retries=10
+      pgsql:
+        image: postgres:16
+        env:
+          POSTGRES_USER: moodle
+          POSTGRES_PASSWORD: moodle
+          POSTGRES_DB: postgres
+        ports: ['5432:5432']
+        options: --health-cmd="pg_isready -U moodle" --health-interval=10s --health-retries=10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: plugin
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: mbstring, pdo, pdo_mysql, pdo_pgsql, gd, xml, zip, intl, sodium
+          ini-values: max_input_vars=5000
+          coverage: none
+      - name: Locale
+        run: sudo locale-gen en_AU.UTF-8 && sudo update-locale
+      - name: Install moodle-plugin-ci
+        run: |
+          composer create-project -n --no-dev moodlehq/moodle-plugin-ci ci ${{ env.MOODLE_CI }}
+          echo "$GITHUB_WORKSPACE/ci/bin" >> "$GITHUB_PATH"
+          echo "$GITHUB_WORKSPACE/ci/vendor/bin" >> "$GITHUB_PATH"
+      - name: Install and initialise Moodle
+        run: |
+          if [ "${{ matrix.db }}" = "pgsql" ]; then
+            createdb -h 127.0.0.1 -U moodle moodle || true
+            DBTYPE=pgsql; DBUSER=moodle; DBPASS=moodle; DBPORT=5432
+          else
+            DBTYPE=mariadb; DBUSER=root; DBPASS=root; DBPORT=3306
+          fi
+          moodle-plugin-ci install --plugin ./plugin --branch ${{ matrix.moodle }} \
+            --db-type "$DBTYPE" --db-host 127.0.0.1 --db-port "$DBPORT" \
+            --db-user "$DBUSER" --db-pass "$DBPASS" --db-name moodle
+      - name: Validate
+        run: |
+          moodle-plugin-ci phpcs --max-warnings 0
+          moodle-plugin-ci phpdoc --max-warnings 0
+          moodle-plugin-ci validate
+          moodle-plugin-ci savepoints
+          moodle-plugin-ci mustache
+      - name: PHPUnit
+        run: moodle-plugin-ci phpunit --fail-on-warning
+      - name: Behat
+        run: moodle-plugin-ci behat --profile chrome --tags "@auth_flexaccess" --start-servers
