@@ -84,7 +84,7 @@ if ($form->is_cancelled()) {
         'firstname' => $data->firstname,
         'lastname' => $data->lastname,
         'password' => $data->password,
-    ]);
+    ], getremoteaddr());
     if ($result->status === 'granted') {
         $user = $DB->get_record('user', ['id' => $result->userid], '*', MUST_EXIST);
         complete_user_login($user);

@@ -49,6 +49,21 @@ final class api {
      * Magic-login token lifetime in seconds (15 minutes).
      */
     private const MAGIC_LOGIN_TTL = 900;
+
+    /**
+     * Sliding window for magic-login request rate limiting, in seconds.
+     */
+    private const MAGIC_RATE_WINDOW = 600;
+
+    /**
+     * Maximum magic-login requests per client address within the window.
+     */
+    private const MAGIC_MAX_PER_IP = 15;
+
+    /**
+     * Maximum magic-login requests per target address within the window (anti inbox-spam).
+     */
+    private const MAGIC_MAX_PER_EMAIL = 3;
     /**
      * Account table.
      */
@@ -378,7 +393,7 @@ final class api {
      * @param int|null $now Current time.
      * @return string 'sent' normally, or 'disabled' when the feature is off.
      */
-    public static function request_magic_login(string $email, ?int $now = null): string {
+    public static function request_magic_login(string $email, ?string $clientip = null, ?int $now = null): string {
         global $DB;
         $now = $now ?? time();
         if (!self::magic_login_enabled()) {
@@ -388,6 +403,31 @@ final class api {
         if ($email === '') {
             return 'sent';
         }
+
+        // Rate limit per client and per target address. Both silently report success so the endpoint
+        // never reveals whether an account exists and cannot be used to spam a victim's inbox.
+        if (
+            ($clientip !== null && local\rate_limiter::too_many(
+                'magic_ip',
+                $clientip,
+                self::MAGIC_MAX_PER_IP,
+                self::MAGIC_RATE_WINDOW,
+                $now
+            ))
+            || local\rate_limiter::too_many(
+                'magic_email',
+                $email,
+                self::MAGIC_MAX_PER_EMAIL,
+                self::MAGIC_RATE_WINDOW,
+                $now
+            )
+        ) {
+            return 'sent';
+        }
+        if ($clientip !== null) {
+            local\rate_limiter::record('magic_ip', $clientip, self::MAGIC_RATE_WINDOW, $now);
+        }
+        local\rate_limiter::record('magic_email', $email, self::MAGIC_RATE_WINDOW, $now);
 
         $user = $DB->get_record_select(
             'user',

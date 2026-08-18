@@ -67,7 +67,7 @@ $form = new \auth_flexaccess\form\magic_login_form(new moodle_url('/auth/flexacc
 if ($form->is_cancelled()) {
     redirect($loginurl);
 } else if ($data = $form->get_data()) {
-    \auth_flexaccess\api::request_magic_login($data->email);
+    \auth_flexaccess\api::request_magic_login($data->email, getremoteaddr());
     echo $OUTPUT->header();
     echo $OUTPUT->heading(get_string('magic:title', 'auth_flexaccess'));
     echo $OUTPUT->notification(get_string('magic:sent', 'auth_flexaccess', s($data->email)), 'success');

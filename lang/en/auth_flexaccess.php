@@ -37,6 +37,7 @@ $string['access:orguest'] = 'Continue as a guest';
 $string['access:orlogin'] = 'Already have an account? Log in';
 $string['access:ormagic'] = 'Log in with an email link instead';
 $string['access:orregister'] = 'Or register for a persistent account';
+$string['access:ratelimited'] = 'Too many attempts from your network right now. Please wait a few minutes and try again.';
 $string['access:title'] = 'Temporary course access';
 $string['access:unavailable'] = 'This course is not available for FlexAccess entry.';
 $string['accessprovider'] = 'Flexible course access';

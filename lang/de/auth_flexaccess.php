@@ -37,6 +37,7 @@ $string['access:orguest'] = 'Als Gast fortfahren';
 $string['access:orlogin'] = 'Sie haben bereits ein Konto? Anmelden';
 $string['access:ormagic'] = 'Stattdessen mit E-Mail-Link anmelden';
 $string['access:orregister'] = 'Oder für ein dauerhaftes Konto registrieren';
+$string['access:ratelimited'] = 'Zu viele Versuche aus Ihrem Netzwerk. Bitte warten Sie einige Minuten und versuchen Sie es erneut.';
 $string['access:title'] = 'Temporärer Kurszugang';
 $string['access:unavailable'] = 'Dieser Kurs ist nicht für den FlexAccess-Zugang verfügbar.';
 $string['accessprovider'] = 'Flexibler Kurszugang';

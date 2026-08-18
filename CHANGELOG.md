@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.34 — 2026-08-19 — Rate-Limiting der oeffentlichen Schreib-Endpoints (§5)
+- **Generischer Rate-Limiter** `local\rate_limiter` (Sliding-Window, App-Cache, zaehlt jeden Versuch).
+- **Magic-Login-Anfrage rate-limitiert** pro Client-Adresse (15/10min) UND pro Zieladresse (3/10min, gegen Inbox-Spam) — enumeration-still (immer 'sent', bei Limit einfach kein Versand). `request_magic_login()` nimmt jetzt die Client-Adresse; `magic.php` reicht `getremoteaddr()` durch.
+
 ## 0.1.33 — 2026-08-19 — Enrolment-Expiry (§32/§33) + echte jmeter/playwright-Plaene (§26/§27)
 - Keine Codeaenderung.
 
