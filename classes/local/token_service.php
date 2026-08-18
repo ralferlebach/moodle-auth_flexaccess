@@ -107,19 +107,36 @@ final class token_service {
      * @param int|null $now Current time.
      * @return int|null The user id on success, otherwise null.
      */
-    public static function consume(string $secret, string $purpose, ?int $now = null): ?int {
+    public static function consume(
+        string $secret,
+        string $purpose,
+        ?int $now = null,
+        ?int $expecteduserid = null
+    ): ?int {
         global $DB;
         $now = $now ?? time();
-        $transaction = $DB->start_delegated_transaction();
-        $record = self::verify($secret, $purpose, $now);
-        if (!$record) {
-            $transaction->allow_commit();
+        // Serialise consumption per token hash so two concurrent requests cannot both accept the same
+        // single-use token (portable Moodle Lock API instead of a DB-specific SELECT ... FOR UPDATE).
+        $lockfactory = \core\lock\lock_config::get_lock_factory('auth_flexaccess_token');
+        $lock = $lockfactory->get_lock(self::hash($secret), 10);
+        if (!$lock) {
             return null;
         }
-        $record->timeused = $now;
-        $DB->update_record(self::TABLE, $record);
-        $transaction->allow_commit();
-        return (int) $record->userid;
+        try {
+            $record = self::verify($secret, $purpose, $now);
+            if (!$record) {
+                return null;
+            }
+            // Never burn a token that belongs to a different user.
+            if ($expecteduserid !== null && (int) $record->userid !== $expecteduserid) {
+                return null;
+            }
+            $record->timeused = $now;
+            $DB->update_record(self::TABLE, $record);
+            return (int) $record->userid;
+        } finally {
+            $lock->release();
+        }
     }
 
     /**

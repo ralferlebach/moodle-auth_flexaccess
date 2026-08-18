@@ -217,7 +217,8 @@ final class api {
         require_once($CFG->dirroot . '/user/lib.php');
         $now = $now ?? time();
 
-        $reference = \core_text::strtoupper(substr(sha1(uniqid('', true)), 0, 8));
+        // Numeric reference so temporary users can read it out to an administrator (see tool_flexaccess reference search).
+        $reference = str_pad((string) random_int(0, 9999999999), 10, '0', STR_PAD_LEFT);
         do {
             $username = \core_text::strtolower('flexaccess_' . $reference . random_string(4));
         } while ($DB->record_exists('user', ['username' => $username, 'mnethostid' => $CFG->mnet_localhost_id]));
@@ -232,9 +233,14 @@ final class api {
         $user->lastname = get_string('temporarylastname', 'auth_flexaccess');
         $user->email = $username . '@flexaccess.invalid';
         $user->emailstop = 1;
-        $user->policyagreed = 1;
 
-        $userid = (int) user_create_user($user, false, true);
+        // Moodle 5.3 deprecates the global user_create_user() in favour of \core\user::create_user();
+        // use the new API where available and fall back for 4.5-5.2.
+        if (method_exists(\core\user::class, 'create_user')) {
+            $userid = (int) \core\user::create_user($user, false, true);
+        } else {
+            $userid = (int) user_create_user($user, false, true);
+        }
         account_service::create_temporary($userid, $reference, $timeexpires, $sourcecourseid, $sourcecmid, $now);
         return $userid;
     }

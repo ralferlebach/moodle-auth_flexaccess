@@ -29,13 +29,39 @@
 // This is a deliberately anonymous entry point; access is gated by the controller, not login.
 require_once(__DIR__ . '/../../config.php'); // phpcs:ignore moodle.Files.RequireLogin.Missing
 
-$courseid = required_param('courseid', PARAM_INT);
+$courseid = optional_param('courseid', 0, PARAM_INT);
 $wantsurl = optional_param('wantsurl', '', PARAM_LOCALURL);
 $confirm = optional_param('confirm', 0, PARAM_BOOL);
 
-$course = get_course($courseid);
+// Login-page links carry only wantsurl; derive the course from it when courseid is absent.
+$target = \auth_flexaccess\local\target_resolver::resolve($wantsurl);
+if ($courseid <= 0 && $target !== null) {
+    $courseid = $target->courseid;
+}
+
+// Enumeration guard: do not reveal course existence or name unless the course is visible and
+// actually offers an anonymous FlexAccess entry method. Otherwise render a generic notice.
+$course = $courseid > 0 ? $DB->get_record('course', ['id' => $courseid]) : false;
+$available = $course
+    && (int) $course->visible === 1
+    && \enrol_flexaccess\api::offers_anonymous_entry($courseid);
+
+if (!$available) {
+    $PAGE->set_context(context_system::instance());
+    $PAGE->set_url(new moodle_url('/auth/flexaccess/access.php'));
+    $PAGE->set_pagelayout('standard');
+    $PAGE->set_title(get_string('access:title', 'auth_flexaccess'));
+    $PAGE->set_heading(get_string('access:title', 'auth_flexaccess'));
+    echo $OUTPUT->header();
+    echo $OUTPUT->heading(get_string('access:title', 'auth_flexaccess'));
+    echo $OUTPUT->notification(get_string('access:unavailable', 'auth_flexaccess'), 'error');
+    echo $OUTPUT->continue_button(new moodle_url('/login/index.php'));
+    echo $OUTPUT->footer();
+    exit;
+}
+
 $courseurl = new moodle_url('/course/view.php', ['id' => $courseid]);
-$returnurl = $wantsurl !== '' ? new moodle_url($wantsurl) : $courseurl;
+$returnurl = $target !== null ? $target->redirect_url() : $courseurl;
 
 $PAGE->set_context(context_course::instance($courseid));
 $PAGE->set_url(new moodle_url('/auth/flexaccess/access.php', ['courseid' => $courseid]));

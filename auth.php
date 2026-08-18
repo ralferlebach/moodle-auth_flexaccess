@@ -83,11 +83,22 @@ class auth_plugin_flexaccess extends auth_plugin_base {
      * @return array
      */
     public function loginpage_idp_list($wantsurl): array {
-        global $CFG;
-        if (empty($wantsurl)) {
+        // Only advertise FlexAccess when the wantsurl points at a real course/activity and that
+        // course actually offers an anonymous FlexAccess entry method (window open + a method on).
+        $target = \auth_flexaccess\local\target_resolver::resolve((string) $wantsurl);
+        if ($target === null) {
             return [];
         }
-        $url = new moodle_url('/auth/flexaccess/access.php', ['wantsurl' => $wantsurl]);
+        if (
+            !class_exists(\enrol_flexaccess\api::class)
+                || !\enrol_flexaccess\api::offers_anonymous_entry($target->courseid)
+        ) {
+            return [];
+        }
+        $url = new moodle_url('/auth/flexaccess/access.php', [
+            'courseid' => $target->courseid,
+            'wantsurl' => $wantsurl,
+        ]);
         return [[
             'url' => $url,
             'icon' => new pix_icon('t/login', ''),

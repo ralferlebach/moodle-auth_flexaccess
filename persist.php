@@ -44,12 +44,12 @@ $PAGE->set_heading(get_string('persist:title', 'auth_flexaccess'));
 echo $OUTPUT->header();
 echo $OUTPUT->heading(get_string('persist:title', 'auth_flexaccess'));
 
-$record = token_service::verify($token, 'persistence');
-if (!$record || (int) $record->userid !== (int) $USER->id) {
+// Only a successful atomic consume authorises the conversion (no separate verify/check-then-act).
+$userid = token_service::consume($token, 'persistence', null, (int) $USER->id);
+if ($userid === null) {
     echo $OUTPUT->notification(get_string('persist:invalid', 'auth_flexaccess'), 'error');
 } else {
-    token_service::consume($token, 'persistence');
-    account_service::convert_to_authenticated((int) $USER->id);
+    account_service::convert_to_authenticated($userid);
     echo $OUTPUT->notification(get_string('persist:success', 'auth_flexaccess'), 'success');
 }
 

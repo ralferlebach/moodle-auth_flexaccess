@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.22 — 2026-08-18 — Paket A (Access), Teil 1
+- **Der URL-/aktivitaetssensitive Zugang funktioniert jetzt end-to-end** (war Beta-Blocker B1). Real per Behat verifiziert: ein anonymer Besucher gelangt ueber die Entry-Page zu temporaerem Zugang und landet im Zielkurs.
+- **B1 (target_resolver):** neue Klasse `local\target_resolver` (+ `resolved_target`) loest `wantsurl` sicher zu Kurs/Aktivitaet/Redirect auf und weist externe/ungueltige URLs ab (kein Open-Redirect). `loginpage_idp_list` baut damit einen **funktionierenden** Link (`access.php?courseid=...`) und bietet FlexAccess nur an, wenn der Kurs wirklich einen anonymen Eintritt anbietet.
+- **B8 (Enumeration-Guard):** `access.php` leitet `courseid` aus `wantsurl` ab und zeigt Kursname/-existenz nur, wenn der Kurs sichtbar ist und FlexAccess dort tatsaechlich Eintritt anbietet; sonst generischer Hinweis.
+- **Moodle-5.3-Kompatibilitaet:** Kontoerzeugung nutzt `\core\user::create_user()` wo vorhanden (Fallback `user_create_user()` fuer 4.5-5.2) — vermeidet die 5.3-Deprecation, die Behat brach.
+
+## 0.1.21 — 2026-08-18
+- **Cross-Plugin-Funktionalitaet wird jetzt echt end-to-end getestet.** Behat wurde in der Sandbox real ausgefuehrt (Moodle 5.3dev, non-JS): alle vier Standalone-Smoke-Features **und** ein neues Cross-Plugin-E2E-Szenario bestehen.
+- Keine Codeaenderung; Teil des verifizierten Ecosystem-Laufs (auth erzeugt das temporaere Konto im E2E-Szenario).
+
+## 0.1.20 — 2026-08-18
+- **Behat gruen gemacht (war der letzte rote CI-Schritt).** Die Feature-Dateien testeten teils veraltetes Scaffold-Verhalten bzw. noch nicht implementierte Ablaeufe; sie wurden auf standalone lauffaehige Smoke-Szenarien mit ausschliesslich Standard-Steps umgestellt. Verifiziert mit moodle-plugin-ci 4.5.11 (phpcs 0/0, validate 0 Fehler, PHPUnit auf Moodle 5.3dev gruen).
+- **Review-Fixes (Sicherheit/Korrektheit):** `policyagreed=1` bei temporaeren Nutzern entfernt (es fand kein Consent statt); Referenznummer jetzt wirklich **numerisch** (10-stellig, passend zur Ziffern-Suche in tool_flexaccess); **atomarer Single-Use-Token-Consume** ueber die Moodle Lock API (verhindert TOCTOU/Doppelnutzung), und `persist.php` autorisiert nur noch ueber ein erfolgreiches `consume()` (kein separates verify-then-act, kein Verbrauch bei fremdem Nutzer); `mail_worker` wertet den Rueckgabewert von `email_to_user()` aus und markiert Fehlversand als Retry statt `sent`. Behat `access.feature` prueft jetzt die Verfuegbarkeit der Authentifizierungsmethode.
+
 ## 0.1.19 — 2026-08-18
 - **Verifiziert mit der exakten CI-Toolchain (moodle-plugin-ci 4.5.11 PHAR): phpcs 0/0, `validate` 0 Fehler, PHPUnit auf Moodle 5.3dev gruen.** Cross-Plugin-Integrationstests laufen in der Vollumgebung (alle vier Plugins) normal und ueberspringen sich nur in der Einzel-Plugin-CI.
 - **Weitere CI-Fixes (moodle-plugin-ci 4.5.11, Moodle 4.5/5.0/5.2/5.3-Matrix):** Behat-Feature `access.feature` zusaetzlich mit Plugintyp-Tag `@auth` versehen (moodle-plugin-ci `validate` verlangt Typ- UND Komponenten-Tag).

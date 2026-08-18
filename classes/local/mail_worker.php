@@ -125,7 +125,11 @@ final class mail_worker {
         global $DB;
         try {
             if ($job->mailtype === mail_kind::PERSISTENCE_FOLLOWUP) {
-                self::send_persistence_followup($job, $now);
+                if (!self::send_persistence_followup($job, $now)) {
+                    // The mailer returned false: treat as a delivery failure so the job is retried
+                    // rather than silently marked as sent.
+                    throw new \moodle_exception('mailsendfailed', 'auth_flexaccess');
+                }
             } else {
                 throw new \moodle_exception('error');
             }
@@ -150,16 +154,16 @@ final class mail_worker {
      *
      * @param \stdClass $job Queue row.
      * @param int $now Current time.
-     * @return void
+     * @return bool Whether Moodle accepted the message for delivery.
      */
-    private static function send_persistence_followup(\stdClass $job, int $now): void {
+    private static function send_persistence_followup(\stdClass $job, int $now): bool {
         global $DB;
         $user = $DB->get_record('user', ['id' => $job->userid], '*', MUST_EXIST);
         $token = token_service::issue((int) $job->userid, 'persistence', token_service::DEFAULT_TTL, $now);
         $url = new \moodle_url('/auth/flexaccess/persist.php', ['token' => $token]);
         $subject = get_string('followup:subject', 'auth_flexaccess');
         $body = get_string('followup:body', 'auth_flexaccess', $url->out(false));
-        email_to_user($user, self::from_user(), $subject, $body);
+        return (bool) email_to_user($user, self::from_user(), $subject, $body);
     }
 
     /**
