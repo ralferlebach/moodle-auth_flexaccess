@@ -56,6 +56,7 @@ if (!$available) {
     echo $OUTPUT->heading(get_string('access:title', 'auth_flexaccess'));
     echo $OUTPUT->notification(get_string('access:unavailable', 'auth_flexaccess'), 'error');
     echo $OUTPUT->continue_button(new moodle_url('/login/index.php'));
+    echo $quickreglink;
     echo $OUTPUT->footer();
     exit;
 }
@@ -75,6 +76,12 @@ if (isloggedin() && !isguestuser()) {
 }
 
 $keyrequired = \enrol_flexaccess\api::requires_temporary_access_key($courseid);
+$quickreglink = \enrol_flexaccess\api::offers_quick_registration($courseid)
+    ? html_writer::tag('p', html_writer::link(
+        new moodle_url('/auth/flexaccess/register.php', ['courseid' => $courseid, 'wantsurl' => $wantsurl]),
+        get_string('access:orregister', 'auth_flexaccess')
+    ))
+    : '';
 $rateid = \enrol_flexaccess\local\access_key_rate::identifier(getremoteaddr(), $courseid);
 
 $failure = null;
@@ -145,4 +152,5 @@ if ($failure !== null && $failure !== 'badkey') {
     );
 }
 
+echo $quickreglink;
 echo $OUTPUT->footer();

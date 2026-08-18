@@ -75,14 +75,39 @@ final class account_service {
     }
 
     /**
-     * Convert a temporary user to an authenticated user on the same user id.
+     * Create an account record that is persistent and immediately usable (quick registration).
      *
-     * Idempotent: returns false when there is no temporary account to convert. Does not touch
-     * course enrolment.
+     * Unlike a temporary account this is an authenticated, active account with no expiry, so the
+     * user can log in again later.
+     *
+     * @param int $userid Moodle user id.
+     * @param string|null $referencecode Optional reference code.
+     * @param int|null $now Current time.
+     * @return int New account record id.
+     */
+    public static function create_authenticated(int $userid, ?string $referencecode = null, ?int $now = null): int {
+        global $DB;
+        $now = $now ?? time();
+        return (int) $DB->insert_record(self::TABLE, (object) [
+            'userid' => $userid,
+            'accounttype' => account_type::AUTHENTICATED_USER,
+            'accountstate' => account_state::ACTIVE,
+            'referencecode' => $referencecode,
+            'sourcecourseid' => null,
+            'sourcecmid' => null,
+            'timecreated' => $now,
+            'timeexpires' => null,
+            'timeactivated' => $now,
+            'timemodified' => $now,
+        ]);
+    }
+
+    /**
+     * Convert a temporary account to a persistent, authenticated account.
      *
      * @param int $userid Moodle user id.
      * @param int|null $now Current time.
-     * @return bool Whether a conversion happened.
+     * @return bool
      */
     public static function convert_to_authenticated(int $userid, ?int $now = null): bool {
         global $DB;

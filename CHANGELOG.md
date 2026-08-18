@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.26 — 2026-08-18 — Paket A: Quick-Registration (allowquick)
+- **Schnellregistrierung**: neue anonyme Seite `register.php` + `\auth_flexaccess\form\quick_registration_form` (E-Mail, Vor-/Nachname, Passwort). Erzeugt ein *persistentes, sofort login-faehiges* Konto (auth=flexaccess, bestaetigt, echte E-Mail, gesetztes Passwort) via neuer API `create_quick_registered_user()`; `account_service::create_authenticated()` legt den aktiven, unbefristeten Kontodatensatz an. Neue Helfer: `email_available()` (Eindeutigkeitspruefung). access.php verlinkt die Registrierung, wenn angeboten. Enumeration-Guard und lokaler Redirect-Zielschutz wie bei access.php.
+
 ## 0.1.25 — 2026-08-18 — CI-Fix (veraltete Behat-Datei)
 - Keine Codeaenderung.
 
