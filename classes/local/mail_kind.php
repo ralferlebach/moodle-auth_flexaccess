@@ -38,6 +38,14 @@ final class mail_kind {
      */
     public const ACTIVATION = 'activation';
     /**
+     * Persistence email-verification link.
+     */
+    public const VERIFICATION = 'verification';
+    /**
+     * Passwordless magic-login link.
+     */
+    public const MAGIC_LOGIN = 'magiclogin';
+    /**
      * One-time account deletion link.
      */
     public const ACCOUNT_DELETE = 'account_delete';
@@ -48,6 +56,6 @@ final class mail_kind {
      * @return array<string>
      */
     public static function values(): array {
-        return [self::ACTIVATION, self::ACCOUNT_DELETE];
+        return [self::ACTIVATION, self::VERIFICATION, self::MAGIC_LOGIN, self::ACCOUNT_DELETE];
     }
 }

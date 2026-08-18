@@ -14,24 +14,32 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
+namespace auth_flexaccess\form;
+
+defined('MOODLE_INTERNAL') || die();
+
+require_once($GLOBALS['CFG']->libdir . '/formslib.php');
+
 /**
- * Plugin version definition for auth_flexaccess.
+ * Form asking for the email address to send a passwordless magic-login link to.
  *
  * @package    auth_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
+class magic_login_form extends \moodleform {
+    /**
+     * Form definition.
+     *
+     * @return void
+     */
+    protected function definition(): void {
+        $mform = $this->_form;
 
-defined('MOODLE_INTERNAL') || die();
+        $mform->addElement('text', 'email', get_string('email'));
+        $mform->setType('email', PARAM_RAW_TRIMMED);
+        $mform->addRule('email', get_string('required'), 'required', null, 'client');
 
-$plugin->component = 'auth_flexaccess';
-$plugin->version = 2026082030;
-$plugin->requires = 2024100700; // Moodle 4.5.
-$plugin->supported = [405, 502];
-$plugin->maturity = MATURITY_ALPHA;
-$plugin->release = '0.1.32';
-$plugin->dependencies = [
-    // Hard dependency: the access-method policy lives entirely in enrol_flexaccess.
-    // Moodle supports the resulting auth <-> enrol cycle (presence+version check only).
-    'enrol_flexaccess' => 2026081700,
-];
+        $this->add_action_buttons(false, get_string('magic:submit', 'auth_flexaccess'));
+    }
+}

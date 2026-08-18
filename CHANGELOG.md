@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.32 — 2026-08-19 — Magic-Login, Mail-Queue-Retrofit, SEC-03, main-CI + jmeter/playwright
+- **Magic-Login (passwortlos)**: neue Seite `magic.php` + `magic_login_form`, API `request_magic_login()`/`consume_magic_login()`, Setting `allowmagiclogin` (Default an). Dauerhafte Konten fordern einen einmaligen Login-Link per E-Mail an (enumeration-sicher). Link auf `access.php` verlinkt.
+- **Alle Mails ueber die Queue** (Review §9): neuer generischer Producer `api::queue_mail()`; Magic-Login UND die Persistenz-Verifikationsmail laufen jetzt ueber `auth_flexaccess_mailqueue` (Stundenlimit greift). `mail_kind` um VERIFICATION/MAGIC_LOGIN ergaenzt.
+- **SEC-03 (Review §12)**: Persistenz- und Magic-Login-Token-Lebensdauer an die Kontogueltigkeit gekoppelt; `confirm_persistence()` und `consume_magic_login()` pruefen den Kontozustand erneut und lehnen abgelaufene/suspendierte Konten ab.
+
 ## 0.1.31 — 2026-08-18 — Aufraeumen: toter persistence_followup-Mailpfad entfernt
 - **Vestigialen Followup-Pfad entfernt**: `api::request_persistence_followup()` und die Klasse `followup_scheduler` (samt Test) geloescht, `mail_kind::PERSISTENCE_FOLLOWUP` und die `followup:*`-Lang-Strings entfernt. Dieser Pfad mailte nach jedem temporaeren Zugang an die nicht zustellbare `@flexaccess.invalid`-Fake-Adresse und war seit der Selbstbedienungs-Persistenz (0.1.28) funktionslos. **Die generische Mail-Queue bleibt erhalten**: `mail_worker::deliver()` ist jetzt mailtyp-agnostisch und versendet generisch aus dem Job-Payload (recipient + subject + body/bodyhtml); Alt-/Fremd-Jobs ohne Payload werden ohne Retry verworfen, koennen die Queue also nicht blockieren. `token_service` bleibt (von der E-Mail-Verifikation genutzt).
 

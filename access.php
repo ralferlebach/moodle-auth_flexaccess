@@ -109,7 +109,13 @@ $guestlink = \enrol_flexaccess\api::offers_guest_access($courseid)
         get_string('access:orguest', 'auth_flexaccess')
     ))
     : '';
-$extralinks = $quickreglink . $guestlink . $loginlink;
+$magiclink = \auth_flexaccess\api::magic_login_enabled()
+    ? html_writer::tag('p', html_writer::link(
+        new moodle_url('/auth/flexaccess/magic.php'),
+        get_string('access:ormagic', 'auth_flexaccess')
+    ))
+    : '';
+$extralinks = $quickreglink . $guestlink . $loginlink . $magiclink;
 $rateid = \enrol_flexaccess\local\access_key_rate::identifier(getremoteaddr(), $courseid);
 
 $failure = null;

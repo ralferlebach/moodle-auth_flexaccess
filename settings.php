@@ -58,6 +58,13 @@ if ($ADMIN->fulltree) {
         get_string('setting:requireemailverification_desc', 'auth_flexaccess'),
         1
     ));
+
+    $settings->add(new admin_setting_configcheckbox(
+        'auth_flexaccess/allowmagiclogin',
+        get_string('setting:allowmagiclogin', 'auth_flexaccess'),
+        get_string('setting:allowmagiclogin_desc', 'auth_flexaccess'),
+        1
+    ));
     $settings->add(new admin_setting_configtext(
         'auth_flexaccess/senderemail',
         get_string('senderemail', 'auth_flexaccess'),

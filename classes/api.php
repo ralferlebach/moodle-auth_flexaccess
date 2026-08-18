@@ -32,6 +32,7 @@ use auth_flexaccess\local\account_type;
 use auth_flexaccess\local\account_state;
 use auth_flexaccess\local\account_service;
 use auth_flexaccess\local\token_service;
+use auth_flexaccess\local\mail_kind;
 
 /**
  * Cross-plugin facade for FlexAccess account classification and the follow-up funnel.
@@ -43,6 +44,11 @@ final class api {
      * Mail-queue table.
      */
     private const QUEUE_TABLE = 'auth_flexaccess_mailqueue';
+
+    /**
+     * Magic-login token lifetime in seconds (15 minutes).
+     */
+    private const MAGIC_LOGIN_TTL = 900;
     /**
      * Account table.
      */
@@ -245,7 +251,13 @@ final class api {
         update_internal_user_password($user, $password);
 
         set_user_preference('auth_flexaccess_pendingemail', $email, $userid);
-        $token = token_service::issue($userid, 'persistence', token_service::DEFAULT_TTL, $now);
+        // SEC-03: the verification link must not outlive the temporary account it would revive.
+        $ttl = token_service::DEFAULT_TTL;
+        $account = self::get_account($userid);
+        if ($account && $account->timeexpires !== null) {
+            $ttl = min($ttl, max(1, (int) $account->timeexpires - $now));
+        }
+        $token = token_service::issue($userid, 'persistence', $ttl, $now);
         self::send_persistence_verification($userid, $email, $token);
         return 'verificationsent';
     }
@@ -273,6 +285,17 @@ final class api {
             // Link already used and account already permanent.
             return 'converted';
         }
+        // SEC-03: a temporary account that has already expired or been suspended must not be
+        // revived by a still-valid token.
+        $account = self::get_account($userid);
+        if (
+            !$account
+                || $account->accountstate === account_state::EXPIRED
+                || $account->accountstate === account_state::SUSPENDED
+                || ($account->timeexpires !== null && (int) $account->timeexpires <= $now)
+        ) {
+            return 'expired';
+        }
         $pending = get_user_preferences('auth_flexaccess_pendingemail', null, $userid);
         if ($pending === null || $pending === '') {
             return 'invalid';
@@ -297,6 +320,143 @@ final class api {
     }
 
     /**
+     * Queue a generic mail for asynchronous, rate-limited delivery by the mail worker.
+     *
+     * All FlexAccess mails go through this queue so the site's outbound hourly limit is honoured.
+     *
+     * @param int|null $userid Related user id (nullable).
+     * @param string $recipient Destination email address.
+     * @param string $subject Subject line.
+     * @param string $body Plain-text body.
+     * @param string $bodyhtml Optional HTML body.
+     * @param string $mailtype A {@see mail_kind} label for inspection (delivery is payload-driven).
+     * @param int|null $nextrun Earliest send time; defaults to now.
+     * @return int Queue row id.
+     */
+    public static function queue_mail(
+        ?int $userid,
+        string $recipient,
+        string $subject,
+        string $body,
+        string $bodyhtml = '',
+        string $mailtype = mail_kind::ACTIVATION,
+        ?int $nextrun = null
+    ): int {
+        global $DB;
+        $now = time();
+        return (int) $DB->insert_record(self::QUEUE_TABLE, (object) [
+            'userid' => $userid,
+            'recipient' => $recipient,
+            'mailtype' => $mailtype,
+            'payloadjson' => json_encode(['subject' => $subject, 'body' => $body, 'bodyhtml' => $bodyhtml]),
+            'status' => 'queued',
+            'attempts' => 0,
+            'timecreated' => $now,
+            'nextrun' => $nextrun ?? $now,
+            'timesent' => null,
+        ]);
+    }
+
+    /**
+     * Whether passwordless magic-login links are offered.
+     *
+     * @return bool
+     */
+    public static function magic_login_enabled(): bool {
+        $value = get_config('auth_flexaccess', 'allowmagiclogin');
+        return $value === false ? true : (bool) $value;
+    }
+
+    /**
+     * Request a passwordless magic-login link for a permanent FlexAccess account.
+     *
+     * To avoid revealing which addresses have accounts, this always reports success; a link is only
+     * actually queued for a valid, active authenticated FlexAccess account. The token lifetime is
+     * capped to the account's remaining validity so an expired account cannot be reactivated.
+     *
+     * @param string $email Email address (or username) entered by the user.
+     * @param int|null $now Current time.
+     * @return string 'sent' normally, or 'disabled' when the feature is off.
+     */
+    public static function request_magic_login(string $email, ?int $now = null): string {
+        global $DB;
+        $now = $now ?? time();
+        if (!self::magic_login_enabled()) {
+            return 'disabled';
+        }
+        $email = \core_text::strtolower(trim($email));
+        if ($email === '') {
+            return 'sent';
+        }
+
+        $user = $DB->get_record_select(
+            'user',
+            'deleted = 0 AND auth = :auth AND (LOWER(email) = :email OR username = :username)',
+            ['auth' => 'flexaccess', 'email' => $email, 'username' => $email],
+            '*',
+            IGNORE_MULTIPLE
+        );
+        if ($user) {
+            $account = self::get_account((int) $user->id);
+            if (
+                $account
+                    && $account->accounttype === account_type::AUTHENTICATED_USER
+                    && $account->accountstate === account_state::ACTIVE
+            ) {
+                $ttl = self::MAGIC_LOGIN_TTL;
+                if ($account->timeexpires !== null) {
+                    $ttl = min($ttl, max(0, (int) $account->timeexpires - $now));
+                }
+                if ($ttl > 0) {
+                    $token = token_service::issue((int) $user->id, 'magiclogin', $ttl, $now);
+                    $url = new \moodle_url('/auth/flexaccess/magic.php', ['token' => $token]);
+                    $link = $url->out(false);
+                    self::queue_mail(
+                        (int) $user->id,
+                        $user->email,
+                        get_string('magic:emailsubject', 'auth_flexaccess'),
+                        get_string('magic:emailbody', 'auth_flexaccess', $link),
+                        \html_writer::tag('p', get_string(
+                            'magic:emailbody',
+                            'auth_flexaccess',
+                            \html_writer::link($link, $link)
+                        )),
+                        mail_kind::MAGIC_LOGIN,
+                        $now
+                    );
+                }
+            }
+        }
+        return 'sent';
+    }
+
+    /**
+     * Consume a magic-login token and return the user id to log in, or null if invalid.
+     *
+     * Re-checks the account is still a valid, active authenticated account at consume time.
+     *
+     * @param string $token Clear-text magic-login token.
+     * @param int|null $now Current time.
+     * @return int|null User id to log in, or null.
+     */
+    public static function consume_magic_login(string $token, ?int $now = null): ?int {
+        $now = $now ?? time();
+        $userid = token_service::consume($token, 'magiclogin', $now, null);
+        if ($userid === null) {
+            return null;
+        }
+        $account = self::get_account($userid);
+        if (
+            !$account
+                || $account->accounttype !== account_type::AUTHENTICATED_USER
+                || $account->accountstate !== account_state::ACTIVE
+        ) {
+            return null;
+        }
+        return $userid;
+    }
+
+    /**
      * Email a persistence verification link to the pending address.
      *
      * @param int $userid User the link belongs to.
@@ -305,22 +465,20 @@ final class api {
      * @return void
      */
     private static function send_persistence_verification(int $userid, string $email, string $token): void {
-        global $DB;
-        $user = $DB->get_record('user', ['id' => $userid], '*', MUST_EXIST);
-        $recipient = clone $user;
-        $recipient->email = $email;
-        $recipient->emailstop = 0;
-        $recipient->mailformat = 1;
         $url = new \moodle_url('/auth/flexaccess/persist.php', ['token' => $token]);
-        $subject = get_string('persist:emailsubject', 'auth_flexaccess');
         $link = $url->out(false);
-        $body = get_string('persist:emailbody', 'auth_flexaccess', $link);
-        $bodyhtml = \html_writer::tag('p', get_string(
-            'persist:emailbody',
-            'auth_flexaccess',
-            \html_writer::link($link, $link)
-        ));
-        email_to_user($recipient, \core_user::get_support_user(), $subject, $body, $bodyhtml);
+        self::queue_mail(
+            $userid,
+            $email,
+            get_string('persist:emailsubject', 'auth_flexaccess'),
+            get_string('persist:emailbody', 'auth_flexaccess', $link),
+            \html_writer::tag('p', get_string(
+                'persist:emailbody',
+                'auth_flexaccess',
+                \html_writer::link($link, $link)
+            )),
+            mail_kind::VERIFICATION
+        );
     }
 
     /**
