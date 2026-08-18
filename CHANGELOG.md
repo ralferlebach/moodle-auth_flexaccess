@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.29 — 2026-08-18 — Paket B: E-Mail-Verifikation der Persistierung (Option, Default an)
+- **E-Mail-Verifikation** vor dauerhaftem Konto: neue Admin-Einstellung `requireemailverification` (Default: aktiviert). Bei aktivierter Option speichert `request_persistence()` Name+Passwort am noch temporaeren Konto, merkt sich die gewuenschte E-Mail und mailt einen Bestaetigungslink; erst `confirm_persistence(token)` setzt E-Mail/Username und macht das Konto dauerhaft. Die squatting-relevante E-Mail/Username wird also erst nach Nachweis der Adresse gesetzt. Der Token authorisiert allein (kein Login noetig), ist einmalig und laeuft ab. Ist die Option aus, konvertiert `request_persistence()` sofort (bisheriges Verhalten). Der frueher funktionslose Token-/Mail-Pfad ist damit sinnvoll wiederverwendet. Verifikationsmail wird als Text+HTML gesendet (klickbarer Link).
+
 ## 0.1.28 — 2026-08-18 — Paket B: B4 Konvertierung temporaer -> persistent
 - **Selbstbedienungs-Persistenz** (B4): `persist.php` ist jetzt ein Formular fuer den eingeloggten temporaeren Nutzer (E-Mail, Name, Passwort) statt der token-basierten Aktivierung. Neue API `persist_temporary_user()` aktualisiert den bestehenden Nutzer (echte E-Mail als Username, Name, emailstop=0, suspended=0, gesetztes Passwort) und ruft `convert_to_authenticated()` — **gleiche user id**, daher bleiben Einschreibung, Ergebnisse und Aktivitaet erhalten, und der Nutzer kann sich spaeter erneut anmelden. `account_service::is_temporary()` neu; `email_available()` akzeptiert jetzt eine auszuschliessende user id (der aktuelle Nutzer). Der alte Token-/Mail-Followup-Pfad bleibt vorhanden, ist aber fuer rein temporaere Konten funktionslos (E-Mail unzustellbar) — Aufraeumen folgt separat.
 

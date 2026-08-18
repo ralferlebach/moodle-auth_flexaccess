@@ -29,8 +29,6 @@ require_once(__DIR__ . '/../../config.php');
 
 use auth_flexaccess\local\account_service;
 
-require_login();
-
 $context = context_system::instance();
 $PAGE->set_context($context);
 $PAGE->set_url(new moodle_url('/auth/flexaccess/persist.php'));
@@ -39,6 +37,26 @@ $PAGE->set_title(get_string('persist:title', 'auth_flexaccess'));
 $PAGE->set_heading(get_string('persist:title', 'auth_flexaccess'));
 
 $myurl = new moodle_url('/my/');
+
+// Verification link: the token authorises the conversion on its own, so no login is required here.
+$token = optional_param('token', '', PARAM_ALPHANUM);
+if ($token !== '') {
+    $status = \auth_flexaccess\api::confirm_persistence($token);
+    echo $OUTPUT->header();
+    echo $OUTPUT->heading(get_string('persist:title', 'auth_flexaccess'));
+    if ($status === 'converted') {
+        echo $OUTPUT->notification(get_string('persist:success', 'auth_flexaccess'), 'success');
+    } else if ($status === 'emailtaken') {
+        echo $OUTPUT->notification(get_string('register:emailtaken', 'auth_flexaccess'), 'error');
+    } else {
+        echo $OUTPUT->notification(get_string('persist:invalid', 'auth_flexaccess'), 'error');
+    }
+    echo $OUTPUT->continue_button(new moodle_url('/login/index.php'));
+    echo $OUTPUT->footer();
+    exit;
+}
+
+require_login();
 
 // Only a current temporary FlexAccess user has anything to persist.
 if (!account_service::is_temporary((int) $USER->id)) {
@@ -56,7 +74,7 @@ $failure = null;
 if ($form->is_cancelled()) {
     redirect($myurl);
 } else if ($data = $form->get_data()) {
-    $status = \auth_flexaccess\api::persist_temporary_user(
+    $status = \auth_flexaccess\api::request_persistence(
         (int) $USER->id,
         $data->email,
         $data->firstname,
@@ -68,6 +86,17 @@ if ($form->is_cancelled()) {
         \core\session\manager::gc();
         $USER = get_complete_user_data('id', $USER->id);
         redirect($myurl, get_string('persist:success', 'auth_flexaccess'));
+    }
+    if ($status === 'verificationsent') {
+        echo $OUTPUT->header();
+        echo $OUTPUT->heading(get_string('persist:title', 'auth_flexaccess'));
+        echo $OUTPUT->notification(
+            get_string('persist:verificationsent', 'auth_flexaccess', s($data->email)),
+            'success'
+        );
+        echo $OUTPUT->continue_button($myurl);
+        echo $OUTPUT->footer();
+        exit;
     }
     $failure = $status;
 }

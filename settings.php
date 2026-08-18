@@ -52,6 +52,12 @@ if ($ADMIN->fulltree) {
         get_string('settings:mail', 'auth_flexaccess'),
         ''
     ));
+    $settings->add(new admin_setting_configcheckbox(
+        'auth_flexaccess/requireemailverification',
+        get_string('setting:requireemailverification', 'auth_flexaccess'),
+        get_string('setting:requireemailverification_desc', 'auth_flexaccess'),
+        1
+    ));
     $settings->add(new admin_setting_configtext(
         'auth_flexaccess/senderemail',
         get_string('senderemail', 'auth_flexaccess'),

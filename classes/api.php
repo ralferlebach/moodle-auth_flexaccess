@@ -31,6 +31,7 @@ namespace auth_flexaccess;
 use auth_flexaccess\local\account_type;
 use auth_flexaccess\local\account_state;
 use auth_flexaccess\local\account_service;
+use auth_flexaccess\local\token_service;
 use auth_flexaccess\local\followup_scheduler;
 use auth_flexaccess\local\mail_kind;
 
@@ -245,6 +246,147 @@ final class api {
 
         account_service::convert_to_authenticated($userid, $now);
         return 'converted';
+    }
+
+    /**
+     * Whether email verification is required before a temporary account is made permanent.
+     *
+     * Enabled by default; administrators can turn it off in the auth_flexaccess settings.
+     *
+     * @return bool
+     */
+    public static function email_verification_required(): bool {
+        $value = get_config('auth_flexaccess', 'requireemailverification');
+        return $value === false ? true : (bool) $value;
+    }
+
+    /**
+     * Begin persisting a temporary account: convert immediately, or send an email verification link.
+     *
+     * When verification is disabled this converts straight away (see {@see self::persist_temporary_user()}).
+     * When enabled, the chosen name and password are stored on the still-temporary account, the
+     * pending email is remembered and a verification link is emailed; the account only becomes
+     * permanent once the link is opened. The squatting-sensitive email/username is set only on
+     * confirmation, so an unverified request cannot claim someone else's address.
+     *
+     * @param int $userid Temporary user's id.
+     * @param string $email Email address the user provides.
+     * @param string $firstname First name.
+     * @param string $lastname Last name.
+     * @param string $password Clear-text password chosen by the user.
+     * @param int|null $now Current time.
+     * @return string Status: 'converted', 'verificationsent', 'nottemporary' or 'emailtaken'.
+     */
+    public static function request_persistence(
+        int $userid,
+        string $email,
+        string $firstname,
+        string $lastname,
+        string $password,
+        ?int $now = null
+    ): string {
+        global $CFG, $DB;
+        require_once($CFG->dirroot . '/user/lib.php');
+        $now = $now ?? time();
+        $email = \core_text::strtolower(trim($email));
+
+        if (!account_service::is_temporary($userid)) {
+            return 'nottemporary';
+        }
+        if (!self::email_available($email, $userid)) {
+            return 'emailtaken';
+        }
+        if (!self::email_verification_required()) {
+            return self::persist_temporary_user($userid, $email, $firstname, $lastname, $password, $now);
+        }
+
+        $user = $DB->get_record('user', ['id' => $userid], '*', MUST_EXIST);
+        $user->firstname = $firstname;
+        $user->lastname = $lastname;
+        if (method_exists(\core\user::class, 'update_user')) {
+            \core\user::update_user($user, false, true);
+        } else {
+            user_update_user($user, false, true);
+        }
+        update_internal_user_password($user, $password);
+
+        set_user_preference('auth_flexaccess_pendingemail', $email, $userid);
+        $token = token_service::issue($userid, 'persistence', token_service::DEFAULT_TTL, $now);
+        self::send_persistence_verification($userid, $email, $token);
+        return 'verificationsent';
+    }
+
+    /**
+     * Complete a verified persistence: consume the token and make the account permanent.
+     *
+     * The token authorises on its own (it was mailed to the pending address), so no login is
+     * required to open the link.
+     *
+     * @param string $token Clear-text verification token from the emailed link.
+     * @param int|null $now Current time.
+     * @return string Status: 'converted', 'invalid' or 'emailtaken'.
+     */
+    public static function confirm_persistence(string $token, ?int $now = null): string {
+        global $CFG, $DB;
+        require_once($CFG->dirroot . '/user/lib.php');
+        $now = $now ?? time();
+
+        $userid = token_service::consume($token, 'persistence', $now, null);
+        if ($userid === null) {
+            return 'invalid';
+        }
+        if (!account_service::is_temporary($userid)) {
+            // Link already used and account already permanent.
+            return 'converted';
+        }
+        $pending = get_user_preferences('auth_flexaccess_pendingemail', null, $userid);
+        if ($pending === null || $pending === '') {
+            return 'invalid';
+        }
+        if (!self::email_available($pending, $userid)) {
+            return 'emailtaken';
+        }
+
+        $user = $DB->get_record('user', ['id' => $userid], '*', MUST_EXIST);
+        $user->email = $pending;
+        $user->username = $pending;
+        $user->emailstop = 0;
+        $user->suspended = 0;
+        if (method_exists(\core\user::class, 'update_user')) {
+            \core\user::update_user($user, false, true);
+        } else {
+            user_update_user($user, false, true);
+        }
+        account_service::convert_to_authenticated($userid, $now);
+        unset_user_preference('auth_flexaccess_pendingemail', $userid);
+        return 'converted';
+    }
+
+    /**
+     * Email a persistence verification link to the pending address.
+     *
+     * @param int $userid User the link belongs to.
+     * @param string $email Pending email address to send to.
+     * @param string $token Clear-text verification token.
+     * @return void
+     */
+    private static function send_persistence_verification(int $userid, string $email, string $token): void {
+        global $DB;
+        $user = $DB->get_record('user', ['id' => $userid], '*', MUST_EXIST);
+        $recipient = clone $user;
+        $recipient->email = $email;
+        $recipient->emailstop = 0;
+        $recipient->mailformat = 1;
+        $url = new \moodle_url('/auth/flexaccess/persist.php', ['token' => $token]);
+        $subject = get_string('persist:emailsubject', 'auth_flexaccess');
+        $link = $url->out(false);
+        $body = get_string('persist:emailbody', 'auth_flexaccess', $link);
+        $bodyhtml = \html_writer::tag('p', get_string(
+            'persist:emailbody',
+            'auth_flexaccess',
+            \html_writer::link($link, $link)
+        ));
+        email_to_user($recipient, \core_user::get_support_user(), $subject, $body, $bodyhtml);
     }
 
     /**
