@@ -195,21 +195,81 @@ final class api {
     }
 
     /**
+     * Persist the current temporary user: give the existing account a real identity so it survives.
+     *
+     * This keeps the SAME user id, so all enrolments, results and activity are retained; the user
+     * simply gains their own email, name and password and becomes a permanent, loginnable account.
+     *
+     * @param int $userid Temporary user's id.
+     * @param string $email Email address the user provides (also becomes the username).
+     * @param string $firstname First name.
+     * @param string $lastname Last name.
+     * @param string $password Clear-text password chosen by the user.
+     * @param int|null $now Current time.
+     * @return string Status: 'converted', 'nottemporary' or 'emailtaken'.
+     */
+    public static function persist_temporary_user(
+        int $userid,
+        string $email,
+        string $firstname,
+        string $lastname,
+        string $password,
+        ?int $now = null
+    ): string {
+        global $CFG, $DB;
+        require_once($CFG->dirroot . '/user/lib.php');
+        $now = $now ?? time();
+        $email = \core_text::strtolower(trim($email));
+
+        if (!account_service::is_temporary($userid)) {
+            return 'nottemporary';
+        }
+        if (!self::email_available($email, $userid)) {
+            return 'emailtaken';
+        }
+
+        $user = $DB->get_record('user', ['id' => $userid], '*', MUST_EXIST);
+        $user->email = $email;
+        $user->username = $email;
+        $user->firstname = $firstname;
+        $user->lastname = $lastname;
+        $user->emailstop = 0;
+        $user->suspended = 0;
+
+        if (method_exists(\core\user::class, 'update_user')) {
+            \core\user::update_user($user, false, true);
+        } else {
+            user_update_user($user, false, true);
+        }
+        update_internal_user_password($user, $password);
+
+        account_service::convert_to_authenticated($userid, $now);
+        return 'converted';
+    }
+
+    /**
      * Whether an email address is free to use for a new FlexAccess quick registration.
      *
      * @param string $email Candidate email address.
-     * @return bool True when no non-deleted user already uses it as email or username.
+     * @param int|null $excludeuserid Optional user id to exclude (e.g. the current user).
+     * @return bool True when no other non-deleted user already uses it as email or username.
      */
-    public static function email_available(string $email): bool {
+    public static function email_available(string $email, ?int $excludeuserid = null): bool {
         global $DB;
         $email = \core_text::strtolower(trim($email));
         if ($email === '') {
             return false;
         }
+        $params = ['email' => $email, 'username' => $email];
+        $exclude = '';
+        if ($excludeuserid !== null) {
+            $exclude = ' AND id <> :excludeid';
+            $params['excludeid'] = $excludeuserid;
+        }
         return !$DB->record_exists_select(
             'user',
-            'deleted = 0 AND (LOWER(email) = :email OR username = :username)',
-            ['email' => $email, 'username' => $email]
+            'deleted = 0 AND (LOWER(email) = :email OR username = :username)' . $exclude,
+            $params
         );
     }
 

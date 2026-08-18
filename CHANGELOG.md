@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.28 — 2026-08-18 — Paket B: B4 Konvertierung temporaer -> persistent
+- **Selbstbedienungs-Persistenz** (B4): `persist.php` ist jetzt ein Formular fuer den eingeloggten temporaeren Nutzer (E-Mail, Name, Passwort) statt der token-basierten Aktivierung. Neue API `persist_temporary_user()` aktualisiert den bestehenden Nutzer (echte E-Mail als Username, Name, emailstop=0, suspended=0, gesetztes Passwort) und ruft `convert_to_authenticated()` — **gleiche user id**, daher bleiben Einschreibung, Ergebnisse und Aktivitaet erhalten, und der Nutzer kann sich spaeter erneut anmelden. `account_service::is_temporary()` neu; `email_available()` akzeptiert jetzt eine auszuschliessende user id (der aktuelle Nutzer). Der alte Token-/Mail-Followup-Pfad bleibt vorhanden, ist aber fuer rein temporaere Konten funktionslos (E-Mail unzustellbar) — Aufraeumen folgt separat.
+
 ## 0.1.27 — 2026-08-18 — Paket A abgeschlossen: Methodenauswahl (Gast + Normallogin)
 - **Entry-Page bietet jetzt alle konfigurierten Methoden an**: neben temporaerem Zugang, Access-Key-Challenge und Schnellregistrierung nun auch **Gastzugang** ("Continue as a guest" -> meldet den Moodle-Gast an und leitet in den Kurs; ob Inhalte sichtbar sind, haengt vom Gast-Enrolment des Kurses ab) und einen **Link zur reguleren Anmeldung** ("Already have an account? Log in" -> /login mit wantsurl). Die "nicht verfuegbar"-Seite bietet weiterhin keine Methoden an (Enumeration-Guard).
 

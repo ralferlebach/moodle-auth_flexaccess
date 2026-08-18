@@ -15,10 +15,10 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Persistence landing page: converts the current temporary user to an authenticated user.
+ * Persistence page: a logged-in temporary user upgrades their own account to a permanent one.
  *
- * The single-use token authorises exactly one user id; the link only works for the matching
- * logged-in user. Enrolment and its duration are never changed by conversion.
+ * The conversion keeps the same user id, so all enrolments, results and activity are retained. The
+ * user provides a real email, name and password and can then log in again later.
  *
  * @package    auth_flexaccess
  * @copyright  2026 Ralf Erlebach
@@ -28,30 +28,57 @@
 require_once(__DIR__ . '/../../config.php');
 
 use auth_flexaccess\local\account_service;
-use auth_flexaccess\local\token_service;
-
-$token = required_param('token', PARAM_ALPHANUM);
 
 require_login();
-$context = context_system::instance();
 
+$context = context_system::instance();
 $PAGE->set_context($context);
 $PAGE->set_url(new moodle_url('/auth/flexaccess/persist.php'));
 $PAGE->set_pagelayout('standard');
 $PAGE->set_title(get_string('persist:title', 'auth_flexaccess'));
 $PAGE->set_heading(get_string('persist:title', 'auth_flexaccess'));
 
-echo $OUTPUT->header();
-echo $OUTPUT->heading(get_string('persist:title', 'auth_flexaccess'));
+$myurl = new moodle_url('/my/');
 
-// Only a successful atomic consume authorises the conversion (no separate verify/check-then-act).
-$userid = token_service::consume($token, 'persistence', null, (int) $USER->id);
-if ($userid === null) {
-    echo $OUTPUT->notification(get_string('persist:invalid', 'auth_flexaccess'), 'error');
-} else {
-    account_service::convert_to_authenticated($userid);
-    echo $OUTPUT->notification(get_string('persist:success', 'auth_flexaccess'), 'success');
+// Only a current temporary FlexAccess user has anything to persist.
+if (!account_service::is_temporary((int) $USER->id)) {
+    echo $OUTPUT->header();
+    echo $OUTPUT->heading(get_string('persist:title', 'auth_flexaccess'));
+    echo $OUTPUT->notification(get_string('persist:notapplicable', 'auth_flexaccess'), 'info');
+    echo $OUTPUT->continue_button($myurl);
+    echo $OUTPUT->footer();
+    exit;
 }
 
-echo $OUTPUT->continue_button(new moodle_url('/my/'));
+$form = new \auth_flexaccess\form\persist_form(new moodle_url('/auth/flexaccess/persist.php'));
+
+$failure = null;
+if ($form->is_cancelled()) {
+    redirect($myurl);
+} else if ($data = $form->get_data()) {
+    $status = \auth_flexaccess\api::persist_temporary_user(
+        (int) $USER->id,
+        $data->email,
+        $data->firstname,
+        $data->lastname,
+        $data->password
+    );
+    if ($status === 'converted') {
+        // Refresh the session so the new identity is reflected immediately.
+        \core\session\manager::gc();
+        $USER = get_complete_user_data('id', $USER->id);
+        redirect($myurl, get_string('persist:success', 'auth_flexaccess'));
+    }
+    $failure = $status;
+}
+
+echo $OUTPUT->header();
+echo $OUTPUT->heading(get_string('persist:title', 'auth_flexaccess'));
+if ($failure === 'emailtaken') {
+    echo $OUTPUT->notification(get_string('register:emailtaken', 'auth_flexaccess'), 'error');
+} else if ($failure !== null) {
+    echo $OUTPUT->notification(get_string('persist:invalid', 'auth_flexaccess'), 'error');
+}
+echo html_writer::tag('p', get_string('persist:intro', 'auth_flexaccess'));
+$form->display();
 echo $OUTPUT->footer();

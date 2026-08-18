@@ -75,6 +75,20 @@ final class account_service {
     }
 
     /**
+     * Whether the given user currently holds a temporary FlexAccess account.
+     *
+     * @param int $userid Moodle user id.
+     * @return bool
+     */
+    public static function is_temporary(int $userid): bool {
+        global $DB;
+        return $DB->record_exists(self::TABLE, [
+            'userid' => $userid,
+            'accounttype' => account_type::TEMPORARY_USER,
+        ]);
+    }
+
+    /**
      * Create an account record that is persistent and immediately usable (quick registration).
      *
      * Unlike a temporary account this is an authenticated, active account with no expiry, so the
