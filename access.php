@@ -74,8 +74,7 @@ if (isloggedin() && !isguestuser()) {
     redirect($returnurl);
 }
 
-$policy = \enrol_flexaccess\api::get_effective_policy($courseid);
-$keyrequired = $policy->temporaryaccesskeyscope !== 'none';
+$keyrequired = \enrol_flexaccess\api::requires_temporary_access_key($courseid);
 $rateid = \enrol_flexaccess\local\access_key_rate::identifier(getremoteaddr(), $courseid);
 
 $failure = null;
