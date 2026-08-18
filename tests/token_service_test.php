@@ -28,6 +28,9 @@ use auth_flexaccess\local\token_service;
 
 /**
  * Token service tests.
+ *
+ * @package    auth_flexaccess
+ * @covers     \auth_flexaccess\local\token_service
  */
 final class token_service_test extends \advanced_testcase {
     /**

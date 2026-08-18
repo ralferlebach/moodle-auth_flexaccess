@@ -36,6 +36,8 @@ use auth_flexaccess\local\mail_kind;
 
 /**
  * Cross-plugin facade for FlexAccess account classification and the follow-up funnel.
+ *
+ * @package    auth_flexaccess
  */
 final class api {
     /**

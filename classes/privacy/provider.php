@@ -36,6 +36,8 @@ use core_privacy\local\request\writer;
 
 /**
  * Privacy provider implementation.
+ *
+ * @package    auth_flexaccess
  */
 final class provider implements
     \core_privacy\local\metadata\provider,

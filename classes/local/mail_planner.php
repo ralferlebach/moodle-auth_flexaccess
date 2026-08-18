@@ -26,6 +26,8 @@ namespace auth_flexaccess\local;
 
 /**
  * Computes the number of mails to send under the rolling-hour throttle.
+ *
+ * @package    auth_flexaccess
  */
 final class mail_planner {
     /**

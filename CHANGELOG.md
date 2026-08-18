@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.18 — 2026-08-17
+- **Linting robust fuer aeltere moodle-cs gemacht (die lokale `make check`-Umgebung nutzt eine strengere/aeltere moodle-cs als die CI):** `@package`-Tag in jedem Datei-, Klassen-/Interface-/Trait- und Top-Level-Funktions-Docblock ergaenzt (aeltere moodle-cs verlangt dies ueberall; neuere ab 3.6 hat es gelockert). Test-Klassen erhielten `@covers` auf die jeweils geprueften Klassen (behebt die `missing coverage information`-Warnungen). **Gegengeprueft:** die echte CI (moodle-plugin-ci 4.5.11) meldet weiterhin 0 Verstoesse, PHPUnit auf Moodle 5.3dev bleibt gruen.
+
 ## 0.1.17 — 2026-08-17
 - **Real auf Moodle 5.3dev (branch 503, PG17) verifiziert — PHPUnit gruen, phpcs 0/0.** Dabei behobene echte Fehler: fehlende Capability-Sprachstrings (flexaccess:manageaccounts, flexaccess:convertaccounts) ergaenzt (Core tool_capability-Check); account_state::values() implementiert (wurde von api::build_account_filter() aufgerufen); generierter Username jetzt garantiert kleingeschrieben (core_text::strtolower; Moodle 5.3 lehnt Grossbuchstaben ab); vollstaendiger Privacy-Provider (statt reiner Metadaten): plugin\provider + core_userlist_provider mit Export/Loeschung auf User-Kontext-Ebene fuer account/token/mailqueue (Core core_privacy-Compliance-Test); install.xml ins kanonische XMLDB-Format regeneriert; PG-String/Int-Assertion in account_service_test korrigiert.
 - **CI grün gemacht (phpcs, real verifiziert mit moodlehq/moodle-cs v3.7):** Sprachdateien alphabetisch sortiert + `@package` ergänzt (Moodle LangFilesOrdering); einzeilige Docblocks in Mehrzeilenform mit Beschreibungszeile überführt; Multiline-Funktionsaufrufe per phpcbf normalisiert; unnötige `MOODLE_INTERNAL`-Checks entfernt; Konstanten-Docblocks ergänzt.

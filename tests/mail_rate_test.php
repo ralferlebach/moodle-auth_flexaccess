@@ -17,6 +17,7 @@
 /**
  * Tests for FlexAccess mail-rate calculations.
  *
+ * @package    auth_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -25,6 +26,9 @@ namespace auth_flexaccess;
 
 /**
  * Mail-rate helper tests.
+ *
+ * @package    auth_flexaccess
+ * @covers     \auth_flexaccess\local\mail_rate
  */
 final class mail_rate_test extends \advanced_testcase {
     /**

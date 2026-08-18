@@ -31,6 +31,8 @@ namespace auth_flexaccess\local;
 
 /**
  * Issues, verifies and consumes one-time tokens.
+ *
+ * @package    auth_flexaccess
  */
 final class token_service {
     /**

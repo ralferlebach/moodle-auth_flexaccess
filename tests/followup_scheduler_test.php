@@ -30,6 +30,9 @@ use auth_flexaccess\local\followup_scheduler;
 
 /**
  * Follow-up scheduler tests.
+ *
+ * @package    auth_flexaccess
+ * @covers     \auth_flexaccess\local\followup_scheduler
  */
 final class followup_scheduler_test extends \advanced_testcase {
     /**

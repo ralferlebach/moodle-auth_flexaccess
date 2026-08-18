@@ -29,6 +29,9 @@ use auth_flexaccess\local\mail_worker;
 
 /**
  * Mail worker tests.
+ *
+ * @package    auth_flexaccess
+ * @covers     \auth_flexaccess\local\mail_worker
  */
 final class mail_worker_test extends \advanced_testcase {
     /**

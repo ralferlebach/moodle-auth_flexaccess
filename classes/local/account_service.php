@@ -30,6 +30,8 @@ namespace auth_flexaccess\local;
 
 /**
  * Account creation and conversion.
+ *
+ * @package    auth_flexaccess
  */
 final class account_service {
     /**

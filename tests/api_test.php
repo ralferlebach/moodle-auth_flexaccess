@@ -30,6 +30,9 @@ use auth_flexaccess\local\mail_kind;
 
 /**
  * Facade tests.
+ *
+ * @package    auth_flexaccess
+ * @covers     \auth_flexaccess\api
  */
 final class api_test extends \advanced_testcase {
     /**

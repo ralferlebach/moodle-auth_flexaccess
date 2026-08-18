@@ -30,6 +30,9 @@ use auth_flexaccess\local\account_type;
 
 /**
  * Account service tests.
+ *
+ * @package    auth_flexaccess
+ * @covers     \auth_flexaccess\local\account_service
  */
 final class account_service_test extends \advanced_testcase {
     /**

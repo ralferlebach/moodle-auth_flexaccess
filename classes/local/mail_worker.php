@@ -29,6 +29,8 @@ namespace auth_flexaccess\local;
 
 /**
  * Sends queued FlexAccess mails within the configured throttle.
+ *
+ * @package    auth_flexaccess
  */
 final class mail_worker {
     /**

@@ -17,6 +17,7 @@
 /**
  * Lifecycle state constants for auth_flexaccess.
  *
+ * @package    auth_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -25,6 +26,8 @@ namespace auth_flexaccess\local;
 
 /**
  * Account lifecycle states.
+ *
+ * @package    auth_flexaccess
  */
 final class account_state {
     /** Ephemeral: a temporary user with no captured contact details. */

@@ -17,6 +17,7 @@
 /**
  * Mail-rate calculations for auth_flexaccess.
  *
+ * @package    auth_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -25,6 +26,8 @@ namespace auth_flexaccess\local;
 
 /**
  * Pure helper for the rolling-hour FlexAccess mail limit.
+ *
+ * @package    auth_flexaccess
  */
 final class mail_rate {
     /**

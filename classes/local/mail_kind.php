@@ -29,6 +29,8 @@ namespace auth_flexaccess\local;
 
 /**
  * Enumerates the semantic FlexAccess mail kinds.
+ *
+ * @package    auth_flexaccess
  */
 final class mail_kind {
     /**

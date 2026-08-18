@@ -31,6 +31,8 @@ namespace auth_flexaccess\local;
 
 /**
  * Stateless follow-up scheduling helpers.
+ *
+ * @package    auth_flexaccess
  */
 final class followup_scheduler {
     /**

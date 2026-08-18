@@ -17,6 +17,7 @@
 /**
  * Scheduled task processing the throttled mail queue.
  *
+ * @package    auth_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -25,6 +26,8 @@ namespace auth_flexaccess\task;
 
 /**
  * Mail queue task scaffold.
+ *
+ * @package    auth_flexaccess
  */
 final class process_mail_queue extends \core\task\scheduled_task {
     /**

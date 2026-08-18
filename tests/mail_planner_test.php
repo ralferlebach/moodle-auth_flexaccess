@@ -28,6 +28,9 @@ use auth_flexaccess\local\mail_planner;
 
 /**
  * Mail planner tests.
+ *
+ * @package    auth_flexaccess
+ * @covers     \auth_flexaccess\local\mail_planner
  */
 final class mail_planner_test extends \advanced_testcase {
     /**

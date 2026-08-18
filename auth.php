@@ -17,6 +17,7 @@
 /**
  * Authentication plugin class for FlexAccess.
  *
+ * @package    auth_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -31,6 +32,8 @@ require_once($CFG->libdir . '/authlib.php');
  * The stub deliberately does not redirect from the core login page yet. The
  * target-aware redirect is enabled only after the policy resolver and loop/
  * redirect security tests are implemented.
+ *
+ * @package    auth_flexaccess
  */
 class auth_plugin_flexaccess extends auth_plugin_base {
     /**
