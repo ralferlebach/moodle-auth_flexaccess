@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.31 — 2026-08-18 — Aufraeumen: toter persistence_followup-Mailpfad entfernt
+- **Vestigialen Followup-Pfad entfernt**: `api::request_persistence_followup()` und die Klasse `followup_scheduler` (samt Test) geloescht, `mail_kind::PERSISTENCE_FOLLOWUP` und die `followup:*`-Lang-Strings entfernt. Dieser Pfad mailte nach jedem temporaeren Zugang an die nicht zustellbare `@flexaccess.invalid`-Fake-Adresse und war seit der Selbstbedienungs-Persistenz (0.1.28) funktionslos. **Die generische Mail-Queue bleibt erhalten**: `mail_worker::deliver()` ist jetzt mailtyp-agnostisch und versendet generisch aus dem Job-Payload (recipient + subject + body/bodyhtml); Alt-/Fremd-Jobs ohne Payload werden ohne Retry verworfen, koennen die Queue also nicht blockieren. `token_service` bleibt (von der E-Mail-Verifikation genutzt).
+
 ## 0.1.30 — 2026-08-18 — DRY: gemeinsame Identitaetsfelder der Formulare
 - **Duplizierung beseitigt** (phpcpd-Fund): neuer Trait `\auth_flexaccess\form\identity_fields` mit `add_identity_fields()` und `validate_identity($data, $excludeuserid)`. `quick_registration_form` und `persist_form` nutzen ihn jetzt; die zuvor doppelten 24 Zeilen (E-Mail/Vorname/Nachname/Passwort inkl. Validierung) existieren nur noch einmal. Verhalten unveraendert (per Behat fuer beide Formulare verifiziert). Formularspezifisches bleibt lokal: Hidden-Felder + Submit-Label der Registrierung, Submit-Label + email_available-Exclude (aktueller Nutzer) der Persistierung.
 

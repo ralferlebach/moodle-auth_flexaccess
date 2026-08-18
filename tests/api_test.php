@@ -26,7 +26,6 @@ namespace auth_flexaccess;
 
 use auth_flexaccess\local\account_state;
 use auth_flexaccess\local\account_type;
-use auth_flexaccess\local\mail_kind;
 
 /**
  * Facade tests.
@@ -75,69 +74,6 @@ final class api_test extends \advanced_testcase {
         $user = $this->getDataGenerator()->create_user();
         $this->make_account($user->id, account_type::TEMPORARY_USER, account_state::EPHEMERAL, time(), null);
         $this->assertSame(account_type::TEMPORARY_USER, \auth_flexaccess\api::classify_user($user->id));
-    }
-
-    /**
-     * A qualifying temporary user with an e-mail gets exactly one queued follow-up.
-     */
-    public function test_request_followup_enqueues_once(): void {
-        global $DB;
-        $this->resetAfterTest();
-        $now = time();
-        $user = $this->getDataGenerator()->create_user(['email' => 'temp@example.com']);
-        $this->make_account(
-            $user->id,
-            account_type::TEMPORARY_USER,
-            account_state::PROVISIONAL,
-            $now,
-            $now + DAYSECS
-        );
-
-        $this->assertTrue(\auth_flexaccess\api::request_persistence_followup($user->id, DAYSECS, 3600));
-        $rows = $DB->get_records(
-            'auth_flexaccess_mailqueue',
-            ['userid' => $user->id, 'mailtype' => mail_kind::PERSISTENCE_FOLLOWUP]
-        );
-        $this->assertCount(1, $rows);
-        $row = reset($rows);
-        $this->assertSame('queued', $row->status);
-        // Clamped to expiry - margin.
-        $this->assertSame($now + DAYSECS - 3600, (int) $row->nextrun);
-
-        // Idempotent second call does not enqueue again.
-        $this->assertFalse(\auth_flexaccess\api::request_persistence_followup($user->id, DAYSECS, 3600));
-        $this->assertEquals(1, $DB->count_records(
-            'auth_flexaccess_mailqueue',
-            ['userid' => $user->id, 'mailtype' => mail_kind::PERSISTENCE_FOLLOWUP]
-        ));
-    }
-
-    /**
-     * A converted (authenticated) user is not scheduled.
-     */
-    public function test_request_followup_skips_authenticated(): void {
-        $this->resetAfterTest();
-        $now = time();
-        $user = $this->getDataGenerator()->create_user(['email' => 'real@example.com']);
-        $this->make_account($user->id, account_type::AUTHENTICATED_USER, account_state::ACTIVE, $now, null);
-        $this->assertFalse(\auth_flexaccess\api::request_persistence_followup($user->id, DAYSECS));
-    }
-
-    /**
-     * An account too short-lived to fit a reminder is not scheduled.
-     */
-    public function test_request_followup_skips_too_short(): void {
-        $this->resetAfterTest();
-        $now = time();
-        $user = $this->getDataGenerator()->create_user(['email' => 'temp2@example.com']);
-        $this->make_account(
-            $user->id,
-            account_type::TEMPORARY_USER,
-            account_state::EPHEMERAL,
-            $now,
-            $now + 1800
-        );
-        $this->assertFalse(\auth_flexaccess\api::request_persistence_followup($user->id, DAYSECS, 3600));
     }
 
     /**
@@ -236,12 +172,12 @@ final class api_test extends \advanced_testcase {
         $this->assertSame(1, $stats['provisional']);
 
         $DB->insert_record('auth_flexaccess_mailqueue', (object) [
-            'userid' => $a->id, 'recipient' => 'a@example.com', 'mailtype' => 'persistence_followup',
+            'userid' => $a->id, 'recipient' => 'a@example.com', 'mailtype' => 'activation',
             'payloadjson' => null, 'status' => 'queued', 'attempts' => 0,
             'timecreated' => $now, 'nextrun' => $now + 500, 'timesent' => null,
         ]);
         $DB->insert_record('auth_flexaccess_mailqueue', (object) [
-            'userid' => $b->id, 'recipient' => 'b@example.com', 'mailtype' => 'persistence_followup',
+            'userid' => $b->id, 'recipient' => 'b@example.com', 'mailtype' => 'activation',
             'payloadjson' => null, 'status' => 'sent', 'attempts' => 1,
             'timecreated' => $now, 'nextrun' => $now, 'timesent' => $now,
         ]);

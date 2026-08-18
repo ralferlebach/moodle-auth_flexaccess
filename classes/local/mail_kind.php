@@ -38,10 +38,6 @@ final class mail_kind {
      */
     public const ACTIVATION = 'activation';
     /**
-     * Persistence reminder in the temporary -> authenticated funnel.
-     */
-    public const PERSISTENCE_FOLLOWUP = 'persistence_followup';
-    /**
      * One-time account deletion link.
      */
     public const ACCOUNT_DELETE = 'account_delete';
@@ -52,6 +48,6 @@ final class mail_kind {
      * @return array<string>
      */
     public static function values(): array {
-        return [self::ACTIVATION, self::PERSISTENCE_FOLLOWUP, self::ACCOUNT_DELETE];
+        return [self::ACTIVATION, self::ACCOUNT_DELETE];
     }
 }

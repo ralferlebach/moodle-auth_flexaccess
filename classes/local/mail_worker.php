@@ -124,14 +124,22 @@ final class mail_worker {
     private static function deliver(\stdClass $job, int $now): bool {
         global $DB;
         try {
-            if ($job->mailtype === mail_kind::PERSISTENCE_FOLLOWUP) {
-                if (!self::send_persistence_followup($job, $now)) {
-                    // The mailer returned false: treat as a delivery failure so the job is retried
-                    // rather than silently marked as sent.
-                    throw new \moodle_exception('mailsendfailed', 'auth_flexaccess');
-                }
-            } else {
-                throw new \moodle_exception('error');
+            $payload = json_decode((string) $job->payloadjson, true);
+            $subject = is_array($payload) ? (string) ($payload['subject'] ?? '') : '';
+            $body = is_array($payload) ? (string) ($payload['body'] ?? '') : '';
+            $bodyhtml = is_array($payload) ? (string) ($payload['bodyhtml'] ?? '') : '';
+            if ($subject === '' || (string) $job->recipient === '') {
+                // A malformed or legacy job that this version can no longer deliver; drop it
+                // without retrying so it cannot block the queue.
+                $job->status = 'failed';
+                $DB->update_record(self::TABLE, $job);
+                return false;
+            }
+            $recipient = self::recipient_user($job);
+            if (!email_to_user($recipient, self::from_user(), $subject, $body, $bodyhtml)) {
+                // The mailer returned false: treat as a delivery failure so the job is retried
+                // rather than silently marked as sent.
+                throw new \moodle_exception('mailsendfailed', 'auth_flexaccess');
             }
             $job->status = 'sent';
             $job->timesent = $now;
@@ -150,21 +158,27 @@ final class mail_worker {
     }
 
     /**
-     * Send a persistence follow-up, issuing the token immediately before sending.
+     * Build the recipient user object for a queued job (a real user, addressed at job->recipient).
      *
      * @param \stdClass $job Queue row.
-     * @param int $now Current time.
-     * @return bool Whether Moodle accepted the message for delivery.
+     * @return \stdClass
      */
-    private static function send_persistence_followup(\stdClass $job, int $now): bool {
+    private static function recipient_user(\stdClass $job): \stdClass {
         global $DB;
-        $user = $DB->get_record('user', ['id' => $job->userid], '*', MUST_EXIST);
-        $token = token_service::issue((int) $job->userid, 'persistence', token_service::DEFAULT_TTL, $now);
-        $url = new \moodle_url('/auth/flexaccess/persist.php', ['token' => $token]);
-        $subject = get_string('followup:subject', 'auth_flexaccess');
-        $body = get_string('followup:body', 'auth_flexaccess', $url->out(false));
-        return (bool) email_to_user($user, self::from_user(), $subject, $body);
+        $user = null;
+        if (!empty($job->userid)) {
+            $user = $DB->get_record('user', ['id' => $job->userid], '*', IGNORE_MISSING) ?: null;
+        }
+        if (!$user) {
+            $user = \core_user::get_noreply_user();
+        }
+        $recipient = clone $user;
+        $recipient->email = $job->recipient;
+        $recipient->emailstop = 0;
+        $recipient->mailformat = 1;
+        return $recipient;
     }
+
 
     /**
      * Resolve the sender, honouring the optional configured sender address.

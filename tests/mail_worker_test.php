@@ -35,7 +35,7 @@ use auth_flexaccess\local\mail_worker;
  */
 final class mail_worker_test extends \advanced_testcase {
     /**
-     * Queue a due persistence follow-up for a fresh user.
+     * Queue a due generic mail for a fresh user.
      *
      * @param int $now Current time.
      * @return int User id.
@@ -48,8 +48,8 @@ final class mail_worker_test extends \advanced_testcase {
         $DB->insert_record('auth_flexaccess_mailqueue', (object) [
             'userid' => $user->id,
             'recipient' => $user->email,
-            'mailtype' => mail_kind::PERSISTENCE_FOLLOWUP,
-            'payloadjson' => json_encode(['kind' => mail_kind::PERSISTENCE_FOLLOWUP]),
+            'mailtype' => mail_kind::ACTIVATION,
+            'payloadjson' => json_encode(['subject' => 'Test subject', 'body' => 'Test body']),
             'status' => 'queued',
             'attempts' => 0,
             'timecreated' => $now,
@@ -76,8 +76,6 @@ final class mail_worker_test extends \advanced_testcase {
         $this->assertSame(2, $sink->count());
         $this->assertEquals(2, $DB->count_records('auth_flexaccess_mailqueue', ['status' => 'sent']));
         $this->assertEquals(1, $DB->count_records('auth_flexaccess_mailqueue', ['status' => 'queued']));
-        // A token was issued for each sent mail, just before sending.
-        $this->assertEquals(2, $DB->count_records('auth_flexaccess_token', ['purpose' => 'persistence']));
         $sink->close();
     }
 
@@ -95,7 +93,7 @@ final class mail_worker_test extends \advanced_testcase {
         for ($i = 0; $i < 8; $i++) {
             $DB->insert_record('auth_flexaccess_mailqueue', (object) [
                 'userid' => null, 'recipient' => "past{$i}@example.com",
-                'mailtype' => mail_kind::PERSISTENCE_FOLLOWUP, 'payloadjson' => null,
+                'mailtype' => mail_kind::ACTIVATION, 'payloadjson' => null,
                 'status' => 'sent', 'attempts' => 1,
                 'timecreated' => $now - 100, 'nextrun' => $now - 100, 'timesent' => $now - 100,
             ]);
