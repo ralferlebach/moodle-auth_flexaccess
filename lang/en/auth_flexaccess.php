@@ -24,10 +24,13 @@
 
 defined('MOODLE_INTERNAL') || die();
 
+$string['access:badkey'] = 'That access key is not correct.';
 $string['access:closed'] = 'Temporary access is not available at this time.';
+$string['access:enterkey'] = 'Access key';
 $string['access:full'] = 'The maximum number of participants has been reached. Please try again later.';
 $string['access:granted'] = 'Temporary access granted. Welcome!';
 $string['access:intro'] = 'You are about to get temporary access to "{$a}". Your progress can later be kept by activating your account.';
+$string['access:keyblocked'] = 'Too many incorrect attempts. Please wait a few minutes and try again.';
 $string['access:notallowed'] = 'Temporary access is not offered for this course.';
 $string['access:notenabled'] = 'FlexAccess is not enabled for this course.';
 $string['access:title'] = 'Temporary course access';

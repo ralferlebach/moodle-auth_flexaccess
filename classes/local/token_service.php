@@ -105,6 +105,7 @@ final class token_service {
      * @param string $secret Clear-text token supplied by the user.
      * @param string $purpose Expected purpose.
      * @param int|null $now Current time.
+     * @param int|null $expecteduserid If set, the token is only consumed when it belongs to this user.
      * @return int|null The user id on success, otherwise null.
      */
     public static function consume(

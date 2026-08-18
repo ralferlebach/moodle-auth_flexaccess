@@ -74,23 +74,66 @@ if (isloggedin() && !isguestuser()) {
     redirect($returnurl);
 }
 
+$policy = \enrol_flexaccess\api::get_effective_policy($courseid);
+$keyrequired = $policy->temporaryaccesskeyscope !== 'none';
+$rateid = \enrol_flexaccess\local\access_key_rate::identifier(getremoteaddr(), $courseid);
+
 $failure = null;
 if ($confirm && confirm_sesskey()) {
-    $result = \enrol_flexaccess\local\access_controller::grant_temporary_access($courseid);
-    if ($result->status === 'granted') {
-        $user = $DB->get_record('user', ['id' => $result->userid], '*', MUST_EXIST);
-        complete_user_login($user);
-        redirect($returnurl, get_string('access:granted', 'auth_flexaccess'));
+    // The key arrives as a POST field, so it never appears in the URL, referrer or server logs.
+    $accesskey = $keyrequired ? optional_param('accesskey', '', PARAM_RAW) : null;
+    if ($keyrequired && \enrol_flexaccess\local\access_key_rate::is_blocked($rateid)) {
+        $failure = 'keyblocked';
+    } else {
+        $result = \enrol_flexaccess\local\access_controller::grant_temporary_access($courseid, null, $accesskey);
+        if ($result->status === 'granted') {
+            \enrol_flexaccess\local\access_key_rate::reset($rateid);
+            $user = $DB->get_record('user', ['id' => $result->userid], '*', MUST_EXIST);
+            complete_user_login($user);
+            redirect($returnurl, get_string('access:granted', 'auth_flexaccess'));
+        }
+        if ($result->status === 'badkey') {
+            \enrol_flexaccess\local\access_key_rate::record_failure($rateid);
+        }
+        $failure = $result->status;
     }
-    $failure = $result->status;
 }
 
 echo $OUTPUT->header();
 echo $OUTPUT->heading(get_string('access:title', 'auth_flexaccess'));
 
-if ($failure !== null) {
+if ($failure !== null && $failure !== 'badkey') {
     echo $OUTPUT->notification(get_string('access:' . $failure, 'auth_flexaccess'), 'error');
     echo $OUTPUT->continue_button($courseurl);
+} else if ($keyrequired) {
+    // Render a challenge form: the key is submitted by POST and verified server-side before any
+    // account is created.
+    if ($failure === 'badkey') {
+        echo $OUTPUT->notification(get_string('access:badkey', 'auth_flexaccess'), 'error');
+    }
+    echo html_writer::tag('p', get_string('access:intro', 'auth_flexaccess', format_string($course->fullname)));
+    echo html_writer::start_tag('form', [
+        'method' => 'post',
+        'action' => (new moodle_url('/auth/flexaccess/access.php'))->out(false),
+    ]);
+    echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'courseid', 'value' => $courseid]);
+    echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'wantsurl', 'value' => $wantsurl]);
+    echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'confirm', 'value' => 1]);
+    echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
+    echo html_writer::tag('label', get_string('access:enterkey', 'auth_flexaccess'), ['for' => 'flexaccesskey']);
+    echo html_writer::empty_tag('input', [
+        'type' => 'password',
+        'id' => 'flexaccesskey',
+        'name' => 'accesskey',
+        'autocomplete' => 'off',
+        'class' => 'form-control',
+    ]);
+    echo html_writer::empty_tag('input', [
+        'type' => 'submit',
+        'value' => get_string('continue'),
+        'class' => 'btn btn-primary mt-2',
+    ]);
+    echo html_writer::end_tag('form');
 } else {
     $continueurl = new moodle_url(
         '/auth/flexaccess/access.php',

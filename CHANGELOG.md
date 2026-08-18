@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.23 — 2026-08-18 — CI-Fixes
+- **PHPDoc-Fix:** `token_service::consume()` hatte seit der atomaren Umstellung (0.1.20) den Parameter `$expecteduserid` ohne `@param`-Eintrag; local_moodlecheck meldete "incomplete parameters list". Docblock ergaenzt.
+
+## 0.1.23 — 2026-08-18 — Paket A (Access), Teil 2: Zugangsschlüssel
+- **Der Zugangsschlüssel ist jetzt wirksam** (war Sicherheits-Blocker B2). E2E per Behat verifiziert: falscher Schlüssel -> Fehler, richtiger -> Kurszugang.
+- **B2 (Challenge-Form):** `access.php` zeigt bei Schluesselpflicht eine Eingabemaske; der Schluessel wird per **POST** uebertragen (nie in URL/Referrer/Log), serverseitig geprueft und ratenbegrenzt.
+
 ## 0.1.22 — 2026-08-18 — Paket A (Access), Teil 1
 - **Der URL-/aktivitaetssensitive Zugang funktioniert jetzt end-to-end** (war Beta-Blocker B1). Real per Behat verifiziert: ein anonymer Besucher gelangt ueber die Entry-Page zu temporaerem Zugang und landet im Zielkurs.
 - **B1 (target_resolver):** neue Klasse `local\target_resolver` (+ `resolved_target`) loest `wantsurl` sicher zu Kurs/Aktivitaet/Redirect auf und weist externe/ungueltige URLs ab (kein Open-Redirect). `loginpage_idp_list` baut damit einen **funktionierenden** Link (`access.php?courseid=...`) und bietet FlexAccess nur an, wenn der Kurs wirklich einen anonymen Eintritt anbietet.
