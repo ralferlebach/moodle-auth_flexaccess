@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.30 — 2026-08-18 — DRY: gemeinsame Identitaetsfelder der Formulare
+- **Duplizierung beseitigt** (phpcpd-Fund): neuer Trait `\auth_flexaccess\form\identity_fields` mit `add_identity_fields()` und `validate_identity($data, $excludeuserid)`. `quick_registration_form` und `persist_form` nutzen ihn jetzt; die zuvor doppelten 24 Zeilen (E-Mail/Vorname/Nachname/Passwort inkl. Validierung) existieren nur noch einmal. Verhalten unveraendert (per Behat fuer beide Formulare verifiziert). Formularspezifisches bleibt lokal: Hidden-Felder + Submit-Label der Registrierung, Submit-Label + email_available-Exclude (aktueller Nutzer) der Persistierung.
+
 ## 0.1.29 — 2026-08-18 — Paket B: E-Mail-Verifikation der Persistierung (Option, Default an)
 - **E-Mail-Verifikation** vor dauerhaftem Konto: neue Admin-Einstellung `requireemailverification` (Default: aktiviert). Bei aktivierter Option speichert `request_persistence()` Name+Passwort am noch temporaeren Konto, merkt sich die gewuenschte E-Mail und mailt einen Bestaetigungslink; erst `confirm_persistence(token)` setzt E-Mail/Username und macht das Konto dauerhaft. Die squatting-relevante E-Mail/Username wird also erst nach Nachweis der Adresse gesetzt. Der Token authorisiert allein (kein Login noetig), ist einmalig und laeuft ab. Ist die Option aus, konvertiert `request_persistence()` sofort (bisheriges Verhalten). Der frueher funktionslose Token-/Mail-Pfad ist damit sinnvoll wiederverwendet. Verifikationsmail wird als Text+HTML gesendet (klickbarer Link).
 

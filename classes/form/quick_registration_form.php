@@ -28,6 +28,8 @@ require_once($GLOBALS['CFG']->libdir . '/formslib.php');
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class quick_registration_form extends \moodleform {
+    use identity_fields;
+
     /**
      * Form definition.
      *
@@ -35,22 +37,7 @@ class quick_registration_form extends \moodleform {
      */
     protected function definition(): void {
         $mform = $this->_form;
-
-        $mform->addElement('text', 'email', get_string('email'));
-        $mform->setType('email', PARAM_RAW_TRIMMED);
-        $mform->addRule('email', get_string('required'), 'required', null, 'client');
-
-        $mform->addElement('text', 'firstname', get_string('firstname'));
-        $mform->setType('firstname', PARAM_TEXT);
-        $mform->addRule('firstname', get_string('required'), 'required', null, 'client');
-
-        $mform->addElement('text', 'lastname', get_string('lastname'));
-        $mform->setType('lastname', PARAM_TEXT);
-        $mform->addRule('lastname', get_string('required'), 'required', null, 'client');
-
-        $mform->addElement('passwordunmask', 'password', get_string('password'));
-        $mform->setType('password', PARAM_RAW);
-        $mform->addRule('password', get_string('required'), 'required', null, 'client');
+        $this->add_identity_fields();
 
         $mform->addElement('hidden', 'courseid');
         $mform->setType('courseid', PARAM_INT);
@@ -70,20 +57,6 @@ class quick_registration_form extends \moodleform {
      * @return array Field errors.
      */
     public function validation($data, $files): array {
-        $errors = parent::validation($data, $files);
-
-        $email = \core_text::strtolower(trim((string) $data['email']));
-        if (!validate_email($email)) {
-            $errors['email'] = get_string('invalidemail');
-        } else if (!\auth_flexaccess\api::email_available($email)) {
-            $errors['email'] = get_string('register:emailtaken', 'auth_flexaccess');
-        }
-
-        $policyerror = '';
-        if (!check_password_policy((string) $data['password'], $policyerror)) {
-            $errors['password'] = $policyerror;
-        }
-
-        return $errors;
+        return array_merge(parent::validation($data, $files), $this->validate_identity($data));
     }
 }
