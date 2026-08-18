@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.27 — 2026-08-18 — Paket A abgeschlossen: Methodenauswahl (Gast + Normallogin)
+- **Entry-Page bietet jetzt alle konfigurierten Methoden an**: neben temporaerem Zugang, Access-Key-Challenge und Schnellregistrierung nun auch **Gastzugang** ("Continue as a guest" -> meldet den Moodle-Gast an und leitet in den Kurs; ob Inhalte sichtbar sind, haengt vom Gast-Enrolment des Kurses ab) und einen **Link zur reguleren Anmeldung** ("Already have an account? Log in" -> /login mit wantsurl). Die "nicht verfuegbar"-Seite bietet weiterhin keine Methoden an (Enumeration-Guard).
+
 ## 0.1.26 — 2026-08-18 — Paket A: Quick-Registration (allowquick)
 - **Schnellregistrierung**: neue anonyme Seite `register.php` + `\auth_flexaccess\form\quick_registration_form` (E-Mail, Vor-/Nachname, Passwort). Erzeugt ein *persistentes, sofort login-faehiges* Konto (auth=flexaccess, bestaetigt, echte E-Mail, gesetztes Passwort) via neuer API `create_quick_registered_user()`; `account_service::create_authenticated()` legt den aktiven, unbefristeten Kontodatensatz an. Neue Helfer: `email_available()` (Eindeutigkeitspruefung). access.php verlinkt die Registrierung, wenn angeboten. Enumeration-Guard und lokaler Redirect-Zielschutz wie bei access.php.
 

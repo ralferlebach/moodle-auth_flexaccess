@@ -56,7 +56,6 @@ if (!$available) {
     echo $OUTPUT->heading(get_string('access:title', 'auth_flexaccess'));
     echo $OUTPUT->notification(get_string('access:unavailable', 'auth_flexaccess'), 'error');
     echo $OUTPUT->continue_button(new moodle_url('/login/index.php'));
-    echo $quickreglink;
     echo $OUTPUT->footer();
     exit;
 }
@@ -75,6 +74,19 @@ if (isloggedin() && !isguestuser()) {
     redirect($returnurl);
 }
 
+// Guest access: log in as the Moodle guest user and continue to the course. Whether the guest can
+// then view content depends on the course's own guest enrolment, which FlexAccess does not manage.
+if (
+    optional_param('guest', 0, PARAM_BOOL) && confirm_sesskey()
+        && \enrol_flexaccess\api::offers_guest_access($courseid)
+) {
+    $guestuser = get_complete_user_data('username', 'guest');
+    if ($guestuser) {
+        complete_user_login($guestuser);
+    }
+    redirect($returnurl);
+}
+
 $keyrequired = \enrol_flexaccess\api::requires_temporary_access_key($courseid);
 $quickreglink = \enrol_flexaccess\api::offers_quick_registration($courseid)
     ? html_writer::tag('p', html_writer::link(
@@ -82,6 +94,22 @@ $quickreglink = \enrol_flexaccess\api::offers_quick_registration($courseid)
         get_string('access:orregister', 'auth_flexaccess')
     ))
     : '';
+$loginlink = \enrol_flexaccess\api::offers_normal_login($courseid)
+    ? html_writer::tag('p', html_writer::link(
+        new moodle_url('/login/index.php', ['wantsurl' => $returnurl->out_as_local_url(false)]),
+        get_string('access:orlogin', 'auth_flexaccess')
+    ))
+    : '';
+$guestlink = \enrol_flexaccess\api::offers_guest_access($courseid)
+    ? html_writer::tag('p', html_writer::link(
+        new moodle_url(
+            '/auth/flexaccess/access.php',
+            ['courseid' => $courseid, 'wantsurl' => $wantsurl, 'guest' => 1, 'sesskey' => sesskey()]
+        ),
+        get_string('access:orguest', 'auth_flexaccess')
+    ))
+    : '';
+$extralinks = $quickreglink . $guestlink . $loginlink;
 $rateid = \enrol_flexaccess\local\access_key_rate::identifier(getremoteaddr(), $courseid);
 
 $failure = null;
@@ -152,5 +180,5 @@ if ($failure !== null && $failure !== 'badkey') {
     );
 }
 
-echo $quickreglink;
+echo $extralinks;
 echo $OUTPUT->footer();
