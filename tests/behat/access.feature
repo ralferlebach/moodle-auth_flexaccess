@@ -1,4 +1,4 @@
-@auth_flexaccess
+@auth @auth_flexaccess
 Feature: FlexAccess scaffold
   Scenario: FlexAccess access endpoint is installable
     Given I log in as "admin"

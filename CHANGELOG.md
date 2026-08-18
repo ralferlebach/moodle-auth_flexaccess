@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.19 — 2026-08-18
+- **Verifiziert mit der exakten CI-Toolchain (moodle-plugin-ci 4.5.11 PHAR): phpcs 0/0, `validate` 0 Fehler, PHPUnit auf Moodle 5.3dev gruen.** Cross-Plugin-Integrationstests laufen in der Vollumgebung (alle vier Plugins) normal und ueberspringen sich nur in der Einzel-Plugin-CI.
+- **Weitere CI-Fixes (moodle-plugin-ci 4.5.11, Moodle 4.5/5.0/5.2/5.3-Matrix):** Behat-Feature `access.feature` zusaetzlich mit Plugintyp-Tag `@auth` versehen (moodle-plugin-ci `validate` verlangt Typ- UND Komponenten-Tag).
+
 ## 0.1.18 — 2026-08-17
 - **Linting robust fuer aeltere moodle-cs gemacht (die lokale `make check`-Umgebung nutzt eine strengere/aeltere moodle-cs als die CI):** `@package`-Tag in jedem Datei-, Klassen-/Interface-/Trait- und Top-Level-Funktions-Docblock ergaenzt (aeltere moodle-cs verlangt dies ueberall; neuere ab 3.6 hat es gelockert). Test-Klassen erhielten `@covers` auf die jeweils geprueften Klassen (behebt die `missing coverage information`-Warnungen). **Gegengeprueft:** die echte CI (moodle-plugin-ci 4.5.11) meldet weiterhin 0 Verstoesse, PHPUnit auf Moodle 5.3dev bleibt gruen.
 
