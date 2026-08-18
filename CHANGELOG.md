@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.1.33 — 2026-08-19 — Enrolment-Expiry (§32/§33) + echte jmeter/playwright-Plaene (§26/§27)
+- Keine Codeaenderung.
+
 ## 0.1.32 — 2026-08-19 — Magic-Login, Mail-Queue-Retrofit, SEC-03, main-CI + jmeter/playwright
 - **Magic-Login (passwortlos)**: neue Seite `magic.php` + `magic_login_form`, API `request_magic_login()`/`consume_magic_login()`, Setting `allowmagiclogin` (Default an). Dauerhafte Konten fordern einen einmaligen Login-Link per E-Mail an (enumeration-sicher). Link auf `access.php` verlinkt.
 - **Alle Mails ueber die Queue** (Review §9): neuer generischer Producer `api::queue_mail()`; Magic-Login UND die Persistenz-Verifikationsmail laufen jetzt ueber `auth_flexaccess_mailqueue` (Stundenlimit greift). `mail_kind` um VERIFICATION/MAGIC_LOGIN ergaenzt.
