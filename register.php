@@ -70,9 +70,10 @@ if (isloggedin() && !isguestuser()) {
     redirect($returnurl);
 }
 
+$gatemode = \enrol_flexaccess\api::get_effective_policy($courseid)->quickreggatemode;
 $form = new \auth_flexaccess\form\quick_registration_form(
     new moodle_url('/auth/flexaccess/register.php'),
-    ['courseid' => $courseid, 'wantsurl' => $wantsurl]
+    ['courseid' => $courseid, 'wantsurl' => $wantsurl, 'gatemode' => $gatemode]
 );
 
 $failure = null;
@@ -84,11 +85,15 @@ if ($form->is_cancelled()) {
         'firstname' => $data->firstname,
         'lastname' => $data->lastname,
         'password' => $data->password,
+        'accesspassword' => $data->accesspassword ?? '',
     ], getremoteaddr());
-    if ($result->status === 'granted') {
+    if ($result->status === 'granted' || $result->status === 'verificationsent') {
         $user = $DB->get_record('user', ['id' => $result->userid], '*', MUST_EXIST);
         complete_user_login($user);
-        redirect($returnurl, get_string('register:success', 'auth_flexaccess'));
+        $message = $result->status === 'verificationsent'
+            ? get_string('register:verificationsent', 'auth_flexaccess')
+            : get_string('register:success', 'auth_flexaccess');
+        redirect($returnurl, $message);
     }
     $failure = $result->status;
 }

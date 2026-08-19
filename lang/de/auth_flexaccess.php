@@ -24,6 +24,7 @@
 
 defined('MOODLE_INTERNAL') || die();
 
+$string['access:badgate'] = 'Die Registrierung ist eingeschränkt. Bitte prüfen Sie das Zugangspasswort oder verwenden Sie eine zulässige E-Mail-Adresse.';
 $string['access:badkey'] = 'Dieser Zugangsschlüssel ist nicht korrekt.';
 $string['access:closed'] = 'Temporärer Zugang ist derzeit nicht verfügbar.';
 $string['access:enterkey'] = 'Zugangsschlüssel';
@@ -89,11 +90,13 @@ $string['privacy:metadata:token:tokenhash'] = 'Ein Einweg-Hash eines Einmal-Toke
 $string['privacy:metadata:token:userid'] = 'Zugehörige Moodle-Nutzer-ID.';
 $string['provisionallifetime'] = 'Standard-Aktivierungsfrist';
 $string['provisionallifetime_desc'] = 'Zeitraum zur Bestätigung einer Schnellregistrierung.';
+$string['register:accesspassword'] = 'Zugangspasswort';
 $string['register:emailtaken'] = 'Für diese E-Mail-Adresse existiert bereits ein Konto. Bitte melden Sie sich stattdessen an.';
 $string['register:intro'] = 'Erstellen Sie ein Konto, um {$a} beizutreten. Sie können sich später mit der hier gewählten E-Mail und dem Passwort erneut anmelden.';
 $string['register:submit'] = 'Konto erstellen und eintreten';
 $string['register:success'] = 'Ihr Konto wurde erstellt und Sie sind nun eingeschrieben.';
 $string['register:title'] = 'Schnellregistrierung';
+$string['register:verificationsent'] = 'Sie haben nun Zugang. Bitte prüfen Sie Ihre E-Mails und folgen Sie dem Aktivierungslink, um Ihr Konto dauerhaft zu behalten.';
 $string['senderemail'] = 'Optionale Absender-E-Mail-Adresse';
 $string['senderemail_desc'] = 'Leer lassen, um den Moodle-Standardabsender zu verwenden.';
 $string['setting:allowmagiclogin'] = 'Magic-Login-Links erlauben';

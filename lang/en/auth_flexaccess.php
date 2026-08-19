@@ -24,6 +24,7 @@
 
 defined('MOODLE_INTERNAL') || die();
 
+$string['access:badgate'] = 'Registration is restricted. Please check the access password or use an eligible email address.';
 $string['access:badkey'] = 'That access key is not correct.';
 $string['access:closed'] = 'Temporary access is not available at this time.';
 $string['access:enterkey'] = 'Access key';
@@ -89,11 +90,13 @@ $string['privacy:metadata:token:tokenhash'] = 'A one-way hash of a one-time toke
 $string['privacy:metadata:token:userid'] = 'The Moodle user ID associated with the token.';
 $string['provisionallifetime'] = 'Default provisional lifetime';
 $string['provisionallifetime_desc'] = 'Time allowed to verify a quick registration.';
+$string['register:accesspassword'] = 'Access password';
 $string['register:emailtaken'] = 'An account already exists for this email address. Please log in instead.';
 $string['register:intro'] = 'Create an account to join {$a}. You can log in again later with the email and password you set here.';
 $string['register:submit'] = 'Create account and enter';
 $string['register:success'] = 'Your account has been created and you are now enrolled.';
 $string['register:title'] = 'Quick registration';
+$string['register:verificationsent'] = 'You now have access. Please check your email and follow the activation link to keep your account permanently.';
 $string['senderemail'] = 'Optional sender e-mail address';
 $string['senderemail_desc'] = 'Leave empty to use the Moodle default sender.';
 $string['setting:allowmagiclogin'] = 'Allow magic-login links';

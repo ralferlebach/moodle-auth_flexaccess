@@ -605,58 +605,6 @@ final class api {
     }
 
     /**
-     * Create a persistent, immediately usable account through quick registration.
-     *
-     * Unlike a temporary user this account has the person's own email, a password they set and no
-     * expiry, so they can log back in later with the same user id and keep their learning data.
-     *
-     * @param string $email Email address (also used as the username).
-     * @param string $firstname First name.
-     * @param string $lastname Last name.
-     * @param string $password Clear-text password chosen by the user.
-     * @param int|null $now Current time.
-     * @return int New user id.
-     */
-    public static function create_quick_registered_user(
-        string $email,
-        string $firstname,
-        string $lastname,
-        string $password,
-        ?int $now = null
-    ): int {
-        global $CFG, $DB;
-        require_once($CFG->dirroot . '/user/lib.php');
-        $now = $now ?? time();
-        $email = \core_text::strtolower(trim($email));
-
-        $user = new \stdClass();
-        $user->auth = 'flexaccess';
-        $user->confirmed = 1;
-        $user->mnethostid = $CFG->mnet_localhost_id;
-        $user->username = $email;
-        $user->password = '';
-        $user->firstname = $firstname;
-        $user->lastname = $lastname;
-        $user->email = $email;
-        $user->emailstop = 0;
-
-        if (method_exists(\core\user::class, 'create_user')) {
-            $userid = (int) \core\user::create_user($user, false, true);
-        } else {
-            $userid = (int) user_create_user($user, false, true);
-        }
-
-        // Store the password hash so auth_flexaccess::user_login() can authenticate the account.
-        $created = $DB->get_record('user', ['id' => $userid], '*', MUST_EXIST);
-        update_internal_user_password($created, $password);
-
-        // Numeric reference so quick-registered accounts can also be looked up by administrators.
-        $reference = str_pad((string) random_int(0, 9999999999), 10, '0', STR_PAD_LEFT);
-        account_service::create_authenticated($userid, $reference, $now);
-        return $userid;
-    }
-
-    /**
      * Create a temporary Moodle user with FlexAccess account metadata.
      *
      * The user is created with the FlexAccess auth method, a generated username, no local

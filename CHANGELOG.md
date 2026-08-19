@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.3 — 2026-08-19 — Welle 3 Strom F: Quick-Registration neu spezifiziert (P0 #5)
+- **P0 #5 — E-Mail-Freischaltung:** Quick-Registration erzeugt jetzt ein *provisorisches* temporaeres Konto (mit E-Mail und Passwort, dadurch bereits eingeschraenkt per Welle-2-Restriktion) und bindet die Aufwertung zu einem *regulaeren* Konto an eine E-Mail-Aktivierung. Der bestehende Persistenz-Funnel (`request_persistence` -> `confirm_persistence`) wird wiederverwendet; ist die E-Mail-Verifizierung deaktiviert, konvertiert der Vorgang sofort.
+- `register.php` behandelt den neuen Status `verificationsent` (sofortiger Zugang + Aktivierungshinweis) und reicht ein optionales Zugangspasswort durch. Das Formular zeigt das Zugangspasswort-Feld nur bei aktivem Passwort-Gate.
+- Die jetzt ungenutzte `create_quick_registered_user()` wurde entfernt (Dead-Code).
+- Neue Strings: `register:accesspassword`, `register:verificationsent`, `access:badgate`.
+
 ## 0.9.2 — 2026-08-19 — Welle 2: Retention/Deletion, zentraler Conversion-Guard, Temp-Restriktionen (P0 #9/#10/#6)
 - **P0 #9 — Retention/Deletion:** neuer `account_service::purge_expired()` loescht abgelaufene temporaere Konten nach einer Aufbewahrungsfrist endgueltig (Moodle-User via `delete_user` + Account/Token/Queue), transaktional. Neue Einstellung `retentiondays` (Default 30, 0 = unbegrenzt behalten); `expire_accounts`-Task ruft die Bereinigung auf.
 - **P0 #10 — zentraler Conversion-Guard:** `account_service::is_convertible()` (temporaer + nicht abgelaufen/suspendiert) schuetzt jede Conversion; `finalise_identity` nutzt ihn statt der reinen Typpruefung. `convert_to_authenticated` hebt zudem die Besucher-Restriktionen auf.
