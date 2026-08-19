@@ -783,6 +783,7 @@ final class api {
      * @param string|null $state Optional account-state filter.
      * @param int $page Zero-based page index.
      * @param int $perpage Page size.
+     * @param string|null $reference Optional exact reference-number match.
      * @return array<\stdClass>
      */
     public static function search_accounts(
@@ -867,6 +868,7 @@ final class api {
      * @param string $query Substring matched against e-mail and name.
      * @param string|null $type Optional account-type filter.
      * @param string|null $state Optional account-state filter.
+     * @param string|null $reference Optional exact reference-number match.
      * @return array{0: string, 1: array}
      */
     private static function build_account_filter(
