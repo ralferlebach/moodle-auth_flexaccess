@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.37 — 2026-08-19 — Teilnehmerlisten-Sichtbarkeit durchgesetzt (§35, P0)
+- Keine Codeaenderung.
+
+## 0.1.36 — 2026-08-19 — Capacity-Race / verwaiste Accounts behoben (§18)
+- Keine Codeaenderung.
+
 ## 0.1.35 — 2026-08-19 — DSGVO-Privacy-Provider (§11) + PHPDoc-Fixes
 - **Privacy-Provider vervollstaendigt (§11):** deklariert/exportiert/loescht jetzt alle personenbezogenen Daten — `auth_flexaccess_account`, `_token`, `_mailqueue` (userid-gekoppelt, User-Kontext) sowie die User-Preference `auth_flexaccess_pendingemail` (unverifizierte E-Mail waehrend der Verstetigung). Vollstaendige Metadaten inkl. aller Feld-Beschreibungen; Export via `export_user_data` + `export_user_preferences`; alle Loeschpfade (Kontext, Nutzer, Userlist) entfernen zusaetzlich die Preference.
 - **PHPDoc-Fix:** fehlender `@param $clientip` bei `api::request_magic_login` (CI-PHPDoc-Checker).
