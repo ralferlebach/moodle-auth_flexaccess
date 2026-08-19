@@ -174,7 +174,7 @@ final class api {
         global $CFG, $DB;
         require_once($CFG->dirroot . '/user/lib.php');
 
-        if (self::classify_user($userid) !== account_type::TEMPORARY_USER) {
+        if (!account_service::is_convertible($userid, $now)) {
             return 'notapplicable';
         }
         $email = \core_text::strtolower(trim($email));

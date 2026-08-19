@@ -80,6 +80,14 @@ if ($ADMIN->fulltree) {
         [10 => '10', 50 => '50', 100 => '100', 500 => '500', 0 => get_string('unlimited', 'auth_flexaccess')]
     ));
 
+    $settings->add(new admin_setting_configtext(
+        'auth_flexaccess/retentiondays',
+        get_string('setting:retentiondays', 'auth_flexaccess'),
+        get_string('setting:retentiondays_desc', 'auth_flexaccess'),
+        30,
+        PARAM_INT
+    ));
+
     $settings->add(new admin_setting_heading(
         'auth_flexaccess/ratelimit',
         get_string('settings:ratelimit', 'auth_flexaccess'),

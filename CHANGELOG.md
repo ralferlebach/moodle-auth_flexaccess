@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.2 — 2026-08-19 — Welle 2: Retention/Deletion, zentraler Conversion-Guard, Temp-Restriktionen (P0 #9/#10/#6)
+- **P0 #9 — Retention/Deletion:** neuer `account_service::purge_expired()` loescht abgelaufene temporaere Konten nach einer Aufbewahrungsfrist endgueltig (Moodle-User via `delete_user` + Account/Token/Queue), transaktional. Neue Einstellung `retentiondays` (Default 30, 0 = unbegrenzt behalten); `expire_accounts`-Task ruft die Bereinigung auf.
+- **P0 #10 — zentraler Conversion-Guard:** `account_service::is_convertible()` (temporaer + nicht abgelaufen/suspendiert) schuetzt jede Conversion; `finalise_identity` nutzt ihn statt der reinen Typpruefung. `convert_to_authenticated` hebt zudem die Besucher-Restriktionen auf.
+- Tests: `purge_expired`, `is_convertible`.
+
 ## 0.9.1 — 2026-08-19 — Welle 1: Token-Sicherheit + atomares Temp-Rate-Limit (P0 #1, #2)
 - **P0 #1 — kein Klartext-Token mehr in der Mailqueue:** Magic-/Persistenz-Mails speichern in der Queue nur noch `{kind, purpose, ttl}` + Empfaenger/User. Der **Worker** erzeugt den Token unmittelbar vor Versand, re-cappt die TTL gegen die Account-Restlaufzeit (SEC-03), speichert nur den Hash, rendert die URL und sendet. Neuer `mail_renderer`, `queue_token_mail`, `token_service::revoke_pending` (Retry widerruft alten Token → genau ein Live-Token). `send_persistence_verification` entfernt.
 - **P0 #2 — atomarer, clusterfester Rate-Limiter:** `rate_limiter` komplett DB-basiert neu (`hit()` = insert-dann-count, race-frei; plus `too_many`/`record`/`reset`/`prune`). Neue Tabelle `auth_flexaccess_ratehit` (install.xml + upgrade). Housekeeping-Prune im Mailqueue-Task. Magic/Quick-Reg auf `hit()` migriert.

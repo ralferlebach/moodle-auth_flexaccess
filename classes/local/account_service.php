@@ -139,6 +139,36 @@ final class account_service {
 
         // Confirm the Moodle user; enrolment and its duration are intentionally left untouched.
         $DB->set_field('user', 'confirmed', 1, ['id' => $userid]);
+        // The account is now a full identity, so lift the anonymous-visitor site restrictions.
+        \enrol_flexaccess\local\participant_role::unrestrict($userid);
+        return true;
+    }
+
+    /**
+     * Whether an account may currently undergo an identity conversion.
+     *
+     * Central guard for every conversion path (self-activation, admin conversion, persistence
+     * confirmation): the account must still be a live temporary account — the right type, not
+     * expired by state, and not past its expiry time. This prevents reviving an account that has
+     * already lapsed or been suspended.
+     *
+     * @param int $userid User id.
+     * @param int|null $now Current time.
+     * @return bool
+     */
+    public static function is_convertible(int $userid, ?int $now = null): bool {
+        global $DB;
+        $now = $now ?? time();
+        $account = $DB->get_record(self::TABLE, ['userid' => $userid]);
+        if (!$account || $account->accounttype !== account_type::TEMPORARY_USER) {
+            return false;
+        }
+        if ($account->accountstate === account_state::EXPIRED || $account->accountstate === account_state::SUSPENDED) {
+            return false;
+        }
+        if ($account->timeexpires !== null && (int) $account->timeexpires > 0 && (int) $account->timeexpires <= $now) {
+            return false;
+        }
         return true;
     }
 
@@ -168,6 +198,51 @@ final class account_service {
             $account->timemodified = $now;
             $DB->update_record(self::TABLE, $account);
             $DB->set_field('user', 'suspended', 1, ['id' => $account->userid]);
+            $count++;
+        }
+        return $count;
+    }
+
+    /**
+     * Permanently delete temporary accounts that expired longer ago than the retention period.
+     *
+     * Enforces a real deletion lifecycle: once the retention window has passed, the temporary Moodle
+     * user is deleted and all FlexAccess artefacts (account row, tokens, queued mail) are removed, so
+     * abandoned anonymous accounts do not linger indefinitely. A retention of zero disables purging.
+     *
+     * @param int|null $now Current time.
+     * @param int $retention Seconds to keep an expired account before deletion.
+     * @param int $limit Maximum accounts to process in one run.
+     * @return int Number of accounts purged.
+     */
+    public static function purge_expired(?int $now = null, int $retention = 0, int $limit = 200): int {
+        global $CFG, $DB;
+        require_once($CFG->dirroot . '/user/lib.php');
+        $now = $now ?? time();
+        if ($retention <= 0) {
+            return 0;
+        }
+        $cutoff = $now - $retention;
+        $select = 'accounttype = :type AND accountstate = :state AND timeexpires > 0 AND timeexpires <= :cutoff';
+        $params = [
+            'type' => account_type::TEMPORARY_USER,
+            'state' => account_state::EXPIRED,
+            'cutoff' => $cutoff,
+        ];
+        $records = $DB->get_records_select(self::TABLE, $select, $params, 'timeexpires ASC', '*', 0, max(0, $limit));
+        $count = 0;
+        foreach ($records as $account) {
+            $userid = (int) $account->userid;
+            $transaction = $DB->start_delegated_transaction();
+            $DB->delete_records('auth_flexaccess_token', ['userid' => $userid]);
+            $DB->delete_records('auth_flexaccess_mailqueue', ['userid' => $userid]);
+            $DB->delete_records(self::TABLE, ['id' => $account->id]);
+            $transaction->allow_commit();
+
+            $user = $DB->get_record('user', ['id' => $userid, 'deleted' => 0]);
+            if ($user) {
+                delete_user($user);
+            }
             $count++;
         }
         return $count;

@@ -44,5 +44,10 @@ final class expire_accounts extends \core\task\scheduled_task {
      */
     public function execute(): void {
         \auth_flexaccess\local\account_service::expire_due();
+        // Deletion lifecycle: purge accounts that expired longer ago than the retention window.
+        $retentiondays = (int) get_config('auth_flexaccess', 'retentiondays');
+        if ($retentiondays > 0) {
+            \auth_flexaccess\local\account_service::purge_expired(null, $retentiondays * DAYSECS);
+        }
     }
 }

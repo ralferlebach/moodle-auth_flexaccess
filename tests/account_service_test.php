@@ -82,6 +82,55 @@ final class account_service_test extends \advanced_testcase {
     }
 
     /**
+     * Expired temporary accounts are purged (user and artefacts deleted) after the retention window.
+     *
+     * @return void
+     */
+    public function test_purge_expired(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $now = 2000000;
+        $old = $this->getDataGenerator()->create_user();
+        $recent = $this->getDataGenerator()->create_user();
+        // Both expired, but only $old is past the 10-day retention window.
+        account_service::create_temporary($old->id, 'REF-OLD', $now - 20 * DAYSECS, null, null, $now - 30 * DAYSECS);
+        account_service::create_temporary($recent->id, 'REF-NEW', $now - HOURSECS, null, null, $now - DAYSECS);
+        account_service::expire_due($now);
+        \auth_flexaccess\local\token_service::issue((int) $old->id, 'persistence', 3600, $now - 20 * DAYSECS);
+
+        $purged = account_service::purge_expired($now, 10 * DAYSECS);
+        $this->assertSame(1, $purged);
+        $this->assertFalse($DB->record_exists('auth_flexaccess_account', ['userid' => $old->id]));
+        $this->assertEquals(0, $DB->count_records('auth_flexaccess_token', ['userid' => $old->id]));
+        $this->assertEquals(1, $DB->get_field('user', 'deleted', ['id' => $old->id]));
+        // The recently expired account is retained.
+        $this->assertTrue($DB->record_exists('auth_flexaccess_account', ['userid' => $recent->id]));
+        // A zero retention disables purging.
+        $this->assertSame(0, account_service::purge_expired($now, 0));
+    }
+
+    /**
+     * is_convertible only accepts live temporary accounts.
+     *
+     * @return void
+     */
+    public function test_is_convertible(): void {
+        $this->resetAfterTest();
+        $now = 2000000;
+        $live = $this->getDataGenerator()->create_user();
+        $expired = $this->getDataGenerator()->create_user();
+        $authed = $this->getDataGenerator()->create_user();
+        account_service::create_temporary($live->id, 'REF-L', $now + DAYSECS, null, null, $now);
+        account_service::create_temporary($expired->id, 'REF-E', $now - 10, null, null, $now - DAYSECS);
+        account_service::create_authenticated($authed->id, 'REF-AU', $now);
+
+        $this->assertTrue(account_service::is_convertible((int) $live->id, $now));
+        $this->assertFalse(account_service::is_convertible((int) $expired->id, $now));
+        $this->assertFalse(account_service::is_convertible((int) $authed->id, $now));
+        $this->assertFalse(account_service::is_convertible(-1, $now));
+    }
+
+    /**
      * expire_due marks passed temporary accounts expired and suspends the user; others untouched.
      */
     public function test_expire_due(): void {

@@ -106,6 +106,8 @@ $string['setting:magicwindow'] = 'Magic-Login-Zeitfenster (Sekunden)';
 $string['setting:magicwindow_desc'] = 'Länge des gleitenden Zeitfensters für die Magic-Login-Ratenbegrenzung.';
 $string['setting:requireemailverification'] = 'E-Mail-Bestätigung verlangen';
 $string['setting:requireemailverification_desc'] = 'Wenn aktiviert, muss ein temporärer Nutzer, der sein Konto behalten möchte, seine E-Mail-Adresse über einen Bestätigungslink verifizieren, bevor das Konto dauerhaft wird.';
+$string['setting:retentiondays'] = 'Aufbewahrungsfrist (Tage)';
+$string['setting:retentiondays_desc'] = 'Tage, die ein abgelaufenes temporäres Konto aufbewahrt wird, bevor es samt Daten endgültig gelöscht wird. 0 = abgelaufene Konten unbegrenzt (gesperrt) behalten.';
 $string['settings:accounts'] = 'Accounts';
 $string['settings:mail'] = 'E-Mail-Queue';
 $string['settings:ratelimit'] = 'Ratenbegrenzung';
