@@ -390,6 +390,7 @@ final class api {
      * capped to the account's remaining validity so an expired account cannot be reactivated.
      *
      * @param string $email Email address (or username) entered by the user.
+     * @param string|null $clientip Client address for rate limiting, or null to skip it.
      * @param int|null $now Current time.
      * @return string 'sent' normally, or 'disabled' when the feature is off.
      */

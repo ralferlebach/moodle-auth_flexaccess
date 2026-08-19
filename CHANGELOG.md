@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.35 — 2026-08-19 — DSGVO-Privacy-Provider (§11) + PHPDoc-Fixes
+- **Privacy-Provider vervollstaendigt (§11):** deklariert/exportiert/loescht jetzt alle personenbezogenen Daten — `auth_flexaccess_account`, `_token`, `_mailqueue` (userid-gekoppelt, User-Kontext) sowie die User-Preference `auth_flexaccess_pendingemail` (unverifizierte E-Mail waehrend der Verstetigung). Vollstaendige Metadaten inkl. aller Feld-Beschreibungen; Export via `export_user_data` + `export_user_preferences`; alle Loeschpfade (Kontext, Nutzer, Userlist) entfernen zusaetzlich die Preference.
+- **PHPDoc-Fix:** fehlender `@param $clientip` bei `api::request_magic_login` (CI-PHPDoc-Checker).
+- Tests: `privacy_provider_test` (7) — Metadaten, Kontext-Ermittlung, Export inkl. Preference, `get_users_in_context`, alle drei Loeschpfade.
+
+## 0.1.35 — 2026-08-19 — DSGVO-Datenschutz-Provider vervollstaendigt (§11)
+- **Privacy-Provider vollstaendig**: Der Provider deckt jetzt auch die User-Preference `auth_flexaccess_pendingemail` (eine echte, noch unverifizierte E-Mail-Adresse) ab — Deklaration in den Metadaten, Export via `export_user_preferences()` UND Loeschung in allen drei Loesch-Pfaden (`delete_data_for_user`, `delete_data_for_all_users_in_context`, `delete_data_for_users`).
+- `get_contexts_for_userid()` erkennt den Nutzerkontext jetzt auch, wenn NUR die Pending-E-Mail-Preference (ohne Tabellenzeilen) vorhanden ist.
+- Tabellen-Metadaten vervollstaendigt: `_account` (+sourcecourseid/sourcecmid/timecreated/timeexpires), `_token` (+tokenhash [als Einweg-Hash gekennzeichnet]/timecreated/timeexpires/timeused), `_mailqueue` (+payloadjson/status/timecreated).
+- 12 neue `privacy:metadata:*`-Strings (en+de). Neuer Test `privacy_provider_test` (Metadaten, Kontext-Erkennung, Export inkl. Preference, Loeschung inkl. Preference).
+
 ## 0.1.34 — 2026-08-19 — Rate-Limiting der oeffentlichen Schreib-Endpoints (§5)
 - **Generischer Rate-Limiter** `local\rate_limiter` (Sliding-Window, App-Cache, zaehlt jeden Versuch).
 - **Magic-Login-Anfrage rate-limitiert** pro Client-Adresse (15/10min) UND pro Zieladresse (3/10min, gegen Inbox-Spam) — enumeration-still (immer 'sent', bei Limit einfach kein Versand). `request_magic_login()` nimmt jetzt die Client-Adresse; `magic.php` reicht `getremoteaddr()` durch.

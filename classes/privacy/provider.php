@@ -42,9 +42,13 @@ use core_privacy\local\request\writer;
 final class provider implements
     \core_privacy\local\metadata\provider,
     \core_privacy\local\request\core_userlist_provider,
-    \core_privacy\local\request\plugin\provider {
+    \core_privacy\local\request\plugin\provider,
+    \core_privacy\local\request\user_preference_provider {
     /** Tables owned by this plugin, all keyed by userid. */
     private const TABLES = ['auth_flexaccess_account', 'auth_flexaccess_token', 'auth_flexaccess_mailqueue'];
+
+    /** User preference holding a pending (unverified) email address during persistence. */
+    private const PENDING_PREF = 'auth_flexaccess_pendingemail';
 
     /**
      * Describe the personal data stored by this plugin.
@@ -58,16 +62,28 @@ final class provider implements
             'accounttype' => 'privacy:metadata:account:accounttype',
             'accountstate' => 'privacy:metadata:account:accountstate',
             'referencecode' => 'privacy:metadata:account:referencecode',
+            'sourcecourseid' => 'privacy:metadata:account:sourcecourseid',
+            'sourcecmid' => 'privacy:metadata:account:sourcecmid',
+            'timecreated' => 'privacy:metadata:account:timecreated',
+            'timeexpires' => 'privacy:metadata:account:timeexpires',
         ], 'privacy:metadata:account');
         $collection->add_database_table('auth_flexaccess_token', [
             'userid' => 'privacy:metadata:token:userid',
             'purpose' => 'privacy:metadata:token:purpose',
+            'tokenhash' => 'privacy:metadata:token:tokenhash',
+            'timecreated' => 'privacy:metadata:token:timecreated',
+            'timeexpires' => 'privacy:metadata:token:timeexpires',
+            'timeused' => 'privacy:metadata:token:timeused',
         ], 'privacy:metadata:token');
         $collection->add_database_table('auth_flexaccess_mailqueue', [
             'userid' => 'privacy:metadata:mail:userid',
             'recipient' => 'privacy:metadata:mail:recipient',
             'mailtype' => 'privacy:metadata:mail:mailtype',
+            'payloadjson' => 'privacy:metadata:mail:payloadjson',
+            'status' => 'privacy:metadata:mail:status',
+            'timecreated' => 'privacy:metadata:mail:timecreated',
         ], 'privacy:metadata:mail');
+        $collection->add_user_preference(self::PENDING_PREF, 'privacy:metadata:preference:pendingemail');
         return $collection;
     }
 
@@ -84,6 +100,9 @@ final class provider implements
         foreach (self::TABLES as $i => $table) {
             $checks[] = "EXISTS (SELECT 1 FROM {" . $table . "} t$i WHERE t$i.userid = ctx.instanceid)";
         }
+        $checks[] = "EXISTS (SELECT 1 FROM {user_preferences} up
+                              WHERE up.userid = ctx.instanceid AND up.name = :pref)";
+        $params['pref'] = self::PENDING_PREF;
         $sql = "SELECT ctx.id
                   FROM {context} ctx
                  WHERE ctx.contextlevel = :userlevel
@@ -139,6 +158,24 @@ final class provider implements
     }
 
     /**
+     * Export the pending-email preference for a user.
+     *
+     * @param int $userid The user id to export preferences for.
+     * @return void
+     */
+    public static function export_user_preferences(int $userid): void {
+        $pending = get_user_preferences(self::PENDING_PREF, null, $userid);
+        if ($pending !== null && $pending !== '') {
+            writer::export_user_preference(
+                'auth_flexaccess',
+                self::PENDING_PREF,
+                $pending,
+                get_string('privacy:metadata:preference:pendingemail', 'auth_flexaccess')
+            );
+        }
+    }
+
+    /**
      * Delete all user data for all users in the given context.
      *
      * @param \context $context The context to delete data for.
@@ -152,6 +189,7 @@ final class provider implements
         foreach (self::TABLES as $table) {
             $DB->delete_records($table, ['userid' => $context->instanceid]);
         }
+        unset_user_preference(self::PENDING_PREF, $context->instanceid);
     }
 
     /**
@@ -169,6 +207,7 @@ final class provider implements
             foreach (self::TABLES as $table) {
                 $DB->delete_records($table, ['userid' => $context->instanceid]);
             }
+            unset_user_preference(self::PENDING_PREF, $context->instanceid);
         }
     }
 
@@ -188,6 +227,7 @@ final class provider implements
             foreach (self::TABLES as $table) {
                 $DB->delete_records($table, ['userid' => $context->instanceid]);
             }
+            unset_user_preference(self::PENDING_PREF, $context->instanceid);
         }
     }
 }
