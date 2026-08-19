@@ -108,6 +108,7 @@ final class api {
      *
      * @param int $userid Logged-in user id.
      * @param string $email Captured e-mail address.
+     * @param string $password Password chosen by the present user so the account is re-loginnable.
      * @param string $firstname Optional first name to set.
      * @param string $lastname Optional last name to set.
      * @return string One of: activated, notapplicable, invalidemail, emailtaken.
@@ -115,10 +116,51 @@ final class api {
     public static function self_activate(
         int $userid,
         string $email,
+        string $password,
         string $firstname = '',
         string $lastname = ''
     ): string {
-        global $DB;
+        $status = self::finalise_identity(
+            $userid,
+            $email,
+            $firstname,
+            $lastname,
+            time(),
+            static function () use ($userid, $password): void {
+                global $DB;
+                $user = $DB->get_record('user', ['id' => $userid], '*', MUST_EXIST);
+                update_internal_user_password($user, $password);
+            }
+        );
+        return $status === 'ok' ? 'activated' : $status;
+    }
+
+    /**
+     * Convert a temporary account to an authenticated identity atomically.
+     *
+     * Validates the target email, rewrites the user's identity (email, username, name) and flips the
+     * FlexAccess account to authenticated inside a single transaction, so a partial failure never
+     * leaves a half-converted account (§13). An optional callback runs inside the same transaction to
+     * attach a credential (e.g. a password) atomically with the conversion.
+     *
+     * @param int $userid User id of the temporary account.
+     * @param string $email New login email.
+     * @param string $firstname Optional replacement first name.
+     * @param string $lastname Optional replacement last name.
+     * @param int $now Current time.
+     * @param callable|null $inside Optional callback executed within the transaction after conversion.
+     * @return string 'ok' on success, or 'notapplicable'|'invalidemail'|'emailtaken'.
+     */
+    private static function finalise_identity(
+        int $userid,
+        string $email,
+        string $firstname,
+        string $lastname,
+        int $now,
+        ?callable $inside = null
+    ): string {
+        global $CFG, $DB;
+        require_once($CFG->dirroot . '/user/lib.php');
 
         if (self::classify_user($userid) !== account_type::TEMPORARY_USER) {
             return 'notapplicable';
@@ -127,27 +169,32 @@ final class api {
         if ($email === '' || !validate_email($email)) {
             return 'invalidemail';
         }
-        $taken = $DB->record_exists_select(
-            'user',
-            'LOWER(email) = :email AND id <> :id AND deleted = 0',
-            ['email' => $email, 'id' => $userid]
-        );
-        if ($taken) {
+        if (!self::email_available($email, $userid)) {
             return 'emailtaken';
         }
 
+        $transaction = $DB->start_delegated_transaction();
         $user = $DB->get_record('user', ['id' => $userid], '*', MUST_EXIST);
         $user->email = $email;
+        $user->username = $email;
+        $user->emailstop = 0;
         if (trim($firstname) !== '') {
             $user->firstname = clean_param($firstname, PARAM_NOTAGS);
         }
         if (trim($lastname) !== '') {
             $user->lastname = clean_param($lastname, PARAM_NOTAGS);
         }
-        $DB->update_record('user', $user);
-
-        account_service::convert_to_authenticated($userid);
-        return 'activated';
+        if (method_exists(\core\user::class, 'update_user')) {
+            \core\user::update_user($user, false, true);
+        } else {
+            user_update_user($user, false, true);
+        }
+        account_service::convert_to_authenticated($userid, $now);
+        if ($inside !== null) {
+            $inside();
+        }
+        $transaction->allow_commit();
+        return 'ok';
     }
 
     /**
@@ -319,6 +366,7 @@ final class api {
             return 'emailtaken';
         }
 
+        $transaction = $DB->start_delegated_transaction();
         $user = $DB->get_record('user', ['id' => $userid], '*', MUST_EXIST);
         $user->email = $pending;
         $user->username = $pending;
@@ -331,6 +379,7 @@ final class api {
         }
         account_service::convert_to_authenticated($userid, $now);
         unset_user_preference('auth_flexaccess_pendingemail', $userid);
+        $transaction->allow_commit();
         return 'converted';
     }
 
@@ -737,10 +786,11 @@ final class api {
         ?string $type = null,
         ?string $state = null,
         int $page = 0,
-        int $perpage = 50
+        int $perpage = 50,
+        ?string $reference = null
     ): array {
         global $DB;
-        [$where, $params] = self::build_account_filter($query, $type, $state);
+        [$where, $params] = self::build_account_filter($query, $type, $state, $reference);
         $sql = "SELECT a.id, a.userid, a.accounttype, a.accountstate, a.timecreated, a.timeexpires,
                        u.firstname, u.lastname, u.email
                   FROM {auth_flexaccess_account} a
@@ -756,11 +806,17 @@ final class api {
      * @param string $query Substring matched against e-mail and name.
      * @param string|null $type Optional account-type filter.
      * @param string|null $state Optional account-state filter.
+     * @param string|null $reference Optional exact reference-number match.
      * @return int
      */
-    public static function count_accounts(string $query = '', ?string $type = null, ?string $state = null): int {
+    public static function count_accounts(
+        string $query = '',
+        ?string $type = null,
+        ?string $state = null,
+        ?string $reference = null
+    ): int {
         global $DB;
-        [$where, $params] = self::build_account_filter($query, $type, $state);
+        [$where, $params] = self::build_account_filter($query, $type, $state, $reference);
         $sql = "SELECT COUNT(a.id)
                   FROM {auth_flexaccess_account} a
                   JOIN {user} u ON u.id = a.userid
@@ -769,13 +825,36 @@ final class api {
     }
 
     /**
-     * Convert an account administratively (capability checks belong to the caller).
+     * Convert a temporary account administratively and mail the user a set-password link.
+     *
+     * Capability checks belong to the caller. Requires a real email because the temporary identity
+     * carries only a non-deliverable placeholder address.
      *
      * @param int $userid User id.
-     * @return bool Whether a conversion happened.
+     * @param string $email Real login email supplied by the administrator.
+     * @param string $firstname Optional replacement first name.
+     * @param string $lastname Optional replacement last name.
+     * @param int|null $now Current time.
+     * @return string 'converted' on success, or 'notapplicable'|'invalidemail'|'emailtaken'.
      */
-    public static function admin_convert(int $userid): bool {
-        return account_service::convert_to_authenticated($userid);
+    public static function admin_convert(
+        int $userid,
+        string $email,
+        string $firstname = '',
+        string $lastname = '',
+        ?int $now = null
+    ): string {
+        global $DB;
+        $now = $now ?? time();
+        $status = self::finalise_identity($userid, $email, $firstname, $lastname, $now);
+        if ($status !== 'ok') {
+            return $status;
+        }
+        // The user is not present, so mail them a link to set their own password. The identity now
+        // carries the administrator-supplied real email, so the message is deliverable.
+        $user = $DB->get_record('user', ['id' => $userid], '*', MUST_EXIST);
+        setnew_password_and_mail($user);
+        return 'converted';
     }
 
     /**
@@ -786,7 +865,12 @@ final class api {
      * @param string|null $state Optional account-state filter.
      * @return array{0: string, 1: array}
      */
-    private static function build_account_filter(string $query, ?string $type, ?string $state): array {
+    private static function build_account_filter(
+        string $query,
+        ?string $type,
+        ?string $state,
+        ?string $reference = null
+    ): array {
         global $DB;
         $where = ['u.deleted = 0'];
         $params = [];
@@ -799,15 +883,24 @@ final class api {
             $params['state'] = $state;
         }
         $query = trim($query);
-        if ($query !== '') {
-            $like = '%' . $DB->sql_like_escape($query) . '%';
-            $email = $DB->sql_like('u.email', ':qe', false);
-            $first = $DB->sql_like('u.firstname', ':qf', false);
-            $last = $DB->sql_like('u.lastname', ':ql', false);
-            $where[] = "($email OR $first OR $last)";
-            $params['qe'] = $like;
-            $params['qf'] = $like;
-            $params['ql'] = $like;
+        $reference = $reference !== null ? trim($reference) : '';
+        if ($query !== '' || $reference !== '') {
+            $clauses = [];
+            if ($query !== '') {
+                $like = '%' . $DB->sql_like_escape($query) . '%';
+                $clauses[] = $DB->sql_like('u.email', ':qe', false);
+                $clauses[] = $DB->sql_like('u.firstname', ':qf', false);
+                $clauses[] = $DB->sql_like('u.lastname', ':ql', false);
+                $params['qe'] = $like;
+                $params['qf'] = $like;
+                $params['ql'] = $like;
+            }
+            if ($reference !== '') {
+                // Reference numbers are exact identifiers, so match them exactly.
+                $clauses[] = 'a.referencecode = :qref';
+                $params['qref'] = $reference;
+            }
+            $where[] = '(' . implode(' OR ', $clauses) . ')';
         }
         return [implode(' AND ', $where), $params];
     }

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.38 — 2026-08-19 — Re-login-fähige Konversion, Transaktionen, Mailqueue-Limit, Referenzsuche (§7/§8/§13/§16/§36)
+- **§7/§8 Re-login-faehige Konversion:** `convert_to_authenticated` setzte bisher kein Passwort → konvertierte Konten waren nicht mehr anmeldbar. Neue gemeinsame `finalise_identity` (Validierung + Identitaets-Update + Konversion) plus:
+  - `self_activate($userid, $email, $password, …)` setzt jetzt ein vom anwesenden Nutzer gewaehltes Passwort → sofort re-login-faehig.
+  - `admin_convert($userid, $email, …)` verlangt eine echte E-Mail (temporaere Konten tragen nur eine Platzhalter-Adresse) und verschickt via `setnew_password_and_mail` einen Set-Password-Link; Rueckgabe jetzt Status-String.
+- **§13 Transaktionsgrenzen:** `finalise_identity` und `confirm_persistence` kapseln alle Schreibvorgaenge in eine `start_delegated_transaction` — kein halb-konvertiertes Konto bei Teilfehlern.
+- **§16 Mailqueue-Limit:** `mail_worker::process_due` holt hoechstens `MAX_BATCH = 200` Zeilen per DB-LIMIT statt des gesamten Backlogs.
+- **§36 Referenzsuche:** `search_accounts`/`count_accounts` akzeptieren einen `$reference`-Parameter; `build_account_filter` matcht rein numerische Referenznummern exakt.
+- Tests: self_activate mit Passwort + Re-Login-Nachweis, admin_convert mit E-Mail + Mail-Sink, Referenz-Suchtest.
+
 ## 0.1.37 — 2026-08-19 — Teilnehmerlisten-Sichtbarkeit durchgesetzt (§35, P0)
 - Keine Codeaenderung.
 

@@ -34,6 +34,11 @@ namespace auth_flexaccess\local;
  */
 final class mail_worker {
     /**
+     * Maximum queue rows fetched per run, so a large backlog cannot exhaust memory.
+     */
+    private const MAX_BATCH = 200;
+
+    /**
      * Queue table.
      */
     private const TABLE = 'auth_flexaccess_mailqueue';
@@ -99,7 +104,10 @@ final class mail_worker {
             self::TABLE,
             "status = :status AND nextrun <= :now",
             ['status' => 'queued', 'now' => $now],
-            'nextrun ASC'
+            'nextrun ASC',
+            '*',
+            0,
+            self::MAX_BATCH
         );
         $budget = mail_planner::sendable($remaining, count($due));
         $sent = 0;

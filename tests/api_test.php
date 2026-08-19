@@ -85,12 +85,15 @@ final class api_test extends \advanced_testcase {
         $user = $this->getDataGenerator()->create_user(['email' => 'temp-sa@example.com']);
         $this->make_account($user->id, account_type::TEMPORARY_USER, account_state::EPHEMERAL, time(), null);
 
-        $status = \auth_flexaccess\api::self_activate($user->id, 'Keep.Me@example.com', 'Kim', 'Keep');
+        $status = \auth_flexaccess\api::self_activate($user->id, 'Keep.Me@example.com', 'Str0ng-Pass!23', 'Kim', 'Keep');
         $this->assertSame('activated', $status);
         $this->assertSame(account_type::AUTHENTICATED_USER, \auth_flexaccess\api::classify_user($user->id));
-        $fresh = $DB->get_record('user', ['id' => $user->id]);
+        $fresh = $DB->get_record('user', ['id' => $user->id], '*', MUST_EXIST);
         $this->assertSame('keep.me@example.com', $fresh->email);
+        $this->assertSame('keep.me@example.com', $fresh->username);
         $this->assertSame('Kim', $fresh->firstname);
+        // The account is now re-loginnable with the chosen password.
+        $this->assertTrue(validate_internal_user_password($fresh, 'Str0ng-Pass!23'));
     }
 
     /**
@@ -102,7 +105,7 @@ final class api_test extends \advanced_testcase {
         $user = $this->getDataGenerator()->create_user(['email' => 'temp-b@example.com']);
         $this->make_account($user->id, account_type::TEMPORARY_USER, account_state::EPHEMERAL, time(), null);
 
-        $this->assertSame('emailtaken', \auth_flexaccess\api::self_activate($user->id, 'taken@example.com'));
+        $this->assertSame('emailtaken', \auth_flexaccess\api::self_activate($user->id, 'taken@example.com', 'Str0ng-Pass!23'));
         $this->assertSame(account_type::TEMPORARY_USER, \auth_flexaccess\api::classify_user($user->id));
     }
 
@@ -113,7 +116,7 @@ final class api_test extends \advanced_testcase {
         $this->resetAfterTest();
         $user = $this->getDataGenerator()->create_user();
         $this->make_account($user->id, account_type::TEMPORARY_USER, account_state::EPHEMERAL, time(), null);
-        $this->assertSame('invalidemail', \auth_flexaccess\api::self_activate($user->id, 'not-an-email'));
+        $this->assertSame('invalidemail', \auth_flexaccess\api::self_activate($user->id, 'not-an-email', 'Str0ng-Pass!23'));
     }
 
     /**
@@ -122,7 +125,7 @@ final class api_test extends \advanced_testcase {
     public function test_self_activate_not_applicable(): void {
         $this->resetAfterTest();
         $user = $this->getDataGenerator()->create_user(['email' => 'auth@example.com']);
-        $this->assertSame('notapplicable', \auth_flexaccess\api::self_activate($user->id, 'new@example.com'));
+        $this->assertSame('notapplicable', \auth_flexaccess\api::self_activate($user->id, 'new@example.com', 'Str0ng-Pass!23'));
     }
 
     /**
@@ -147,10 +150,41 @@ final class api_test extends \advanced_testcase {
         $this->assertCount(1, $found);
         $this->assertSame('bob@example.com', reset($found)->email);
 
-        // Admin conversion flips a temporary account.
-        $this->assertTrue(\auth_flexaccess\api::admin_convert($alice->id));
+        // Admin conversion flips a temporary account and mails a set-password link to the real address.
+        $sink = $this->redirectEmails();
+        $this->assertSame('converted', \auth_flexaccess\api::admin_convert($alice->id, 'alice.real@example.com'));
         $this->assertSame(account_type::AUTHENTICATED_USER, \auth_flexaccess\api::classify_user($alice->id));
-        $this->assertFalse(\auth_flexaccess\api::admin_convert($carol->id));
+        $messages = $sink->get_messages();
+        $this->assertGreaterThanOrEqual(1, count($messages));
+        $this->assertSame('alice.real@example.com', $messages[0]->to);
+        $sink->close();
+        // An already-authenticated account is not applicable.
+        $this->assertSame('notapplicable', \auth_flexaccess\api::admin_convert($carol->id, 'carol.real@example.com'));
+    }
+
+    /**
+     * Accounts can be found by their exact numeric reference number.
+     */
+    public function test_search_by_reference_number(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $now = time();
+        $user = $this->getDataGenerator()->create_user(['email' => 'ref@example.com', 'firstname' => 'Ref']);
+        $DB->insert_record('auth_flexaccess_account', (object) [
+            'userid' => $user->id,
+            'accounttype' => account_type::TEMPORARY_USER,
+            'accountstate' => account_state::EPHEMERAL,
+            'referencecode' => '0123456789',
+            'timecreated' => $now,
+            'timeexpires' => null,
+            'timemodified' => $now,
+        ]);
+
+        $found = \auth_flexaccess\api::search_accounts('', null, null, 0, 50, '0123456789');
+        $this->assertCount(1, $found);
+        $this->assertSame((int) $user->id, (int) reset($found)->userid);
+        $this->assertSame(1, \auth_flexaccess\api::count_accounts('', null, null, '0123456789'));
+        $this->assertSame(0, \auth_flexaccess\api::count_accounts('', null, null, '9999999999'));
     }
 
     /**
