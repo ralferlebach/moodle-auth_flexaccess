@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.9.4 — 2026-08-19 — CI-Härtung + Upgrade-Robustheit (Plugin-Isolation, PHPDoc, reset_role_capabilities)
+- **CI-Fix (Plugin-Isolation):** `account_service::convert_to_authenticated` ruft das enrol-eigene `participant_role::unrestrict()` jetzt nur noch via `class_exists`-Guard auf. So laeuft die auth-Testsuite isoliert (ohne enrol) ohne "class not found", ohne die Produktionslogik zu aendern.
+
 ## 0.9.3 — 2026-08-19 — Welle 3 Strom F: Quick-Registration neu spezifiziert (P0 #5)
 - **P0 #5 — E-Mail-Freischaltung:** Quick-Registration erzeugt jetzt ein *provisorisches* temporaeres Konto (mit E-Mail und Passwort, dadurch bereits eingeschraenkt per Welle-2-Restriktion) und bindet die Aufwertung zu einem *regulaeren* Konto an eine E-Mail-Aktivierung. Der bestehende Persistenz-Funnel (`request_persistence` -> `confirm_persistence`) wird wiederverwendet; ist die E-Mail-Verifizierung deaktiviert, konvertiert der Vorgang sofort.
 - `register.php` behandelt den neuen Status `verificationsent` (sofortiger Zugang + Aktivierungshinweis) und reicht ein optionales Zugangspasswort durch. Das Formular zeigt das Zugangspasswort-Feld nur bei aktivem Passwort-Gate.

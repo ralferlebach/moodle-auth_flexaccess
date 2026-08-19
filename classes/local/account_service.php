@@ -140,7 +140,11 @@ final class account_service {
         // Confirm the Moodle user; enrolment and its duration are intentionally left untouched.
         $DB->set_field('user', 'confirmed', 1, ['id' => $userid]);
         // The account is now a full identity, so lift the anonymous-visitor site restrictions.
-        \enrol_flexaccess\local\participant_role::unrestrict($userid);
+        // enrol_flexaccess owns that role; guard the call so auth does not hard-depend on enrol
+        // (enrol depends on auth, not the reverse) and unit tests can run auth in isolation.
+        if (class_exists('\enrol_flexaccess\local\participant_role')) {
+            \enrol_flexaccess\local\participant_role::unrestrict($userid);
+        }
         return true;
     }
 
