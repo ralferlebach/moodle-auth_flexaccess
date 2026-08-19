@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.9.5 — 2026-08-19 — Welle 3 Strom E: administrierbare Kategorie-Policies (P0 #8) + Cleanup
+- Cleanup: die Docblocks der geplanten Tasks (`expire_accounts`, `process_mail_queue`) beschreiben jetzt ihr tatsaechliches Verhalten statt „scaffold".
+
 ## 0.9.4 — 2026-08-19 — CI-Härtung + Upgrade-Robustheit (Plugin-Isolation, PHPDoc, reset_role_capabilities)
 - **CI-Fix (Plugin-Isolation):** `account_service::convert_to_authenticated` ruft das enrol-eigene `participant_role::unrestrict()` jetzt nur noch via `class_exists`-Guard auf. So laeuft die auth-Testsuite isoliert (ohne enrol) ohne "class not found", ohne die Produktionslogik zu aendern.
 

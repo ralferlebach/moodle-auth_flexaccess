@@ -25,7 +25,7 @@
 namespace auth_flexaccess\task;
 
 /**
- * Mail queue task scaffold.
+ * Scheduled task that delivers queued FlexAccess mail (rendering tokens at delivery) and prunes rate hits.
  *
  * @package    auth_flexaccess
  */

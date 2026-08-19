@@ -25,7 +25,7 @@
 namespace auth_flexaccess\task;
 
 /**
- * Account expiry task scaffold.
+ * Scheduled task that expires due temporary accounts and purges them after the retention window.
  *
  * @package    auth_flexaccess
  */
