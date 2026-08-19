@@ -64,6 +64,18 @@ final class api {
      * Maximum magic-login requests per target address within the window (anti inbox-spam).
      */
     private const MAGIC_MAX_PER_EMAIL = 3;
+
+    /**
+     * Read a positive integer plugin setting, falling back to a default when unset or non-positive.
+     *
+     * @param string $name Setting name within auth_flexaccess.
+     * @param int $default Fallback value.
+     * @return int
+     */
+    private static function config_int(string $name, int $default): int {
+        $value = (int) get_config('auth_flexaccess', $name);
+        return $value > 0 ? $value : $default;
+    }
     /**
      * Account table.
      */
@@ -455,29 +467,21 @@ final class api {
         }
 
         // Rate limit per client and per target address. Both silently report success so the endpoint
-        // never reveals whether an account exists and cannot be used to spam a victim's inbox.
+        // never reveals whether an account exists and cannot be used to spam a victim's inbox. Limits
+        // are admin-configurable; the constants are the fallback defaults.
+        $maxperip = self::config_int('magicmaxperip', self::MAGIC_MAX_PER_IP);
+        $maxperemail = self::config_int('magicmaxperemail', self::MAGIC_MAX_PER_EMAIL);
+        $window = self::config_int('magicwindow', self::MAGIC_RATE_WINDOW);
         if (
-            ($clientip !== null && local\rate_limiter::too_many(
-                'magic_ip',
-                $clientip,
-                self::MAGIC_MAX_PER_IP,
-                self::MAGIC_RATE_WINDOW,
-                $now
-            ))
-            || local\rate_limiter::too_many(
-                'magic_email',
-                $email,
-                self::MAGIC_MAX_PER_EMAIL,
-                self::MAGIC_RATE_WINDOW,
-                $now
-            )
+            ($clientip !== null && local\rate_limiter::too_many('magic_ip', $clientip, $maxperip, $window, $now))
+            || local\rate_limiter::too_many('magic_email', $email, $maxperemail, $window, $now)
         ) {
             return 'sent';
         }
         if ($clientip !== null) {
-            local\rate_limiter::record('magic_ip', $clientip, self::MAGIC_RATE_WINDOW, $now);
+            local\rate_limiter::record('magic_ip', $clientip, $window, $now);
         }
-        local\rate_limiter::record('magic_email', $email, self::MAGIC_RATE_WINDOW, $now);
+        local\rate_limiter::record('magic_email', $email, $window, $now);
 
         $user = $DB->get_record_select(
             'user',

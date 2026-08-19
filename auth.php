@@ -105,11 +105,4 @@ class auth_plugin_flexaccess extends auth_plugin_base {
             'name' => get_string('accessprovider', 'auth_flexaccess'),
         ]];
     }
-
-    /**
-     * Login page hook. Kept intentionally non-redirecting in the scaffold.
-     */
-    public function pre_loginpage_hook(): void {
-        // Phase 1: implement only after validated target resolution and redirect-loop tests exist.
-    }
 }

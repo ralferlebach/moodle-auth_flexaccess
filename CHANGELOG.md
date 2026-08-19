@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.39 — 2026-08-19 — Konfigurierbare Rate-Limits, Cleanup, i18n, Backup/Restore, CI-Härtung
+- **§5:** Magic-Login-Rate-Limits admin-konfigurierbar (`magicmaxperip`, `magicmaxperemail`, `magicwindow`); Konstanten bleiben Fallback-Defaults.
+- **§3 Cleanup:** ungenutzten `pre_loginpage_hook`-Override entfernt (Basisklasse liefert No-op); ungenutzte Capabilities `auth/flexaccess:manageaccounts` und `:convertaccounts` entfernt (werden beim Upgrade automatisch abgeraeumt).
+
 ## 0.1.38 — 2026-08-19 — Re-login-fähige Konversion, Transaktionen, Mailqueue-Limit, Referenzsuche (§7/§8/§13/§16/§36)
 - **§7/§8 Re-login-faehige Konversion:** `convert_to_authenticated` setzte bisher kein Passwort → konvertierte Konten waren nicht mehr anmeldbar. Neue gemeinsame `finalise_identity` (Validierung + Identitaets-Update + Konversion) plus:
   - `self_activate($userid, $email, $password, …)` setzt jetzt ein vom anwesenden Nutzer gewaehltes Passwort → sofort re-login-faehig.

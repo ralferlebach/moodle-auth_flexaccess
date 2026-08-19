@@ -79,4 +79,31 @@ if ($ADMIN->fulltree) {
         100,
         [10 => '10', 50 => '50', 100 => '100', 500 => '500', 0 => get_string('unlimited', 'auth_flexaccess')]
     ));
+
+    $settings->add(new admin_setting_heading(
+        'auth_flexaccess/ratelimit',
+        get_string('settings:ratelimit', 'auth_flexaccess'),
+        get_string('settings:ratelimit_desc', 'auth_flexaccess')
+    ));
+    $settings->add(new admin_setting_configtext(
+        'auth_flexaccess/magicmaxperip',
+        get_string('setting:magicmaxperip', 'auth_flexaccess'),
+        get_string('setting:magicmaxperip_desc', 'auth_flexaccess'),
+        15,
+        PARAM_INT
+    ));
+    $settings->add(new admin_setting_configtext(
+        'auth_flexaccess/magicmaxperemail',
+        get_string('setting:magicmaxperemail', 'auth_flexaccess'),
+        get_string('setting:magicmaxperemail_desc', 'auth_flexaccess'),
+        3,
+        PARAM_INT
+    ));
+    $settings->add(new admin_setting_configtext(
+        'auth_flexaccess/magicwindow',
+        get_string('setting:magicwindow', 'auth_flexaccess'),
+        get_string('setting:magicwindow_desc', 'auth_flexaccess'),
+        600,
+        PARAM_INT
+    ));
 }

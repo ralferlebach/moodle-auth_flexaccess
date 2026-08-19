@@ -25,16 +25,4 @@
 defined('MOODLE_INTERNAL') || die();
 
 $capabilities = [
-    'auth/flexaccess:manageaccounts' => [
-        'riskbitmask' => RISK_PERSONAL,
-        'captype' => 'write',
-        'contextlevel' => CONTEXT_SYSTEM,
-        'archetypes' => ['manager' => CAP_ALLOW],
-    ],
-    'auth/flexaccess:convertaccounts' => [
-        'riskbitmask' => RISK_PERSONAL,
-        'captype' => 'write',
-        'contextlevel' => CONTEXT_SYSTEM,
-        'archetypes' => ['manager' => CAP_ALLOW],
-    ],
 ];
