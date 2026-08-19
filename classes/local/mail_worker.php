@@ -123,6 +123,41 @@ final class mail_worker {
     }
 
     /**
+     * Issue a fresh token and render a token job's subject and body at delivery time.
+     *
+     * The secret is created here, immediately before sending, so it is never persisted in the queue.
+     * Any previously issued (undelivered) token for the same purpose is revoked first, so a retry
+     * leaves exactly one live secret. The lifetime is re-capped against the account's current
+     * remaining validity to preserve SEC-03 even if the job waited in the queue.
+     *
+     * @param \stdClass $job Queue row.
+     * @param array $payload Decoded token payload (kind, purpose, ttl).
+     * @param int $now Current time.
+     * @return array{0: string, 1: string, 2: string} Subject, plain body, HTML body.
+     */
+    private static function render_token_job(\stdClass $job, array $payload, int $now): array {
+        $userid = (int) $job->userid;
+        $purpose = (string) ($payload['purpose'] ?? '');
+        $ttl = (int) ($payload['ttl'] ?? 0);
+        $page = \auth_flexaccess\local\mail_renderer::page_for_purpose($purpose);
+        if ($page === null || $userid === 0 || $ttl <= 0) {
+            return ['', '', ''];
+        }
+
+        // Re-cap the lifetime against the account's current remaining validity (SEC-03).
+        $account = \auth_flexaccess\api::get_account($userid);
+        if ($account && $account->timeexpires !== null) {
+            $ttl = min($ttl, max(1, (int) $account->timeexpires - $now));
+        }
+
+        \auth_flexaccess\local\token_service::revoke_pending($userid, $purpose);
+        $token = \auth_flexaccess\local\token_service::issue($userid, $purpose, $ttl, $now);
+        $link = (new \moodle_url($page, ['token' => $token]))->out(false);
+
+        return \auth_flexaccess\local\mail_renderer::render((string) $job->mailtype, $link);
+    }
+
+    /**
      * Deliver a single job, updating its status.
      *
      * @param \stdClass $job Queue row.
@@ -133,9 +168,13 @@ final class mail_worker {
         global $DB;
         try {
             $payload = json_decode((string) $job->payloadjson, true);
-            $subject = is_array($payload) ? (string) ($payload['subject'] ?? '') : '';
-            $body = is_array($payload) ? (string) ($payload['body'] ?? '') : '';
-            $bodyhtml = is_array($payload) ? (string) ($payload['bodyhtml'] ?? '') : '';
+            if (is_array($payload) && ($payload['kind'] ?? '') === 'token') {
+                [$subject, $body, $bodyhtml] = self::render_token_job($job, $payload, $now);
+            } else {
+                $subject = is_array($payload) ? (string) ($payload['subject'] ?? '') : '';
+                $body = is_array($payload) ? (string) ($payload['body'] ?? '') : '';
+                $bodyhtml = is_array($payload) ? (string) ($payload['bodyhtml'] ?? '') : '';
+            }
             if ($subject === '' || (string) $job->recipient === '') {
                 // A malformed or legacy job that this version can no longer deliver; drop it
                 // without retrying so it cannot block the queue.

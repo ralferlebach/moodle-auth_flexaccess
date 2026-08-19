@@ -125,7 +125,12 @@ if ($confirm && confirm_sesskey()) {
     if ($keyrequired && \enrol_flexaccess\local\access_key_rate::is_blocked($rateid)) {
         $failure = 'keyblocked';
     } else {
-        $result = \enrol_flexaccess\local\access_controller::grant_temporary_access($courseid, null, $accesskey);
+        $result = \enrol_flexaccess\local\access_controller::grant_temporary_access(
+            $courseid,
+            null,
+            $accesskey,
+            getremoteaddr()
+        );
         if ($result->status === 'granted') {
             \enrol_flexaccess\local\access_key_rate::reset($rateid);
             $user = $DB->get_record('user', ['id' => $result->userid], '*', MUST_EXIST);

@@ -17,11 +17,12 @@
 namespace auth_flexaccess\local;
 
 /**
- * Generic sliding-window action rate limiter for anonymous, resource-creating endpoints.
+ * Atomic, cluster-safe sliding-window action rate limiter.
  *
- * Counts every action (not only failures) per opaque identifier within a bucket, and reports when a
- * limit is reached. Backed by the application cache so it holds across session-less anonymous
- * requests. Callers choose NAT-friendly limits so a shared classroom address is not blocked.
+ * Each action is a durable row in {@see self::TABLE}, so concurrent requests never lose increments
+ * the way a cache read-modify-write can, and the counter is shared across all nodes of a Moodle
+ * cluster through the database. The preferred entry point is {@see self::hit()}, which records the
+ * action and re-reads the window in one step so the decision is race-free.
  *
  * @package    auth_flexaccess
  * @copyright  2026 Ralf Erlebach
@@ -29,10 +30,34 @@ namespace auth_flexaccess\local;
  */
 final class rate_limiter {
     /**
-     * Whether the identifier has reached the limit within the window.
+     * Backing table.
+     */
+    private const TABLE = 'auth_flexaccess_ratehit';
+
+    /**
+     * Atomically record an action and report whether the identifier is now over the limit.
      *
-     * @param string $bucket Logical action name (e.g. 'quickreg', 'magic_ip').
+     * The row is inserted first and the window is counted including it, so parallel requests cannot
+     * slip past by observing a stale count. Exactly $max actions are allowed within the window.
+     *
+     * @param string $bucket Logical action name (e.g. 'quickreg', 'temp_ip').
      * @param string $identifier Opaque per-actor identifier (e.g. client address or email).
+     * @param int $max Maximum actions allowed within the window.
+     * @param int $window Sliding window length in seconds.
+     * @param int|null $now Current time.
+     * @return bool True when the limit has been exceeded (the action should be refused).
+     */
+    public static function hit(string $bucket, string $identifier, int $max, int $window, ?int $now = null): bool {
+        $now = $now ?? time();
+        self::insert($bucket, $identifier, $now);
+        return self::count($bucket, $identifier, $window, $now) > $max;
+    }
+
+    /**
+     * Whether the identifier has reached the limit within the window (read-only, does not record).
+     *
+     * @param string $bucket Logical action name.
+     * @param string $identifier Opaque per-actor identifier.
      * @param int $max Maximum actions allowed within the window.
      * @param int $window Sliding window length in seconds.
      * @param int|null $now Current time.
@@ -46,11 +71,7 @@ final class rate_limiter {
         ?int $now = null
     ): bool {
         $now = $now ?? time();
-        $entry = self::cache()->get(self::key($bucket, $identifier));
-        if (!is_array($entry) || $now - (int) $entry['since'] > $window) {
-            return false;
-        }
-        return (int) $entry['count'] >= $max;
+        return self::count($bucket, $identifier, $window, $now) >= $max;
     }
 
     /**
@@ -58,54 +79,79 @@ final class rate_limiter {
      *
      * @param string $bucket Logical action name.
      * @param string $identifier Opaque per-actor identifier.
-     * @param int $window Sliding window length in seconds.
+     * @param int $window Unused; retained for call-site compatibility.
      * @param int|null $now Current time.
      * @return void
      */
     public static function record(string $bucket, string $identifier, int $window, ?int $now = null): void {
-        $now = $now ?? time();
-        $cache = self::cache();
-        $key = self::key($bucket, $identifier);
-        $entry = $cache->get($key);
-        if (!is_array($entry) || $now - (int) $entry['since'] > $window) {
-            $entry = ['count' => 0, 'since' => $now];
-        }
-        $entry['count'] = (int) $entry['count'] + 1;
-        $cache->set($key, $entry);
+        self::insert($bucket, $identifier, $now ?? time());
     }
 
     /**
-     * Clear the counter for an identifier.
+     * Clear all hits for an identifier.
      *
      * @param string $bucket Logical action name.
      * @param string $identifier Opaque per-actor identifier.
      * @return void
      */
     public static function reset(string $bucket, string $identifier): void {
-        self::cache()->delete(self::key($bucket, $identifier));
+        global $DB;
+        $DB->delete_records(self::TABLE, ['bucket' => $bucket, 'identifier' => self::hash($identifier)]);
     }
 
     /**
-     * Build the opaque cache key for a bucket and identifier.
+     * Delete hit rows older than the given time (housekeeping).
+     *
+     * @param int $olderthan Delete rows with timecreated below this value.
+     * @return void
+     */
+    public static function prune(int $olderthan): void {
+        global $DB;
+        $DB->delete_records_select(self::TABLE, 'timecreated < :cutoff', ['cutoff' => $olderthan]);
+    }
+
+    /**
+     * Insert a single hit row.
      *
      * @param string $bucket Logical action name.
      * @param string $identifier Opaque per-actor identifier.
-     * @return string
+     * @param int $now Current time.
+     * @return void
      */
-    private static function key(string $bucket, string $identifier): string {
-        return sha1($bucket . '|' . $identifier);
+    private static function insert(string $bucket, string $identifier, int $now): void {
+        global $DB;
+        $DB->insert_record(self::TABLE, (object) [
+            'bucket' => $bucket,
+            'identifier' => self::hash($identifier),
+            'timecreated' => $now,
+        ]);
     }
 
     /**
-     * The ad-hoc application cache used to hold counters.
+     * Count hits for an identifier within the window.
      *
-     * @return \cache
+     * @param string $bucket Logical action name.
+     * @param string $identifier Opaque per-actor identifier.
+     * @param int $window Sliding window length in seconds.
+     * @param int $now Current time.
+     * @return int
      */
-    private static function cache(): \cache {
-        return \cache::make_from_params(
-            \cache_store::MODE_APPLICATION,
-            'auth_flexaccess',
-            'ratelimit'
+    private static function count(string $bucket, string $identifier, int $window, int $now): int {
+        global $DB;
+        return $DB->count_records_select(
+            self::TABLE,
+            'bucket = :bucket AND identifier = :identifier AND timecreated > :cutoff',
+            ['bucket' => $bucket, 'identifier' => self::hash($identifier), 'cutoff' => $now - $window]
         );
+    }
+
+    /**
+     * Hash an identifier to a fixed-width, non-reversible key.
+     *
+     * @param string $identifier Raw identifier.
+     * @return string
+     */
+    private static function hash(string $identifier): string {
+        return sha1($identifier);
     }
 }

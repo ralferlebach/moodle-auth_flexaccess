@@ -44,5 +44,7 @@ final class process_mail_queue extends \core\task\scheduled_task {
      */
     public function execute(): void {
         \auth_flexaccess\local\mail_worker::run();
+        // Housekeeping: drop rate-limit hit rows older than a day so the table stays small.
+        \auth_flexaccess\local\rate_limiter::prune(time() - DAYSECS);
     }
 }

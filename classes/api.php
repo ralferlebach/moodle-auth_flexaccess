@@ -326,13 +326,13 @@ final class api {
 
         set_user_preference('auth_flexaccess_pendingemail', $email, $userid);
         // SEC-03: the verification link must not outlive the temporary account it would revive.
+        // The token itself is issued by the worker at delivery time (never persisted in the queue).
         $ttl = token_service::DEFAULT_TTL;
         $account = self::get_account($userid);
         if ($account && $account->timeexpires !== null) {
             $ttl = min($ttl, max(1, (int) $account->timeexpires - $now));
         }
-        $token = token_service::issue($userid, 'persistence', $ttl, $now);
-        self::send_persistence_verification($userid, $email, $token);
+        self::queue_token_mail($userid, $email, mail_kind::VERIFICATION, 'persistence', $ttl, null, $now);
         return 'verificationsent';
     }
 
@@ -434,6 +434,46 @@ final class api {
     }
 
     /**
+     * Queue a token-bearing mail without persisting the secret.
+     *
+     * Only the mail type, recipient, subject user and token parameters are stored. The token itself
+     * is created, hashed and rendered into the link by the worker at delivery time, so no plaintext
+     * secret is ever written to {@see self::QUEUE_TABLE} or exposed via the privacy export.
+     *
+     * @param int $userid Subject user id (the token owner).
+     * @param string $recipient Destination email address.
+     * @param string $mailtype One of the mail_kind values.
+     * @param string $purpose Token purpose to issue at delivery time.
+     * @param int $ttl Token lifetime in seconds.
+     * @param int|null $nextrun Earliest delivery time.
+     * @param int|null $now Current time.
+     * @return int Queue row id.
+     */
+    public static function queue_token_mail(
+        int $userid,
+        string $recipient,
+        string $mailtype,
+        string $purpose,
+        int $ttl,
+        ?int $nextrun = null,
+        ?int $now = null
+    ): int {
+        global $DB;
+        $now = $now ?? time();
+        return (int) $DB->insert_record(self::QUEUE_TABLE, (object) [
+            'userid' => $userid,
+            'recipient' => $recipient,
+            'mailtype' => $mailtype,
+            'payloadjson' => json_encode(['kind' => 'token', 'purpose' => $purpose, 'ttl' => $ttl]),
+            'status' => 'queued',
+            'attempts' => 0,
+            'timecreated' => $now,
+            'nextrun' => $nextrun ?? $now,
+            'timesent' => null,
+        ]);
+    }
+
+    /**
      * Whether passwordless magic-login links are offered.
      *
      * @return bool
@@ -466,22 +506,17 @@ final class api {
             return 'sent';
         }
 
-        // Rate limit per client and per target address. Both silently report success so the endpoint
-        // never reveals whether an account exists and cannot be used to spam a victim's inbox. Limits
-        // are admin-configurable; the constants are the fallback defaults.
+        // Rate limit per client and per target address (atomic, DB-backed). Both silently report
+        // success so the endpoint never reveals whether an account exists and cannot be used to spam
+        // a victim's inbox. Limits are admin-configurable; the constants are the fallback defaults.
         $maxperip = self::config_int('magicmaxperip', self::MAGIC_MAX_PER_IP);
         $maxperemail = self::config_int('magicmaxperemail', self::MAGIC_MAX_PER_EMAIL);
         $window = self::config_int('magicwindow', self::MAGIC_RATE_WINDOW);
-        if (
-            ($clientip !== null && local\rate_limiter::too_many('magic_ip', $clientip, $maxperip, $window, $now))
-            || local\rate_limiter::too_many('magic_email', $email, $maxperemail, $window, $now)
-        ) {
+        $blocked = ($clientip !== null && local\rate_limiter::hit('magic_ip', $clientip, $maxperip, $window, $now));
+        $blocked = local\rate_limiter::hit('magic_email', $email, $maxperemail, $window, $now) || $blocked;
+        if ($blocked) {
             return 'sent';
         }
-        if ($clientip !== null) {
-            local\rate_limiter::record('magic_ip', $clientip, $window, $now);
-        }
-        local\rate_limiter::record('magic_email', $email, $window, $now);
 
         $user = $DB->get_record_select(
             'user',
@@ -502,20 +537,13 @@ final class api {
                     $ttl = min($ttl, max(0, (int) $account->timeexpires - $now));
                 }
                 if ($ttl > 0) {
-                    $token = token_service::issue((int) $user->id, 'magiclogin', $ttl, $now);
-                    $url = new \moodle_url('/auth/flexaccess/magic.php', ['token' => $token]);
-                    $link = $url->out(false);
-                    self::queue_mail(
+                    self::queue_token_mail(
                         (int) $user->id,
                         $user->email,
-                        get_string('magic:emailsubject', 'auth_flexaccess'),
-                        get_string('magic:emailbody', 'auth_flexaccess', $link),
-                        \html_writer::tag('p', get_string(
-                            'magic:emailbody',
-                            'auth_flexaccess',
-                            \html_writer::link($link, $link)
-                        )),
                         mail_kind::MAGIC_LOGIN,
+                        'magiclogin',
+                        $ttl,
+                        $now,
                         $now
                     );
                 }
@@ -548,31 +576,6 @@ final class api {
             return null;
         }
         return $userid;
-    }
-
-    /**
-     * Email a persistence verification link to the pending address.
-     *
-     * @param int $userid User the link belongs to.
-     * @param string $email Pending email address to send to.
-     * @param string $token Clear-text verification token.
-     * @return void
-     */
-    private static function send_persistence_verification(int $userid, string $email, string $token): void {
-        $url = new \moodle_url('/auth/flexaccess/persist.php', ['token' => $token]);
-        $link = $url->out(false);
-        self::queue_mail(
-            $userid,
-            $email,
-            get_string('persist:emailsubject', 'auth_flexaccess'),
-            get_string('persist:emailbody', 'auth_flexaccess', $link),
-            \html_writer::tag('p', get_string(
-                'persist:emailbody',
-                'auth_flexaccess',
-                \html_writer::link($link, $link)
-            )),
-            mail_kind::VERIFICATION
-        );
     }
 
     /**

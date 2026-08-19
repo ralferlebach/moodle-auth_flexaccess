@@ -66,5 +66,20 @@
         <INDEX NAME="sent_ix" UNIQUE="false" FIELDS="timesent"/>
       </INDEXES>
     </TABLE>
+    <TABLE NAME="auth_flexaccess_ratehit" COMMENT="Atomic sliding-window rate-limit hits">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="bucket" TYPE="char" LENGTH="64" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="identifier" TYPE="char" LENGTH="40" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="bucket_identifier_time" UNIQUE="false" FIELDS="bucket, identifier, timecreated"/>
+        <INDEX NAME="time_ix" UNIQUE="false" FIELDS="timecreated"/>
+      </INDEXES>
+    </TABLE>
   </TABLES>
 </XMLDB>

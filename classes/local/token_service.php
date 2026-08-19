@@ -70,6 +70,25 @@ final class token_service {
     }
 
     /**
+     * Revoke all unused tokens for a user and purpose.
+     *
+     * Called immediately before issuing a fresh token so that a delivery retry never leaves more
+     * than one live secret for the same purpose.
+     *
+     * @param int $userid User id.
+     * @param string $purpose Token purpose.
+     * @return void
+     */
+    public static function revoke_pending(int $userid, string $purpose): void {
+        global $DB;
+        $DB->delete_records_select(
+            self::TABLE,
+            'userid = :userid AND purpose = :purpose AND timeused IS NULL',
+            ['userid' => $userid, 'purpose' => $purpose]
+        );
+    }
+
+    /**
      * Verify a token without consuming it.
      *
      * @param string $secret Clear-text token supplied by the user.

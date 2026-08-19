@@ -28,6 +28,26 @@ use auth_flexaccess\local\rate_limiter;
  */
 final class rate_limiter_test extends \advanced_testcase {
     /**
+     * hit() records the action and reports over-limit atomically; identifiers are independent.
+     *
+     * @return void
+     */
+    public function test_hit_records_and_reports_over_limit(): void {
+        $this->resetAfterTest();
+        $now = 2000000;
+        // Exactly $max actions are allowed; the next is over the limit.
+        $this->assertFalse(rate_limiter::hit('h', 'a', 3, 60, $now));
+        $this->assertFalse(rate_limiter::hit('h', 'a', 3, 60, $now));
+        $this->assertFalse(rate_limiter::hit('h', 'a', 3, 60, $now));
+        $this->assertTrue(rate_limiter::hit('h', 'a', 3, 60, $now));
+        // A different identifier keeps its own count.
+        $this->assertFalse(rate_limiter::hit('h', 'b', 3, 60, $now));
+        // Pruning old rows frees the identifier again.
+        rate_limiter::prune($now + 61);
+        $this->assertFalse(rate_limiter::hit('h', 'a', 3, 60, $now + 61));
+    }
+
+    /**
      * The limiter blocks after the maximum and the window slides.
      *
      * @return void
