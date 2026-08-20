@@ -38,6 +38,7 @@ final class mail_renderer {
         [$subjectkey, $bodykey] = match ($mailtype) {
             mail_kind::MAGIC_LOGIN => ['magic:emailsubject', 'magic:emailbody'],
             mail_kind::VERIFICATION => ['persist:emailsubject', 'persist:emailbody'],
+            mail_kind::SET_PASSWORD => ['setpassword:emailsubject', 'setpassword:emailbody'],
             default => ['', ''],
         };
         if ($subjectkey === '') {
@@ -59,6 +60,7 @@ final class mail_renderer {
         return match ($purpose) {
             'magiclogin' => '/auth/flexaccess/magic.php',
             'persistence' => '/auth/flexaccess/persist.php',
+            'setpassword' => '/auth/flexaccess/setpassword.php',
             default => null,
         };
     }

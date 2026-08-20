@@ -82,6 +82,7 @@ final class api_test extends \advanced_testcase {
     public function test_self_activate_success(): void {
         global $DB;
         $this->resetAfterTest();
+        set_config('requireemailverification', 0, 'auth_flexaccess');
         $user = $this->getDataGenerator()->create_user(['email' => 'temp-sa@example.com']);
         $this->make_account($user->id, account_type::TEMPORARY_USER, account_state::EPHEMERAL, time(), null);
 
@@ -125,7 +126,7 @@ final class api_test extends \advanced_testcase {
     public function test_self_activate_not_applicable(): void {
         $this->resetAfterTest();
         $user = $this->getDataGenerator()->create_user(['email' => 'auth@example.com']);
-        $this->assertSame('notapplicable', \auth_flexaccess\api::self_activate($user->id, 'new@example.com', 'Str0ng-Pass!23'));
+        $this->assertSame('nottemporary', \auth_flexaccess\api::self_activate($user->id, 'new@example.com', 'Str0ng-Pass!23'));
     }
 
     /**
@@ -150,13 +151,25 @@ final class api_test extends \advanced_testcase {
         $this->assertCount(1, $found);
         $this->assertSame('bob@example.com', reset($found)->email);
 
-        // Admin conversion flips a temporary account and mails a set-password link to the real address.
+        // Admin conversion flips a temporary account and QUEUES a set-password link to the real
+        // address (subject to the FlexAccess mail-queue rate limit, not sent synchronously).
         $sink = $this->redirectEmails();
         $this->assertSame('converted', \auth_flexaccess\api::admin_convert($alice->id, 'alice.real@example.com'));
         $this->assertSame(account_type::AUTHENTICATED_USER, \auth_flexaccess\api::classify_user($alice->id));
+        // Nothing is sent until the queue worker runs.
+        $this->assertCount(0, $sink->get_messages());
+
+        \auth_flexaccess\local\mail_worker::run(time());
         $messages = $sink->get_messages();
         $this->assertGreaterThanOrEqual(1, count($messages));
         $this->assertSame('alice.real@example.com', $messages[0]->to);
+
+        // The mailed token drives the set-password landing; consuming it sets the password.
+        $body = quoted_printable_decode($messages[0]->body);
+        $this->assertSame(1, preg_match('/token=([A-Za-z0-9]+)/', $body, $m));
+        $this->assertSame((int) $alice->id, \auth_flexaccess\api::complete_set_password($m[1], 'Str0ng-Pass!23'));
+        // The single-use token cannot be replayed.
+        $this->assertNull(\auth_flexaccess\api::complete_set_password($m[1], 'Str0ng-Pass!23'));
         $sink->close();
         // An already-authenticated account is not applicable.
         $this->assertSame('notapplicable', \auth_flexaccess\api::admin_convert($carol->id, 'carol.real@example.com'));
@@ -291,5 +304,22 @@ final class api_test extends \advanced_testcase {
         $sink->close();
         $this->assertNotEmpty($messages);
         $this->assertSame('real@example.com', $messages[0]->to);
+    }
+
+    /**
+     * With verification enabled (the default) self_activate does not finalise; it emails a link.
+     *
+     * @return void
+     */
+    public function test_self_activate_requires_verification_by_default(): void {
+        $this->resetAfterTest();
+        $now = time();
+        $user = $this->getDataGenerator()->create_user(['email' => 'temp-v@example.com']);
+        \auth_flexaccess\local\account_service::create_temporary((int) $user->id, 'REF-V', $now + DAYSECS, null, null, $now);
+
+        $status = \auth_flexaccess\api::self_activate((int) $user->id, 'verify.me@example.com', 'Str0ng-Pass!23');
+        $this->assertSame('verificationsent', $status);
+        // The account stays temporary until the emailed link is followed.
+        $this->assertSame(account_type::TEMPORARY_USER, \auth_flexaccess\api::classify_user((int) $user->id));
     }
 }

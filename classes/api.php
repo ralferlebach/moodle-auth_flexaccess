@@ -51,6 +51,11 @@ final class api {
     private const MAGIC_LOGIN_TTL = 900;
 
     /**
+     * Set-password invitation lifetime in seconds (3 days) for admin-initiated conversions.
+     */
+    private const SET_PASSWORD_TTL = 259200;
+
+    /**
      * Sliding window for magic-login request rate limiting, in seconds.
      */
     private const MAGIC_RATE_WINDOW = 600;
@@ -132,19 +137,14 @@ final class api {
         string $firstname = '',
         string $lastname = ''
     ): string {
-        $status = self::finalise_identity(
-            $userid,
-            $email,
-            $firstname,
-            $lastname,
-            time(),
-            static function () use ($userid, $password): void {
-                global $DB;
-                $user = $DB->get_record('user', ['id' => $userid], '*', MUST_EXIST);
-                update_internal_user_password($user, $password);
-            }
-        );
-        return $status === 'ok' ? 'activated' : $status;
+        // Do not finalise an unverified email as an identity: start the persistence/verification
+        // funnel. With verification enabled (the default) this emails an activation link; only when
+        // an admin has disabled verification does it convert immediately.
+        $status = self::request_persistence($userid, $email, $firstname, $lastname, $password, time());
+        if ($status === 'converted') {
+            return 'activated';
+        }
+        return $status;
     }
 
     /**
@@ -174,39 +174,51 @@ final class api {
         global $CFG, $DB;
         require_once($CFG->dirroot . '/user/lib.php');
 
-        if (!account_service::is_convertible($userid, $now)) {
-            return 'notapplicable';
+        // Serialise all conversions for this user so self-, admin- and verification-initiated
+        // conversions cannot race. The guards below run inside the lock, so a second concurrent
+        // attempt sees the account already converted and returns 'notapplicable'.
+        $lockfactory = \core\lock\lock_config::get_lock_factory('auth_flexaccess_conversion');
+        $lock = $lockfactory->get_lock('user_' . $userid, 10);
+        if (!$lock) {
+            return 'locked';
         }
-        $email = \core_text::strtolower(trim($email));
-        if ($email === '' || !validate_email($email)) {
-            return 'invalidemail';
-        }
-        if (!self::email_available($email, $userid)) {
-            return 'emailtaken';
-        }
+        try {
+            if (!account_service::is_convertible($userid, $now)) {
+                return 'notapplicable';
+            }
+            $email = \core_text::strtolower(trim($email));
+            if ($email === '' || !validate_email($email)) {
+                return 'invalidemail';
+            }
+            if (!self::email_available($email, $userid)) {
+                return 'emailtaken';
+            }
 
-        $transaction = $DB->start_delegated_transaction();
-        $user = $DB->get_record('user', ['id' => $userid], '*', MUST_EXIST);
-        $user->email = $email;
-        $user->username = $email;
-        $user->emailstop = 0;
-        if (trim($firstname) !== '') {
-            $user->firstname = clean_param($firstname, PARAM_NOTAGS);
+            $transaction = $DB->start_delegated_transaction();
+            $user = $DB->get_record('user', ['id' => $userid], '*', MUST_EXIST);
+            $user->email = $email;
+            $user->username = $email;
+            $user->emailstop = 0;
+            if (trim($firstname) !== '') {
+                $user->firstname = clean_param($firstname, PARAM_NOTAGS);
+            }
+            if (trim($lastname) !== '') {
+                $user->lastname = clean_param($lastname, PARAM_NOTAGS);
+            }
+            if (method_exists(\core\user::class, 'update_user')) {
+                \core\user::update_user($user, false, true);
+            } else {
+                user_update_user($user, false, true);
+            }
+            account_service::convert_to_authenticated($userid, $now);
+            if ($inside !== null) {
+                $inside();
+            }
+            $transaction->allow_commit();
+            return 'ok';
+        } finally {
+            $lock->release();
         }
-        if (trim($lastname) !== '') {
-            $user->lastname = clean_param($lastname, PARAM_NOTAGS);
-        }
-        if (method_exists(\core\user::class, 'update_user')) {
-            \core\user::update_user($user, false, true);
-        } else {
-            user_update_user($user, false, true);
-        }
-        account_service::convert_to_authenticated($userid, $now);
-        if ($inside !== null) {
-            $inside();
-        }
-        $transaction->allow_commit();
-        return 'ok';
     }
 
     /**
@@ -231,35 +243,30 @@ final class api {
         string $password,
         ?int $now = null
     ): string {
-        global $CFG, $DB;
+        global $CFG;
         require_once($CFG->dirroot . '/user/lib.php');
         $now = $now ?? time();
-        $email = \core_text::strtolower(trim($email));
 
-        if (!account_service::is_temporary($userid)) {
-            return 'nottemporary';
+        // Route through the single, locked conversion path (which uses is_convertible, not merely
+        // is_temporary) so an already-expired account can never be revived, and set the password
+        // inside the same transaction.
+        $status = self::finalise_identity(
+            $userid,
+            $email,
+            $firstname,
+            $lastname,
+            $now,
+            static function () use ($userid, $password): void {
+                global $DB;
+                $user = $DB->get_record('user', ['id' => $userid], '*', MUST_EXIST);
+                $user->suspended = 0;
+                update_internal_user_password($user, $password);
+            }
+        );
+        if ($status === 'ok') {
+            return 'converted';
         }
-        if (!self::email_available($email, $userid)) {
-            return 'emailtaken';
-        }
-
-        $user = $DB->get_record('user', ['id' => $userid], '*', MUST_EXIST);
-        $user->email = $email;
-        $user->username = $email;
-        $user->firstname = $firstname;
-        $user->lastname = $lastname;
-        $user->emailstop = 0;
-        $user->suspended = 0;
-
-        if (method_exists(\core\user::class, 'update_user')) {
-            \core\user::update_user($user, false, true);
-        } else {
-            user_update_user($user, false, true);
-        }
-        update_internal_user_password($user, $password);
-
-        account_service::convert_to_authenticated($userid, $now);
-        return 'converted';
+        return $status === 'notapplicable' ? 'nottemporary' : $status;
     }
 
     /**
@@ -304,8 +311,11 @@ final class api {
         $now = $now ?? time();
         $email = \core_text::strtolower(trim($email));
 
-        if (!account_service::is_temporary($userid)) {
+        if (!account_service::is_convertible($userid, $now)) {
             return 'nottemporary';
+        }
+        if ($email === '' || !validate_email($email)) {
+            return 'invalidemail';
         }
         if (!self::email_available($email, $userid)) {
             return 'emailtaken';
@@ -860,17 +870,56 @@ final class api {
         string $lastname = '',
         ?int $now = null
     ): string {
-        global $DB;
         $now = $now ?? time();
         $status = self::finalise_identity($userid, $email, $firstname, $lastname, $now);
         if ($status !== 'ok') {
             return $status;
         }
-        // The user is not present, so mail them a link to set their own password. The identity now
-        // carries the administrator-supplied real email, so the message is deliverable.
-        $user = $DB->get_record('user', ['id' => $userid], '*', MUST_EXIST);
-        setnew_password_and_mail($user);
+        // Queue a set-password invitation through the FlexAccess mail queue so it is subject to the
+        // same rate limit as every other FlexAccess mail (the token is issued at delivery, never
+        // persisted). The account is now permanent, so the link is not capped by an expiry.
+        self::queue_token_mail(
+            $userid,
+            $email,
+            mail_kind::SET_PASSWORD,
+            'setpassword',
+            self::SET_PASSWORD_TTL,
+            null,
+            $now
+        );
         return 'converted';
+    }
+
+    /**
+     * Look up (without consuming) the user a valid set-password token belongs to.
+     *
+     * @param string $token Set-password token.
+     * @param int|null $now Current time.
+     * @return int|null User id, or null when the token is invalid or expired.
+     */
+    public static function begin_set_password(string $token, ?int $now = null): ?int {
+        $record = token_service::verify($token, 'setpassword', $now);
+        return $record ? (int) $record->userid : null;
+    }
+
+    /**
+     * Consume a set-password token and store the chosen password.
+     *
+     * @param string $token Set-password token.
+     * @param string $password Clear-text password chosen by the user.
+     * @param int|null $now Current time.
+     * @return int|null The user id on success, or null when the token is invalid.
+     */
+    public static function complete_set_password(string $token, string $password, ?int $now = null): ?int {
+        global $CFG, $DB;
+        require_once($CFG->dirroot . '/user/lib.php');
+        $userid = token_service::consume($token, 'setpassword', $now, null);
+        if ($userid === null) {
+            return null;
+        }
+        $user = $DB->get_record('user', ['id' => $userid], '*', MUST_EXIST);
+        update_internal_user_password($user, $password);
+        return (int) $userid;
     }
 
     /**

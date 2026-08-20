@@ -51,6 +51,11 @@ final class mail_kind {
     public const ACCOUNT_DELETE = 'account_delete';
 
     /**
+     * Admin-initiated set-password invitation.
+     */
+    public const SET_PASSWORD = 'set_password';
+
+    /**
      * All supported mail kinds.
      *
      * @return array<string>

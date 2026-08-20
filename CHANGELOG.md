@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.9.11 — 2026-08-20 — RC-Hardening: P0#6 (Admin-Conversion über Mailqueue)
+- **P0#6 — Admin-Conversion nutzt jetzt die FlexAccess-Mailqueue:** statt Core `setnew_password_and_mail` (das die Queue und das Ratelimit umging) wird eine **queued Set-Password-Einladung** verschickt. Neuer Mail-Kind `set_password`, Purpose `setpassword`, Landing `setpassword.php` + `set_password_form`. Der Token wird wie üblich erst beim Versand vom Worker ausgegeben (nie in der Queue persistiert), zur Anzeige nicht-konsumierend via `verify()` geprüft und erst bei gültiger Passwort-Eingabe verbraucht; danach wird der Nutzer angemeldet. TTL 3 Tage.
+- Test deckt den vollständigen Round-Trip ab: admin_convert → nichts sofort gesendet → Worker liefert → Token aus der Mail → `complete_set_password` setzt das Passwort → Replay des Single-Use-Tokens blockiert.
+
+## 0.9.10 — 2026-08-20 — RC-Hardening: 7/8 P0 aus dem 0.9.8-Review
+- **P0#3 — Conversion serialisiert:** `finalise_identity` laeuft nun unter einem **per-user Moodle-Lock**; `is_convertible`/E-Mail-Guards werden **im** serialisierten Bereich geprueft. Self-/Admin-/Verification-Conversions koennen nicht mehr gegeneinander laufen.
+- **P0#4 — Parallelpfad entfernt:** `persist_temporary_user` delegiert an `finalise_identity` und nutzt damit `is_convertible` statt nur `is_temporary` (ein bereits abgelaufenes Konto kann nicht mehr persistiert werden).
+- **P0#5 — `self_activate` finalisiert keine unbestaetigte Identitaet mehr:** es startet den Persistence-/Verifikations-Funnel (mit aktivierter Verifikation → Aktivierungslink per Mail; nur bei abgeschalteter Verifikation sofortige Umwandlung). `request_persistence` zusaetzlich um E-Mail-Formatvalidierung und `is_convertible` gehaertet.
+
+**Offen (bewusst gestaffelt):** P0#6 — Admin-Conversion versendet die Passwort-Mail noch via Core `setnew_password_and_mail` (umgeht die FlexAccess-Mailqueue/Ratelimit). Fix erfordert einen neuen queued 'set-password'-Mailfluss.
+
 ## 0.9.9 — 2026-08-19 — Welle 4 Abschluss: Accessibility-Gate + Docs-SSOT & Traceability
 - Keine Codeaenderung.
 
