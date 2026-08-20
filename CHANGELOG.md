@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.9.18 — 2026-08-20 — Fix: PHPDoc-Parameterliste (enrol-CI rot)
+- Keine Codeaenderung.
+
 ## 0.9.17 — 2026-08-20 — Fix: Cross-Plugin-Mailqueue (Standalone-CI) + saubere API-Grenze
 - Keine Codeaenderung.
 
