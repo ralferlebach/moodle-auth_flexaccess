@@ -764,6 +764,135 @@ final class api {
     }
 
     /**
+     * Create a batch account with a caller-supplied username and password, enrol-ready.
+     *
+     * Used by the tool batch-provisioning feature: an administrator generates many accounts with
+     * random credentials for a course. The account is temporary (restricted, expiring) unless
+     * $permanent is set, in which case it is a full authenticated account (still with a placeholder
+     * email until it is later personalised). The password is stored hashed, never in plain text.
+     *
+     * @param string $username Desired username (lower-cased).
+     * @param string $password Plain password to set (hashed on store).
+     * @param string $firstname First name (may be a placeholder).
+     * @param string $lastname Last name (may be a placeholder).
+     * @param bool $permanent Whether to create a permanent authenticated account.
+     * @param int|null $timeexpires Expiry for temporary accounts (ignored when permanent).
+     * @param int|null $now Current time.
+     * @return int New user id.
+     */
+    public static function create_batch_account(
+        string $username,
+        string $password,
+        string $firstname,
+        string $lastname,
+        bool $permanent,
+        ?int $timeexpires = null,
+        ?int $now = null
+    ): int {
+        global $CFG, $DB;
+        require_once($CFG->dirroot . '/user/lib.php');
+        $now = $now ?? time();
+        $username = \core_text::strtolower(trim($username));
+
+        $user = new \stdClass();
+        $user->auth = 'flexaccess';
+        $user->confirmed = 1;
+        $user->mnethostid = $CFG->mnet_localhost_id;
+        $user->username = $username;
+        $user->password = '';
+        $user->firstname = $firstname !== '' ? $firstname : get_string('temporaryfirstname', 'auth_flexaccess');
+        $user->lastname = $lastname !== '' ? $lastname : get_string('temporarylastname', 'auth_flexaccess');
+        $user->email = $username . '@flexaccess.invalid';
+        $user->emailstop = 1;
+
+        if (method_exists(\core\user::class, 'create_user')) {
+            $userid = (int) \core\user::create_user($user, false, true);
+        } else {
+            $userid = (int) user_create_user($user, false, true);
+        }
+        // Store the password hashed.
+        $stored = $DB->get_record('user', ['id' => $userid], '*', MUST_EXIST);
+        update_internal_user_password($stored, $password);
+
+        $reference = account_service::generate_unique_reference();
+        if ($permanent) {
+            account_service::create_authenticated($userid, $reference, $now);
+        } else {
+            account_service::create_temporary($userid, $reference, $timeexpires, null, null, $now);
+        }
+        return $userid;
+    }
+
+    /**
+     * Whether a username is free (not used by another non-deleted local account).
+     *
+     * @param string $username Username to check (lower-cased).
+     * @param int|null $excludeuserid User id to exclude from the check.
+     * @return bool
+     */
+    public static function username_available(string $username, ?int $excludeuserid = null): bool {
+        global $DB, $CFG;
+        $username = \core_text::strtolower(trim($username));
+        if ($username === '') {
+            return false;
+        }
+        $params = ['username' => $username, 'mnethostid' => $CFG->mnet_localhost_id];
+        $exclude = '';
+        if ($excludeuserid !== null) {
+            $exclude = ' AND id <> :excludeid';
+            $params['excludeid'] = $excludeuserid;
+        }
+        return !$DB->record_exists_select(
+            'user',
+            'deleted = 0 AND username = :username AND mnethostid = :mnethostid' . $exclude,
+            $params
+        );
+    }
+
+    /**
+     * Rename an account's username, validating format and availability.
+     *
+     * @param int $userid User id.
+     * @param string $username Desired username.
+     * @return bool Whether the rename was applied.
+     */
+    public static function rename_username(int $userid, string $username): bool {
+        global $CFG, $DB;
+        require_once($CFG->dirroot . '/user/lib.php');
+        $username = clean_param(\core_text::strtolower(trim($username)), PARAM_USERNAME);
+        if ($username === '' || !self::username_available($username, $userid)) {
+            return false;
+        }
+        $user = $DB->get_record('user', ['id' => $userid], '*', IGNORE_MISSING);
+        if (!$user) {
+            return false;
+        }
+        $user->username = $username;
+        if (method_exists(\core\user::class, 'update_user')) {
+            \core\user::update_user($user, false, true);
+        } else {
+            user_update_user($user, false, true);
+        }
+        return true;
+    }
+
+    /**
+     * Reset a batch account's password to a new plain value (hashed on store).
+     *
+     * @param int $userid User id.
+     * @param string $password New plain password.
+     * @return bool Whether the password was set.
+     */
+    public static function set_account_password(int $userid, string $password): bool {
+        global $DB;
+        $user = $DB->get_record('user', ['id' => $userid], '*', IGNORE_MISSING);
+        if (!$user) {
+            return false;
+        }
+        return (bool) update_internal_user_password($user, $password);
+    }
+
+    /**
      * Aggregate account counts for dashboards.
      *
      * @return array<string, int>

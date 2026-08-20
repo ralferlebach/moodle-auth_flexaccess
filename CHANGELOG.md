@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.9.21 — 2026-08-20 — Feature: Excel-Rückkonversion von Stapel-Accounts (Kampagne, Teil 2)
+- **Neu:** `api::username_available()` und `api::rename_username()` (validierte Umbenennung mit Verfügbarkeits- und Format-Prüfung), genutzt von der Stapel-Rückkonversion für die geregelte Nutzerkennungs-Änderung nach der Umwandlung.
+
+## 0.9.20 — 2026-08-20 — Feature: Stapel-Bereitstellung von Kurs-Accounts (Kampagne, Teil 1)
+- **Neu:** `api::create_batch_account()` (Batch-Account mit vorgegebener Nutzerkennung + Passwort, vorlaeufig oder dauerhaft, Passwort gehasht) und `api::set_account_password()` fuer die sichere Neu-Ausgabe von Zugangsdaten.
+
+## 0.9.19 — 2026-08-20 — Fix: Upgrade-Crash beim Verbreitern der indizierten ratehit.identifier-Spalte
+- **Fix (Produktiv-Upgrade):** Der 0.9.12-Schritt verbreitert `auth_flexaccess_ratehit.identifier` von CHAR(40) auf CHAR(64) (HMAC-SHA256). Die Spalte ist Teil des Index `bucket_identifier_time`, daher verweigerte Moodle die Aenderung mit `ddl_dependency_exception` ('column ... kann nicht veraendert werden, weil eine Verbindung mit index ... besteht') -> Upgrade-Abbruch. Behoben nach Moodle-Standardmuster: Index droppen, Feld aendern, Index neu anlegen; der Block ist idempotent und uebersteht einen erneut angestossenen Upgrade aus dem Teilfehler-Zustand. Neuer PHPUnit-Test reproduziert die Dependency-Exception und verifiziert die Fix-Sequenz.
+
+## 0.9.19 — 2026-08-20 — RC-Gates (Review 0.9.17): Invitation-Security (2 P0) + Playwright-Lockfile
+- Keine Codeaenderung.
+
 ## 0.9.18 — 2026-08-20 — Fix: PHPDoc-Parameterliste (enrol-CI rot)
 - Keine Codeaenderung.
 
