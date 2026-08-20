@@ -337,6 +337,65 @@ final class api {
     }
 
     /**
+     * Send one-time persistence reminders to temporary accounts approaching expiry.
+     *
+     * Closes the "mandatory persistence follow-up" of the account lifecycle: anonymous temporary
+     * accounts cannot be emailed (their address is a non-deliverable placeholder), but a visitor who
+     * has already started persistence has supplied a real pending address. Those users, when their
+     * account is within the follow-up window of expiring and they have not yet been reminded, receive
+     * one fresh verification link so an abandoned activation can still be completed. The reminder is
+     * sent at most once per user (tracked by a preference) and the worker revokes any prior token on
+     * delivery, so only one live link ever exists.
+     *
+     * @param int|null $now Current time.
+     * @param int|null $window Seconds before expiry within which to remind; null reads config; <=0 disables.
+     * @param int $limit Maximum accounts to process in one run.
+     * @return int Number of reminders queued.
+     */
+    public static function send_persistence_followups(?int $now = null, ?int $window = null, int $limit = 200): int {
+        global $DB;
+        $now = $now ?? time();
+        $window = $window ?? (int) get_config('auth_flexaccess', 'followupwindow');
+        if ($window <= 0) {
+            return 0;
+        }
+        $select = 'accounttype = :type AND accountstate <> :expired AND accountstate <> :suspended '
+            . 'AND timeexpires > :now AND timeexpires <= :upper';
+        $params = [
+            'type' => account_type::TEMPORARY_USER,
+            'expired' => account_state::EXPIRED,
+            'suspended' => account_state::SUSPENDED,
+            'now' => $now,
+            'upper' => $now + $window,
+        ];
+        $records = $DB->get_records_select(
+            'auth_flexaccess_account',
+            $select,
+            $params,
+            'timeexpires ASC',
+            '*',
+            0,
+            max(0, $limit)
+        );
+        $sent = 0;
+        foreach ($records as $account) {
+            $userid = (int) $account->userid;
+            $pending = get_user_preferences('auth_flexaccess_pendingemail', null, $userid);
+            if (!$pending) {
+                continue;
+            }
+            if (get_user_preferences('auth_flexaccess_followupsent', null, $userid)) {
+                continue;
+            }
+            $ttl = min(token_service::DEFAULT_TTL, max(1, (int) $account->timeexpires - $now));
+            self::queue_token_mail($userid, (string) $pending, mail_kind::VERIFICATION, 'persistence', $ttl, null, $now);
+            set_user_preference('auth_flexaccess_followupsent', $now, $userid);
+            $sent++;
+        }
+        return $sent;
+    }
+
+    /**
      * Complete a verified persistence: consume the token and make the account permanent.
      *
      * The token authorises on its own (it was mailed to the pending address), so no login is
@@ -391,6 +450,7 @@ final class api {
         }
         account_service::convert_to_authenticated($userid, $now);
         unset_user_preference('auth_flexaccess_pendingemail', $userid);
+        unset_user_preference('auth_flexaccess_followupsent', $userid);
         $transaction->allow_commit();
         return 'converted';
     }

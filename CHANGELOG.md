@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.7 — 2026-08-19 — Welle 5: Einladungskampagnen (§49)
+- Keine Codeaenderung.
+
+## 0.9.6 — 2026-08-19 — Welle 4: Persistence-Follow-up (schließt P0 #9 vollständig)
+- **P0 #9 komplett — Persistence-Follow-up:** neuer `api::send_persistence_followups()` erinnert Nutzer, die die Persistenz begonnen (echte pending-E-Mail hinterlegt), aber die Verifizierung nicht abgeschlossen haben, **einmalig** an die Aktivierung, sobald ihr temporaeres Konto ins Erinnerungsfenster laeuft. Anonyme Temp-Nutzer ohne echte Adresse werden nie angemailt. Getrackt via Preference `auth_flexaccess_followupsent` (beim Bestaetigen/Loeschen aufgeraeumt); der Worker revoked bei Zustellung, sodass nur ein Link live ist.
+- Neue Einstellung `followupwindow` (Default 1 Tag, 0 = deaktiviert); Aufruf aus dem `expire_accounts`-Task. Privacy-Provider deklariert/exportiert/loescht die neue Preference. Test deckt Einmaligkeit + Zustellung nur an echte Adresse ab.
+
 ## 0.9.5 — 2026-08-19 — Welle 3 Strom E: administrierbare Kategorie-Policies (P0 #8) + Cleanup
 - Cleanup: die Docblocks der geplanten Tasks (`expire_accounts`, `process_mail_queue`) beschreiben jetzt ihr tatsaechliches Verhalten statt „scaffold".
 

@@ -244,4 +244,52 @@ final class api_test extends \advanced_testcase {
         $this->assertSame($now + DAYSECS, (int) $account->timeexpires);
         $this->assertSame(42, (int) $account->sourcecourseid);
     }
+
+    /**
+     * Persistence follow-up reminds pending-persistence users once, and never anonymous temp users.
+     *
+     * @return void
+     */
+    public function test_send_persistence_followups(): void {
+        $this->resetAfterTest();
+        set_config('followupwindow', DAYSECS, 'auth_flexaccess');
+        $now = 3000000;
+
+        // A user who started persistence (has a real pending email) and is near expiry.
+        $pendinguser = $this->getDataGenerator()->create_user();
+        \auth_flexaccess\local\account_service::create_temporary(
+            (int) $pendinguser->id,
+            'REF-P',
+            $now + HOURSECS,
+            null,
+            null,
+            $now - DAYSECS
+        );
+        set_user_preference('auth_flexaccess_pendingemail', 'real@example.com', $pendinguser->id);
+
+        // An anonymous temp user near expiry but WITHOUT a pending email: must not be reminded.
+        $anon = $this->getDataGenerator()->create_user();
+        \auth_flexaccess\local\account_service::create_temporary(
+            (int) $anon->id,
+            'REF-A',
+            $now + HOURSECS,
+            null,
+            null,
+            $now - DAYSECS
+        );
+
+        $sink = $this->redirectEmails();
+        $sent = \auth_flexaccess\api::send_persistence_followups($now);
+        $this->assertSame(1, $sent);
+
+        // A second run does not remind again (once only).
+        $this->assertSame(0, \auth_flexaccess\api::send_persistence_followups($now));
+
+        // The reminder was delivered to the real pending address, not the placeholder.
+        \auth_flexaccess\local\mail_worker::run($now);
+        $messages = $sink->get_messages();
+        $sink->close();
+        $this->assertNotEmpty($messages);
+        $this->assertSame('real@example.com', $messages[0]->to);
+    }
 }

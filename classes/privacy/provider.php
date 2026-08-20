@@ -50,6 +50,9 @@ final class provider implements
     /** User preference holding a pending (unverified) email address during persistence. */
     private const PENDING_PREF = 'auth_flexaccess_pendingemail';
 
+    /** User preference recording that a persistence follow-up reminder has been sent. */
+    private const FOLLOWUP_PREF = 'auth_flexaccess_followupsent';
+
     /**
      * Describe the personal data stored by this plugin.
      *
@@ -84,6 +87,7 @@ final class provider implements
             'timecreated' => 'privacy:metadata:mail:timecreated',
         ], 'privacy:metadata:mail');
         $collection->add_user_preference(self::PENDING_PREF, 'privacy:metadata:preference:pendingemail');
+        $collection->add_user_preference(self::FOLLOWUP_PREF, 'privacy:metadata:preference:followupsent');
         return $collection;
     }
 
@@ -173,6 +177,15 @@ final class provider implements
                 get_string('privacy:metadata:preference:pendingemail', 'auth_flexaccess')
             );
         }
+        $followup = get_user_preferences(self::FOLLOWUP_PREF, null, $userid);
+        if ($followup !== null && $followup !== '') {
+            writer::export_user_preference(
+                'auth_flexaccess',
+                self::FOLLOWUP_PREF,
+                $followup,
+                get_string('privacy:metadata:preference:followupsent', 'auth_flexaccess')
+            );
+        }
     }
 
     /**
@@ -190,6 +203,7 @@ final class provider implements
             $DB->delete_records($table, ['userid' => $context->instanceid]);
         }
         unset_user_preference(self::PENDING_PREF, $context->instanceid);
+        unset_user_preference(self::FOLLOWUP_PREF, $context->instanceid);
     }
 
     /**
@@ -208,6 +222,7 @@ final class provider implements
                 $DB->delete_records($table, ['userid' => $context->instanceid]);
             }
             unset_user_preference(self::PENDING_PREF, $context->instanceid);
+            unset_user_preference(self::FOLLOWUP_PREF, $context->instanceid);
         }
     }
 
@@ -228,6 +243,7 @@ final class provider implements
                 $DB->delete_records($table, ['userid' => $context->instanceid]);
             }
             unset_user_preference(self::PENDING_PREF, $context->instanceid);
+            unset_user_preference(self::FOLLOWUP_PREF, $context->instanceid);
         }
     }
 }

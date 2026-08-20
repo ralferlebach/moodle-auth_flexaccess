@@ -44,6 +44,8 @@ final class expire_accounts extends \core\task\scheduled_task {
      */
     public function execute(): void {
         \auth_flexaccess\local\account_service::expire_due();
+        // Persistence follow-up: remind pending-persistence users before their account lapses.
+        \auth_flexaccess\api::send_persistence_followups();
         // Deletion lifecycle: purge accounts that expired longer ago than the retention window.
         $retentiondays = (int) get_config('auth_flexaccess', 'retentiondays');
         if ($retentiondays > 0) {

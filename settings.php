@@ -88,6 +88,13 @@ if ($ADMIN->fulltree) {
         PARAM_INT
     ));
 
+    $settings->add(new admin_setting_configduration(
+        'auth_flexaccess/followupwindow',
+        get_string('setting:followupwindow', 'auth_flexaccess'),
+        get_string('setting:followupwindow_desc', 'auth_flexaccess'),
+        DAYSECS
+    ));
+
     $settings->add(new admin_setting_heading(
         'auth_flexaccess/ratelimit',
         get_string('settings:ratelimit', 'auth_flexaccess'),
