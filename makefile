@@ -26,11 +26,9 @@
 #
 # Tests:
 #   make phpunit      — PHPUnit testsuite for this plugin
-#   make playwright   — browser collaboration tests (installs Playwright on 1st run)
+#   make playwright   — browser (Playwright) tests (installs Playwright on 1st run)
 #   make jmeter       — JMeter read-endpoint load test (downloads JMeter on 1st run)
-#   make load-k6      — k6 read-endpoint load test (needs k6 installed)
-#   make load-seed    — seed a large map + web-service token; prints exports
-#   make k6-setup     — download the k6 binary if it is not installed
+#   make load-seed    — seed a load-test course + web-service token; prints exports
 #
 # Setup only:
 #   make playwright-setup — install Playwright + Chromium browser
@@ -72,8 +70,6 @@ LOAD_DIR       ?= $(PLUGIN_DIR)/tests/load
 JMETER_VERSION ?= 5.6.3
 JMETER_HOME    ?= $(LOAD_DIR)/apache-jmeter-$(JMETER_VERSION)
 JMETER         ?= $(JMETER_HOME)/bin/jmeter
-K6             ?= k6
-K6_VERSION     ?= 0.54.0
 
 # Base URL read from the site's own config.php ($CFG->wwwroot), via Moodle's
 # ABORT_AFTER_CONFIG so only the config is loaded, not the whole bootstrap.
@@ -95,7 +91,6 @@ MAXDURATION    ?= 2000
 OPLOG          ?= 5000
 
 # Values written by `make load-seed` (BASE_URL/TOKEN/WORKSPACEID/CMID). Auto-read
-# here so `make jmeter` / `make load-k6` need no manual eval. The leading '-'
 # ignores the file when it does not exist yet; a command-line override wins.
 -include $(LOAD_DIR)/.load-env
 # Optional: override the base URL Playwright uses (otherwise seed.php sets it).
@@ -105,7 +100,6 @@ FLEXACCESS_BASE_URL ?= $(MOODLE_WWWROOT)
         lint-php lint-phpdoc lint-js lint-mustache lint-cpd lint-md \
         lint-react test-react react build \
         fix-lint-php fix-phpdoc amd phpunit \
-        playwright playwright-setup jmeter jmeter-setup load-k6 k6-setup load-seed
 
 all: clear fix check
 	@echo ""
@@ -293,21 +287,20 @@ playwright: clear
 	cd $(PLAYWRIGHT_DIR) && eval "$$($(PHP) seed.php)" && \
 		$(if $(FLEXACCESS_BASE_URL),FLEXACCESS_BASE_URL='$(FLEXACCESS_BASE_URL)' )$(NPM) test
 
-# --- Seed a large map + token for the load tests ---------------------------
+# --- Seed a load-test course + token for the load tests ---------------------------
 # Needs a running, installed Moodle. Prints `export BASE_URL/TOKEN/WORKSPACEID/
 # CMID` for the load run. Disposable dev/staging sites only.
 load-seed: clear
 	@echo ""
-	@echo "=== Seed large map + web-service token (op-log = $(OPLOG)) ==="
+	@echo "=== Seed load-test course + web-service token (op-log = $(OPLOG)) ==="
 	@$(PHP) $(PLUGIN_DIR)/tests/load/seed_large.php $(OPLOG) | tee $(LOAD_DIR)/.load-seed.out
 	@sed -n "s/^export \([A-Z_][A-Z_]*\)=.\(.*\)./\1=\2/p" $(LOAD_DIR)/.load-seed.out > $(LOAD_DIR)/.load-env
 	@rm -f $(LOAD_DIR)/.load-seed.out
 	@echo ""
 	@echo "Saved BASE_URL/TOKEN/WORKSPACEID/CMID to $(LOAD_DIR)/.load-env"
-	@echo "Now just run:  make jmeter   (or: make load-k6) — no eval needed."
 
 # --- Read-endpoint load test (JMeter) --------------------------------------
-# Needs a live, seeded site + a REST web-service token. Seed a large map and
+# Needs a live, seeded site + a REST web-service token. Seed a load-test course and
 # mint a token first — see tests/load/README.md.
 
 jmeter-setup:
@@ -332,7 +325,7 @@ jmeter: clear jmeter-setup
 		echo "  make jmeter BASE_URL=<wwwroot> TOKEN=<token> WORKSPACEID=<id> CMID=<id> \\"; \
 		echo "             [REVISION=2000 THREADS=25 RAMPUP=10 LOOPS=20 MAXDURATION=2000]"; \
 		echo ""; \
-		echo "  Run 'make load-seed' first (it seeds a large map + token and stores them),"; \
+		echo "  Run 'make load-seed' first (it seeds a load-test course + token and stores them),"; \
 		echo "  or pass TOKEN/WORKSPACEID/CMID yourself. See tests/load/README.md."; \
 		exit 1; \
 	fi
@@ -345,34 +338,3 @@ jmeter: clear jmeter-setup
 	@echo ""
 	@echo "Results written to $(LOAD_DIR)/flexaccess-load-results.jtl"
 
-# --- Read-endpoint load test (k6, alternative) -----------------------------
-# Download the k6 binary locally if it is not on PATH (single static binary).
-k6-setup:
-	@echo ""
-	@echo "=== k6 setup ==="
-	@if command -v $(K6) >/dev/null 2>&1; then \
-		echo "k6 already on PATH."; \
-	elif [ -x $(LOAD_DIR)/k6 ]; then \
-		echo "k6 already present at $(LOAD_DIR)/k6."; \
-	else \
-		arch=$$(uname -m); case "$$arch" in x86_64) a=amd64;; aarch64|arm64) a=arm64;; *) a=amd64;; esac; \
-		echo "Downloading k6 $(K6_VERSION) (linux-$$a)..."; \
-		cd $(LOAD_DIR) && \
-		curl -fsSL "https://github.com/grafana/k6/releases/download/v$(K6_VERSION)/k6-v$(K6_VERSION)-linux-$$a.tar.gz" -o k6.tgz && \
-		tar xzf k6.tgz && cp "k6-v$(K6_VERSION)-linux-$$a/k6" ./k6 && chmod +x ./k6 && \
-		rm -rf k6.tgz "k6-v$(K6_VERSION)-linux-$$a" && \
-		echo "Installed to $(LOAD_DIR)/k6"; \
-	fi
-
-load-k6: clear k6-setup
-	@echo ""
-	@echo "=== k6 load test — read endpoints ==="
-	@if [ -z "$(TOKEN)" ] || [ -z "$(WORKSPACEID)" ] || [ -z "$(CMID)" ]; then \
-		echo "Missing required parameters. Usage:"; \
-		echo "  make load-k6 BASE_URL=<wwwroot> TOKEN=<token> WORKSPACEID=<id> CMID=<id> [REVISION=2000]"; \
-		exit 1; \
-	fi
-	@K6BIN=$$(command -v $(K6) 2>/dev/null || echo "$(LOAD_DIR)/k6"); \
-	cd $(LOAD_DIR) && "$$K6BIN" run flexaccess-read-endpoints.k6.js \
-		-e BASE_URL='$(BASE_URL)' -e TOKEN='$(TOKEN)' \
-		-e WORKSPACEID='$(WORKSPACEID)' -e CMID='$(CMID)' -e REVISION='$(REVISION)'

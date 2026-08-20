@@ -79,11 +79,10 @@ final class rate_limiter {
      *
      * @param string $bucket Logical action name.
      * @param string $identifier Opaque per-actor identifier.
-     * @param int $window Unused; retained for call-site compatibility.
      * @param int|null $now Current time.
      * @return void
      */
-    public static function record(string $bucket, string $identifier, int $window, ?int $now = null): void {
+    public static function record(string $bucket, string $identifier, ?int $now = null): void {
         self::insert($bucket, $identifier, $now ?? time());
     }
 
@@ -146,12 +145,29 @@ final class rate_limiter {
     }
 
     /**
-     * Hash an identifier to a fixed-width, non-reversible key.
+     * Hash an identifier to a fixed-width, non-reversible, unguessable key.
+     *
+     * HMAC-SHA256 with a per-site secret defeats the offline dictionary attack that an unsalted hash
+     * of a low-entropy identifier (an IPv4 address or an email) would otherwise allow.
      *
      * @param string $identifier Raw identifier.
      * @return string
      */
     private static function hash(string $identifier): string {
-        return sha1($identifier);
+        return hash_hmac('sha256', $identifier, self::secret());
+    }
+
+    /**
+     * The per-site secret used to key the identifier HMAC, created on first use.
+     *
+     * @return string
+     */
+    private static function secret(): string {
+        $secret = get_config('auth_flexaccess', 'ratelimitsecret');
+        if (empty($secret)) {
+            $secret = bin2hex(random_bytes(32));
+            set_config('ratelimitsecret', $secret, 'auth_flexaccess');
+        }
+        return (string) $secret;
     }
 }

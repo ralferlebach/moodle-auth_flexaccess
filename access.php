@@ -74,10 +74,18 @@ if (isloggedin() && !isguestuser()) {
     redirect($returnurl);
 }
 
+// State-changing actions on this page (guest login, temporary-account creation) must arrive by POST
+// so that a GET prefetch, security scanner or link-preview fetch can never trigger them.
+$ispost = ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST';
+
+// Seed the post-login return target server-side rather than trusting a wantsurl query parameter,
+// which Moodle 4.5 does not reliably honour on the normal login path.
+$SESSION->wantsurl = $returnurl->out_as_local_url(false);
+
 // Guest access: log in as the Moodle guest user and continue to the course. Whether the guest can
 // then view content depends on the course's own guest enrolment, which FlexAccess does not manage.
 if (
-    optional_param('guest', 0, PARAM_BOOL) && confirm_sesskey()
+    optional_param('guest', 0, PARAM_BOOL) && $ispost && confirm_sesskey()
         && \enrol_flexaccess\api::offers_guest_access($courseid)
 ) {
     $guestuser = get_complete_user_data('username', 'guest');
@@ -96,17 +104,18 @@ $quickreglink = \enrol_flexaccess\api::offers_quick_registration($courseid)
     : '';
 $loginlink = \enrol_flexaccess\api::offers_normal_login($courseid)
     ? html_writer::tag('p', html_writer::link(
-        new moodle_url('/login/index.php', ['wantsurl' => $returnurl->out_as_local_url(false)]),
+        new moodle_url('/login/index.php'),
         get_string('access:orlogin', 'auth_flexaccess')
     ))
     : '';
 $guestlink = \enrol_flexaccess\api::offers_guest_access($courseid)
-    ? html_writer::tag('p', html_writer::link(
+    ? html_writer::tag('div', $OUTPUT->single_button(
         new moodle_url(
             '/auth/flexaccess/access.php',
-            ['courseid' => $courseid, 'wantsurl' => $wantsurl, 'guest' => 1, 'sesskey' => sesskey()]
+            ['courseid' => $courseid, 'guest' => 1, 'sesskey' => sesskey()]
         ),
-        get_string('access:orguest', 'auth_flexaccess')
+        get_string('access:orguest', 'auth_flexaccess'),
+        'post'
     ))
     : '';
 $magiclink = \auth_flexaccess\api::magic_login_enabled()
@@ -119,7 +128,7 @@ $extralinks = $quickreglink . $guestlink . $loginlink . $magiclink;
 $rateid = \enrol_flexaccess\local\access_key_rate::identifier(getremoteaddr(), $courseid);
 
 $failure = null;
-if ($confirm && confirm_sesskey()) {
+if ($confirm && $ispost && confirm_sesskey()) {
     // The key arrives as a POST field, so it never appears in the URL, referrer or server logs.
     $accesskey = $keyrequired ? optional_param('accesskey', '', PARAM_RAW) : null;
     if ($keyrequired && \enrol_flexaccess\local\access_key_rate::is_blocked($rateid)) {
@@ -180,15 +189,15 @@ if ($failure !== null && $failure !== 'badkey') {
     ]);
     echo html_writer::end_tag('form');
 } else {
+    // No key required: a POST-only confirmation button creates the temporary account. Using POST
+    // (not a GET link) keeps prefetch/scanners from creating accounts.
+    echo html_writer::tag('p', get_string('access:intro', 'auth_flexaccess', format_string($course->fullname)));
     $continueurl = new moodle_url(
         '/auth/flexaccess/access.php',
-        ['courseid' => $courseid, 'wantsurl' => $wantsurl, 'confirm' => 1, 'sesskey' => sesskey()]
+        ['courseid' => $courseid, 'confirm' => 1, 'sesskey' => sesskey()]
     );
-    echo $OUTPUT->confirm(
-        get_string('access:intro', 'auth_flexaccess', format_string($course->fullname)),
-        $continueurl,
-        $courseurl
-    );
+    echo $OUTPUT->single_button($continueurl, get_string('continue'), 'post');
+    echo $OUTPUT->action_link($courseurl, get_string('cancel'));
 }
 
 echo $extralinks;

@@ -57,7 +57,7 @@ final class rate_limiter_test extends \advanced_testcase {
         $now = 1000000;
         for ($i = 0; $i < 3; $i++) {
             $this->assertFalse(rate_limiter::too_many('b', 'id', 3, 60, $now));
-            rate_limiter::record('b', 'id', 60, $now);
+            rate_limiter::record('b', 'id', $now);
         }
         $this->assertTrue(rate_limiter::too_many('b', 'id', 3, 60, $now));
         // A different identifier is independent.

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.12 — 2026-08-20 — P1/P2-Härtung: Security (a) + Identity/State (b) + Cleanup/Docs (c)
+- **(a) Security:** Rate-Limit-Identifier jetzt **HMAC-SHA256** mit per-Site-Secret statt ungesalzenem SHA1 (defeats Dictionary-Bruteforce von IP/E-Mail); `ratehit.identifier` auf 64 Zeichen geweitet (Upgrade 2026081912, stale Zeilen verworfen). Anonymer Einstieg (`access.php`): `\$SESSION->wantsurl` wird serverseitig gesetzt statt via Query-Param; Temp-Account-Erzeugung (ohne Key) und Guest-Login sind **POST-only** (Method-Gate gegen Prefetch/Scanner).
+- **(b) Identity/State:** `account_state::PROVISIONAL` wird jetzt gesetzt, sobald Persistence angefragt wird (Quick-Reg + Funnel) — Dashboard/Audit konsistent. Reference-Nummer **kollisionsfrei** erzeugt (`generate_unique_reference`, 12-stellig, Existenzpruefung vor Insert) statt einmalig — schliesst den Orphan-User-Fall bei Kollision.
+- **(c) Cleanup:** tote `stub*`-Strings entfernt; unbenutzter `\$window`-Parameter aus `rate_limiter::record`; tote auth-Lifetime-Settings (`temporarylifetime`/`provisionallifetime`, gehoeren dem enrol/policy-Layer; inkl. untranslated „1 week“) entfernt.
+
 ## 0.9.11 — 2026-08-20 — RC-Hardening: P0#6 (Admin-Conversion über Mailqueue)
 - **P0#6 — Admin-Conversion nutzt jetzt die FlexAccess-Mailqueue:** statt Core `setnew_password_and_mail` (das die Queue und das Ratelimit umging) wird eine **queued Set-Password-Einladung** verschickt. Neuer Mail-Kind `set_password`, Purpose `setpassword`, Landing `setpassword.php` + `set_password_form`. Der Token wird wie üblich erst beim Versand vom Worker ausgegeben (nie in der Queue persistiert), zur Anzeige nicht-konsumierend via `verify()` geprüft und erst bei gültiger Passwort-Eingabe verbraucht; danach wird der Nutzer angemeldet. TTL 3 Tage.
 - Test deckt den vollständigen Round-Trip ab: admin_convert → nichts sofort gesendet → Worker liefert → Token aus der Mail → `complete_set_password` setzt das Passwort → Replay des Single-Use-Tokens blockiert.

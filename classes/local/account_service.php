@@ -40,6 +40,52 @@ final class account_service {
     private const TABLE = 'auth_flexaccess_account';
 
     /**
+     * Generate a numeric reference code guaranteed not to collide with an existing account.
+     *
+     * A 12-digit space (10^12) with a pre-insert existence check makes a collision astronomically
+     * unlikely, closing the window where a duplicate reference would fail the account insert after
+     * the Moodle user was already created.
+     *
+     * @param int $digits Number of digits (default 12).
+     * @return string
+     */
+    public static function generate_unique_reference(int $digits = 12): string {
+        global $DB;
+        $max = (10 ** $digits) - 1;
+        do {
+            $reference = str_pad((string) random_int(0, $max), $digits, '0', STR_PAD_LEFT);
+        } while ($DB->record_exists(self::TABLE, ['referencecode' => $reference]));
+        return $reference;
+    }
+
+    /**
+     * Mark a temporary account as provisional (persistence requested, awaiting verification).
+     *
+     * Only an ephemeral temporary account is promoted; already-active or converted accounts are left
+     * untouched. This keeps dashboard statistics and the account state machine consistent with the
+     * lifecycle (anonymous = ephemeral, persistence-requested = provisional, verified = active).
+     *
+     * @param int $userid Moodle user id.
+     * @param int|null $now Current time.
+     * @return void
+     */
+    public static function mark_provisional(int $userid, ?int $now = null): void {
+        global $DB;
+        $now = $now ?? time();
+        $account = $DB->get_record(self::TABLE, ['userid' => $userid]);
+        if (
+            !$account
+                || $account->accounttype !== account_type::TEMPORARY_USER
+                || $account->accountstate !== account_state::EPHEMERAL
+        ) {
+            return;
+        }
+        $account->accountstate = account_state::PROVISIONAL;
+        $account->timemodified = $now;
+        $DB->update_record(self::TABLE, $account);
+    }
+
+    /**
      * Create temporary-user account metadata.
      *
      * @param int $userid Moodle user id.

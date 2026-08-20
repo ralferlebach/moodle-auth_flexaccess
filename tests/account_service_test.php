@@ -161,4 +161,52 @@ final class account_service_test extends \advanced_testcase {
         // Idempotent: a second run expires nothing more.
         $this->assertSame(0, account_service::expire_due($now));
     }
+
+    /**
+     * generate_unique_reference produces a 12-digit code that avoids existing references.
+     *
+     * @return void
+     */
+    public function test_generate_unique_reference(): void {
+        $this->resetAfterTest();
+        $user = $this->getDataGenerator()->create_user();
+
+        $ref = account_service::generate_unique_reference();
+        $this->assertSame(12, strlen($ref));
+        $this->assertSame(1, preg_match('/^\\d{12}$/', $ref));
+
+        // A reference already in use is never returned.
+        account_service::create_temporary($user->id, $ref, 2000, null, null, 1000);
+        $this->assertNotSame($ref, account_service::generate_unique_reference());
+    }
+
+    /**
+     * mark_provisional promotes an ephemeral account and leaves others untouched.
+     *
+     * @return void
+     */
+    public function test_mark_provisional(): void {
+        $this->resetAfterTest();
+        $now = time();
+        $ephemeral = $this->getDataGenerator()->create_user();
+        $active = $this->getDataGenerator()->create_user();
+        account_service::create_temporary($ephemeral->id, 'REF-P1', $now + DAYSECS, null, null, $now);
+        account_service::create_authenticated($active->id, 'REF-P2', $now);
+
+        account_service::mark_provisional((int) $ephemeral->id, $now);
+        account_service::mark_provisional((int) $active->id, $now);
+
+        global $DB;
+        $this->assertSame(
+            account_state::PROVISIONAL,
+            $DB->get_field('auth_flexaccess_account', 'accountstate', ['userid' => $ephemeral->id])
+        );
+        // An authenticated account is not affected.
+        $this->assertSame(
+            account_state::ACTIVE,
+            $DB->get_field('auth_flexaccess_account', 'accountstate', ['userid' => $active->id])
+        );
+        // A provisional account remains convertible.
+        $this->assertTrue(account_service::is_convertible((int) $ephemeral->id, $now));
+    }
 }

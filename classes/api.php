@@ -335,6 +335,9 @@ final class api {
         update_internal_user_password($user, $password);
 
         set_user_preference('auth_flexaccess_pendingemail', $email, $userid);
+        // The account is no longer a bare anonymous visitor: persistence has been requested and is
+        // awaiting email verification. Reflect that in the state machine.
+        account_service::mark_provisional($userid, $now);
         // SEC-03: the verification link must not outlive the temporary account it would revive.
         // The token itself is issued by the worker at delivery time (never persisted in the queue).
         $ttl = token_service::DEFAULT_TTL;
@@ -697,8 +700,9 @@ final class api {
         require_once($CFG->dirroot . '/user/lib.php');
         $now = $now ?? time();
 
-        // Numeric reference so temporary users can read it out to an administrator (see tool_flexaccess reference search).
-        $reference = str_pad((string) random_int(0, 9999999999), 10, '0', STR_PAD_LEFT);
+        // Numeric reference so temporary users can read it out to an administrator (see tool_flexaccess
+        // reference search). Generated collision-free against existing accounts before the user is made.
+        $reference = account_service::generate_unique_reference();
         do {
             $username = \core_text::strtolower('flexaccess_' . $reference . random_string(4));
         } while ($DB->record_exists('user', ['username' => $username, 'mnethostid' => $CFG->mnet_localhost_id]));
