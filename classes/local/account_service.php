@@ -106,7 +106,7 @@ final class account_service {
     ): int {
         global $DB;
         $now = $now ?? time();
-        return (int) $DB->insert_record(self::TABLE, (object) [
+        return self::insert_with_reference_retry((object) [
             'userid' => $userid,
             'accounttype' => account_type::TEMPORARY_USER,
             'accountstate' => account_state::EPHEMERAL,
@@ -118,6 +118,32 @@ final class account_service {
             'timeactivated' => null,
             'timemodified' => $now,
         ]);
+    }
+
+    /**
+     * Insert an account row, regenerating the reference code if the (extremely rare) unique-index
+     * collision occurs between generation and insert. This compensates the generate/insert race.
+     *
+     * @param \stdClass $record Account row to insert (referencecode may be regenerated).
+     * @return int New account row id.
+     */
+    private static function insert_with_reference_retry(\stdClass $record): int {
+        global $DB;
+        $attempts = 0;
+        while (true) {
+            try {
+                return (int) $DB->insert_record(self::TABLE, $record);
+            } catch (\dml_write_exception $e) {
+                // Only a reference-code clash is retryable; regenerate and try again a few times.
+                if (
+                    empty($record->referencecode) || ++$attempts >= 5
+                        || !$DB->record_exists(self::TABLE, ['referencecode' => $record->referencecode])
+                ) {
+                    throw $e;
+                }
+                $record->referencecode = self::generate_unique_reference(strlen((string) $record->referencecode));
+            }
+        }
     }
 
     /**
@@ -148,7 +174,7 @@ final class account_service {
     public static function create_authenticated(int $userid, ?string $referencecode = null, ?int $now = null): int {
         global $DB;
         $now = $now ?? time();
-        return (int) $DB->insert_record(self::TABLE, (object) [
+        return self::insert_with_reference_retry((object) [
             'userid' => $userid,
             'accounttype' => account_type::AUTHENTICATED_USER,
             'accountstate' => account_state::ACTIVE,

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.17 — 2026-08-20 — Fix: Cross-Plugin-Mailqueue (Standalone-CI) + saubere API-Grenze
+- Keine Codeaenderung.
+
+## 0.9.16 — 2026-08-20 — P2-Cleanup: Performance, Reliability, i18n
+- **Perf (§15):** `account_stats()` nutzt jetzt eine einzige Conditional-Aggregate-Query statt sechs separater COUNTs.
+- **Reliability (§17):** neuer Insert-Retry `insert_with_reference_retry()` — bei der (extrem seltenen) Referenzcode-Kollision zwischen Generierung und Insert wird der Code regeneriert und der Insert wiederholt (bis 5x), statt hart zu scheitern. Genutzt in `create_temporary`/`create_authenticated`.
+- Test: account_stats deckt jetzt alle Zaehl-Zweige (total/temporary/authenticated/provisional/active/expired) ab.
+
 ## 0.9.15 — 2026-08-20 — RC-Gates (Review 0.9.13): 4 P0 + Reliability + Doku/CI-Sync
 - **P0-1 (Conversion-Race):** `confirm_persistence()` laeuft jetzt durch den zentralen, per-User gelockten `finalise_identity()`. Das Token wird **nicht-konsumierend** geprueft und erst **innerhalb der Transaktion** verbraucht; scheitert die Conversion, rollt alles zurueck (Token bleibt unverbraucht). `finalise_identity()` rollt bei jedem Callback-Fehler transaktional zurueck.
 - **Reliability (§16):** neuer `account_service::delete_account()` loescht den Moodle-User **zuerst**, dann die FlexAccess-Rows; `purge_expired()` nutzt ihn (keine inkonsistenten Reste mehr bei fehlgeschlagenem Core-Delete).

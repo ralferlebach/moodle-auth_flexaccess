@@ -209,14 +209,18 @@ final class api_test extends \advanced_testcase {
         $now = 1000000;
         $a = $this->getDataGenerator()->create_user();
         $b = $this->getDataGenerator()->create_user();
+        $c = $this->getDataGenerator()->create_user();
         $this->make_account($a->id, account_type::TEMPORARY_USER, account_state::PROVISIONAL, $now, null);
         $this->make_account($b->id, account_type::AUTHENTICATED_USER, account_state::ACTIVE, $now, null);
+        $this->make_account($c->id, account_type::TEMPORARY_USER, account_state::EXPIRED, $now, $now);
 
         $stats = \auth_flexaccess\api::account_stats();
-        $this->assertSame(2, $stats['total']);
-        $this->assertSame(1, $stats['temporary']);
+        $this->assertSame(3, $stats['total']);
+        $this->assertSame(2, $stats['temporary']);
         $this->assertSame(1, $stats['authenticated']);
         $this->assertSame(1, $stats['provisional']);
+        $this->assertSame(1, $stats['active']);
+        $this->assertSame(1, $stats['expired']);
 
         $DB->insert_record('auth_flexaccess_mailqueue', (object) [
             'userid' => $a->id, 'recipient' => 'a@example.com', 'mailtype' => 'activation',

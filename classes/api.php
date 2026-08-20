@@ -771,13 +771,30 @@ final class api {
     public static function account_stats(): array {
         global $DB;
         $t = self::ACCOUNT_TABLE;
+        // A single conditional-aggregate pass instead of six separate COUNT queries.
+        $row = $DB->get_record_sql(
+            "SELECT COUNT(*) AS total,
+                    SUM(CASE WHEN accounttype = :tt THEN 1 ELSE 0 END) AS temporary,
+                    SUM(CASE WHEN accounttype = :ta THEN 1 ELSE 0 END) AS authenticated,
+                    SUM(CASE WHEN accountstate = :sp THEN 1 ELSE 0 END) AS provisional,
+                    SUM(CASE WHEN accountstate = :sac THEN 1 ELSE 0 END) AS active,
+                    SUM(CASE WHEN accountstate = :se THEN 1 ELSE 0 END) AS expired
+               FROM {" . $t . "}",
+            [
+                'tt' => account_type::TEMPORARY_USER,
+                'ta' => account_type::AUTHENTICATED_USER,
+                'sp' => account_state::PROVISIONAL,
+                'sac' => account_state::ACTIVE,
+                'se' => account_state::EXPIRED,
+            ]
+        );
         return [
-            'total' => $DB->count_records($t),
-            'temporary' => $DB->count_records($t, ['accounttype' => account_type::TEMPORARY_USER]),
-            'authenticated' => $DB->count_records($t, ['accounttype' => account_type::AUTHENTICATED_USER]),
-            'provisional' => $DB->count_records($t, ['accountstate' => account_state::PROVISIONAL]),
-            'active' => $DB->count_records($t, ['accountstate' => account_state::ACTIVE]),
-            'expired' => $DB->count_records($t, ['accountstate' => account_state::EXPIRED]),
+            'total' => (int) $row->total,
+            'temporary' => (int) $row->temporary,
+            'authenticated' => (int) $row->authenticated,
+            'provisional' => (int) $row->provisional,
+            'active' => (int) $row->active,
+            'expired' => (int) $row->expired,
         ];
     }
 
