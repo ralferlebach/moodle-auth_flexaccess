@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.9 — 2026-08-19 — Welle 4 Abschluss: Accessibility-Gate + Docs-SSOT & Traceability
+- Keine Codeaenderung.
+
+## 0.9.8 — 2026-08-19 — Welle 4: Policy-Caching (Perf)
+- Keine Codeaenderung.
+
 ## 0.9.7 — 2026-08-19 — Welle 5: Einladungskampagnen (§49)
 - Keine Codeaenderung.
 
