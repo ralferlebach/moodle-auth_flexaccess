@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.9.22 — 2026-08-20 — Fix: PHPDoc-Checker (CI) — @param-Vollstaendigkeit
+- Keine Codeaenderung.
+
 ## 0.9.21 — 2026-08-20 — Feature: Excel-Rückkonversion von Stapel-Accounts (Kampagne, Teil 2)
 - **Neu:** `api::username_available()` und `api::rename_username()` (validierte Umbenennung mit Verfügbarkeits- und Format-Prüfung), genutzt von der Stapel-Rückkonversion für die geregelte Nutzerkennungs-Änderung nach der Umwandlung.
 
