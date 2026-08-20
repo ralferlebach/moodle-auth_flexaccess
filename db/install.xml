@@ -24,6 +24,7 @@
       </KEYS>
       <INDEXES>
         <INDEX NAME="referencecode_uix" UNIQUE="true" FIELDS="referencecode"/>
+        <INDEX NAME="type_state_expiry_ix" UNIQUE="false" FIELDS="accounttype, accountstate, timeexpires"/>
       </INDEXES>
     </TABLE>
     <TABLE NAME="auth_flexaccess_token" COMMENT="Hashed one-time tokens">

@@ -107,4 +107,38 @@ final class mail_worker_test extends \advanced_testcase {
         $this->assertSame(2, $sink->count());
         $sink->close();
     }
+
+    /**
+     * prune_delivered removes old finished jobs but keeps queued ones.
+     *
+     * @return void
+     */
+    public function test_prune_delivered(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $now = 100 * DAYSECS;
+        $mk = function (string $status, int $created) use ($DB, $now): void {
+            $DB->insert_record('auth_flexaccess_mailqueue', (object) [
+                'userid' => 0, 'recipient' => 'x@example.com', 'mailtype' => mail_kind::ACTIVATION,
+                'payloadjson' => json_encode(['subject' => 's', 'body' => 'b']),
+                'status' => $status, 'attempts' => 0, 'timecreated' => $created,
+                'nextrun' => $created, 'timesent' => null,
+            ]);
+        };
+        $mk('sent', $now - 40 * DAYSECS);
+        $mk('failed', $now - 40 * DAYSECS);
+        $mk('sent', $now - 1 * DAYSECS);
+        $mk('queued', $now - 40 * DAYSECS);
+
+        mail_worker::prune_delivered($now - 30 * DAYSECS);
+
+        // Old sent+failed gone; recent sent and any queued remain.
+        $this->assertSame(0, $DB->count_records_select(
+            'auth_flexaccess_mailqueue',
+            "status IN ('sent','failed') AND timecreated < :c",
+            ['c' => $now - 30 * DAYSECS]
+        ));
+        $this->assertSame(1, $DB->count_records('auth_flexaccess_mailqueue', ['status' => 'queued']));
+        $this->assertSame(1, $DB->count_records('auth_flexaccess_mailqueue', ['status' => 'sent']));
+    }
 }

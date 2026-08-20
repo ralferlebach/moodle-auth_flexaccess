@@ -44,7 +44,14 @@ final class process_mail_queue extends \core\task\scheduled_task {
      */
     public function execute(): void {
         \auth_flexaccess\local\mail_worker::run();
+        $now = time();
         // Housekeeping: drop rate-limit hit rows older than a day so the table stays small.
-        \auth_flexaccess\local\rate_limiter::prune(time() - DAYSECS);
+        \auth_flexaccess\local\rate_limiter::prune($now - DAYSECS);
+        // Retention: remove delivered/failed queue rows and dead tokens once past the retention
+        // window (defaults to the account retention setting, minimum one day).
+        $retentiondays = (int) get_config('auth_flexaccess', 'retentiondays');
+        $retention = max(DAYSECS, ($retentiondays > 0 ? $retentiondays : 30) * DAYSECS);
+        \auth_flexaccess\local\mail_worker::prune_delivered($now - $retention);
+        \auth_flexaccess\local\token_service::prune($now - $retention);
     }
 }

@@ -168,4 +168,19 @@ final class token_service {
     private static function hash(string $secret): string {
         return hash('sha256', $secret);
     }
+
+    /**
+     * Delete used or expired tokens older than the retention cutoff (housekeeping).
+     *
+     * @param int $olderthan Delete dead tokens whose timecreated is below this value.
+     * @return void
+     */
+    public static function prune(int $olderthan): void {
+        global $DB;
+        $DB->delete_records_select(
+            self::TABLE,
+            '(timeused IS NOT NULL OR timeexpires < :now) AND timecreated < :cutoff',
+            ['now' => time(), 'cutoff' => $olderthan]
+        );
+    }
 }

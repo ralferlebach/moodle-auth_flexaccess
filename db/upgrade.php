@@ -60,5 +60,20 @@ function xmldb_auth_flexaccess_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026081912, 'auth', 'flexaccess');
     }
 
+    if ($oldversion < 2026081913) {
+        // Performance: a compound index for the expiry/purge scans that filter on
+        // accounttype + accountstate + timeexpires.
+        $table = new xmldb_table('auth_flexaccess_account');
+        $index = new xmldb_index(
+            'type_state_expiry_ix',
+            XMLDB_INDEX_NOTUNIQUE,
+            ['accounttype', 'accountstate', 'timeexpires']
+        );
+        if ($dbman->table_exists($table) && !$dbman->index_exists($table, $index)) {
+            $dbman->add_index($table, $index);
+        }
+        upgrade_plugin_savepoint(true, 2026081913, 'auth', 'flexaccess');
+    }
+
     return true;
 }

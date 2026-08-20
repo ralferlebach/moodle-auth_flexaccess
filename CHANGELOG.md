@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.13 — 2026-08-20 — P2-Batch: Performance, Retention, Supply-Chain, Doku
+- **Perf:** Compound-Index `(accounttype, accountstate, timeexpires)` auf `auth_flexaccess_account` fuer die Expiry-/Purge-Scans (install.xml + Upgrade 2026081913). Mailqueue-Worker laedt Empfaenger jetzt **gebatcht** statt einer Query pro Job (kein N+1 mehr).
+- **Retention:** `process_mail_queue` bereinigt jetzt zusaetzlich zugestellte/fehlgeschlagene Queue-Zeilen (`mail_worker::prune_delivered`) und tote Token (`token_service::prune`) nach dem Retention-Fenster (Default = `retentiondays`, min. 1 Tag). Tests decken beide Prune-Pfade ab.
+
 ## 0.9.12 — 2026-08-20 — P1/P2-Härtung: Security (a) + Identity/State (b) + Cleanup/Docs (c)
 - **(a) Security:** Rate-Limit-Identifier jetzt **HMAC-SHA256** mit per-Site-Secret statt ungesalzenem SHA1 (defeats Dictionary-Bruteforce von IP/E-Mail); `ratehit.identifier` auf 64 Zeichen geweitet (Upgrade 2026081912, stale Zeilen verworfen). Anonymer Einstieg (`access.php`): `\$SESSION->wantsurl` wird serverseitig gesetzt statt via Query-Param; Temp-Account-Erzeugung (ohne Key) und Guest-Login sind **POST-only** (Method-Gate gegen Prefetch/Scanner).
 - **(b) Identity/State:** `account_state::PROVISIONAL` wird jetzt gesetzt, sobald Persistence angefragt wird (Quick-Reg + Funnel) — Dashboard/Audit konsistent. Reference-Nummer **kollisionsfrei** erzeugt (`generate_unique_reference`, 12-stellig, Existenzpruefung vor Insert) statt einmalig — schliesst den Orphan-User-Fall bei Kollision.

@@ -52,6 +52,23 @@ final class mail_worker {
     private const BACKOFF = 900;
 
     /**
+     * Delete delivered (sent) and permanently-failed jobs older than the retention cutoff.
+     *
+     * Keeps the queue table bounded; live (queued) jobs are never touched.
+     *
+     * @param int $olderthan Delete finished jobs whose timecreated is below this value.
+     * @return void
+     */
+    public static function prune_delivered(int $olderthan): void {
+        global $DB;
+        $DB->delete_records_select(
+            self::TABLE,
+            "status IN ('sent', 'failed') AND timecreated < :cutoff",
+            ['cutoff' => $olderthan]
+        );
+    }
+
+    /**
      * Run the worker: compute remaining hourly capacity and process due jobs.
      *
      * @param int|null $now Current time.
@@ -109,13 +126,21 @@ final class mail_worker {
             0,
             self::MAX_BATCH
         );
+        // Batch-load the sender-side user records once instead of one query per job (avoids N+1).
+        $userids = [];
+        foreach ($due as $job) {
+            if (!empty($job->userid)) {
+                $userids[(int) $job->userid] = (int) $job->userid;
+            }
+        }
+        $usermap = $userids ? $DB->get_records_list('user', 'id', $userids) : [];
         $budget = mail_planner::sendable($remaining, count($due));
         $sent = 0;
         foreach ($due as $job) {
             if ($sent >= $budget) {
                 break;
             }
-            if (self::deliver($job, $now)) {
+            if (self::deliver($job, $now, $usermap)) {
                 $sent++;
             }
         }
@@ -162,9 +187,10 @@ final class mail_worker {
      *
      * @param \stdClass $job Queue row.
      * @param int $now Current time.
+     * @param array $usermap Pre-loaded user records keyed by id (avoids per-job lookups).
      * @return bool Whether the job was sent.
      */
-    private static function deliver(\stdClass $job, int $now): bool {
+    private static function deliver(\stdClass $job, int $now, array $usermap = []): bool {
         global $DB;
         try {
             $payload = json_decode((string) $job->payloadjson, true);
@@ -182,7 +208,7 @@ final class mail_worker {
                 $DB->update_record(self::TABLE, $job);
                 return false;
             }
-            $recipient = self::recipient_user($job);
+            $recipient = self::recipient_user($job, $usermap);
             if (!email_to_user($recipient, self::from_user(), $subject, $body, $bodyhtml)) {
                 // The mailer returned false: treat as a delivery failure so the job is retried
                 // rather than silently marked as sent.
@@ -208,13 +234,16 @@ final class mail_worker {
      * Build the recipient user object for a queued job (a real user, addressed at job->recipient).
      *
      * @param \stdClass $job Queue row.
+     * @param array $usermap Pre-loaded user records keyed by id.
      * @return \stdClass
      */
-    private static function recipient_user(\stdClass $job): \stdClass {
+    private static function recipient_user(\stdClass $job, array $usermap = []): \stdClass {
         global $DB;
         $user = null;
         if (!empty($job->userid)) {
-            $user = $DB->get_record('user', ['id' => $job->userid], '*', IGNORE_MISSING) ?: null;
+            // Prefer the batch-loaded map; fall back to a direct read for out-of-band callers.
+            $user = $usermap[(int) $job->userid]
+                ?? ($DB->get_record('user', ['id' => $job->userid], '*', IGNORE_MISSING) ?: null);
         }
         if (!$user) {
             $user = \core_user::get_noreply_user();

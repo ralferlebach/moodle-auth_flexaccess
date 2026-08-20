@@ -80,4 +80,30 @@ final class token_service_test extends \advanced_testcase {
         $this->assertNull(token_service::consume($secret, 'delete'));
         $this->assertNull(token_service::verify($secret, 'delete'));
     }
+
+    /**
+     * prune removes used and expired tokens past the cutoff, keeping live ones.
+     *
+     * @return void
+     */
+    public function test_prune(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $now = 100 * DAYSECS;
+        // A live token (not used, not expired, recent).
+        token_service::issue(1, 'persistence', DAYSECS, $now);
+        // An expired token created long ago.
+        token_service::issue(2, 'persistence', 10, $now - 40 * DAYSECS);
+        // A used token created long ago.
+        $used = token_service::issue(3, 'persistence', DAYSECS, $now - 40 * DAYSECS);
+        token_service::consume($used, 'persistence', $now - 39 * DAYSECS);
+
+        $before = $DB->count_records('auth_flexaccess_token');
+        token_service::prune($now - 30 * DAYSECS);
+        $after = $DB->count_records('auth_flexaccess_token');
+
+        $this->assertSame(3, $before);
+        // The two old dead tokens are pruned; the live one remains.
+        $this->assertSame(1, $after);
+    }
 }
