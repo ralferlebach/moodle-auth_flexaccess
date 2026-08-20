@@ -195,26 +195,32 @@ final class api {
             }
 
             $transaction = $DB->start_delegated_transaction();
-            $user = $DB->get_record('user', ['id' => $userid], '*', MUST_EXIST);
-            $user->email = $email;
-            $user->username = $email;
-            $user->emailstop = 0;
-            if (trim($firstname) !== '') {
-                $user->firstname = clean_param($firstname, PARAM_NOTAGS);
+            try {
+                $user = $DB->get_record('user', ['id' => $userid], '*', MUST_EXIST);
+                $user->email = $email;
+                $user->username = $email;
+                $user->emailstop = 0;
+                if (trim($firstname) !== '') {
+                    $user->firstname = clean_param($firstname, PARAM_NOTAGS);
+                }
+                if (trim($lastname) !== '') {
+                    $user->lastname = clean_param($lastname, PARAM_NOTAGS);
+                }
+                if (method_exists(\core\user::class, 'update_user')) {
+                    \core\user::update_user($user, false, true);
+                } else {
+                    user_update_user($user, false, true);
+                }
+                account_service::convert_to_authenticated($userid, $now);
+                if ($inside !== null) {
+                    $inside();
+                }
+                $transaction->allow_commit();
+            } catch (\Throwable $e) {
+                // Roll back so a failure in the credential/token callback cannot leave a
+                // half-converted account (and a consumed single-use token stays unconsumed).
+                $transaction->rollback($e);
             }
-            if (trim($lastname) !== '') {
-                $user->lastname = clean_param($lastname, PARAM_NOTAGS);
-            }
-            if (method_exists(\core\user::class, 'update_user')) {
-                \core\user::update_user($user, false, true);
-            } else {
-                user_update_user($user, false, true);
-            }
-            account_service::convert_to_authenticated($userid, $now);
-            if ($inside !== null) {
-                $inside();
-            }
-            $transaction->allow_commit();
             return 'ok';
         } finally {
             $lock->release();
@@ -419,53 +425,64 @@ final class api {
      * @return string Status: 'converted', 'invalid' or 'emailtaken'.
      */
     public static function confirm_persistence(string $token, ?int $now = null): string {
-        global $CFG, $DB;
+        global $CFG;
         require_once($CFG->dirroot . '/user/lib.php');
         $now = $now ?? time();
 
-        $userid = token_service::consume($token, 'persistence', $now, null);
-        if ($userid === null) {
+        // Verify the token WITHOUT consuming it. Consumption happens inside the locked conversion
+        // (see the $inside callback), so a conversion that fails afterwards never burns the
+        // single-use token, and concurrent verification/admin conversions are serialised.
+        $record = token_service::verify($token, 'persistence', $now);
+        if ($record === null) {
             return 'invalid';
         }
+        $userid = (int) $record->userid;
         if (!account_service::is_temporary($userid)) {
-            // Link already used and account already permanent.
+            // Link already used and the account is already permanent.
             return 'converted';
-        }
-        // SEC-03: a temporary account that has already expired or been suspended must not be
-        // revived by a still-valid token.
-        $account = self::get_account($userid);
-        if (
-            !$account
-                || $account->accountstate === account_state::EXPIRED
-                || $account->accountstate === account_state::SUSPENDED
-                || ($account->timeexpires !== null && (int) $account->timeexpires <= $now)
-        ) {
-            return 'expired';
         }
         $pending = get_user_preferences('auth_flexaccess_pendingemail', null, $userid);
         if ($pending === null || $pending === '') {
             return 'invalid';
         }
-        if (!self::email_available($pending, $userid)) {
-            return 'emailtaken';
+
+        try {
+            $status = self::finalise_identity(
+                $userid,
+                (string) $pending,
+                '',
+                '',
+                $now,
+                static function () use ($userid, $token, $now): void {
+                    global $DB;
+                    // Consume the single-use token inside the transaction. If it was already consumed
+                    // by a concurrent request, abort so the whole conversion rolls back.
+                    if (token_service::consume($token, 'persistence', $now, $userid) === null) {
+                        throw new \moodle_exception('error');
+                    }
+                    $user = $DB->get_record('user', ['id' => $userid], '*', MUST_EXIST);
+                    if ((int) $user->suspended === 1) {
+                        $user->suspended = 0;
+                        if (method_exists(\core\user::class, 'update_user')) {
+                            \core\user::update_user($user, false, true);
+                        } else {
+                            user_update_user($user, false, true);
+                        }
+                    }
+                    unset_user_preference('auth_flexaccess_pendingemail', $userid);
+                    unset_user_preference('auth_flexaccess_followupsent', $userid);
+                }
+            );
+        } catch (\moodle_exception $e) {
+            // The token was consumed concurrently; nothing was converted.
+            return 'invalid';
         }
 
-        $transaction = $DB->start_delegated_transaction();
-        $user = $DB->get_record('user', ['id' => $userid], '*', MUST_EXIST);
-        $user->email = $pending;
-        $user->username = $pending;
-        $user->emailstop = 0;
-        $user->suspended = 0;
-        if (method_exists(\core\user::class, 'update_user')) {
-            \core\user::update_user($user, false, true);
-        } else {
-            user_update_user($user, false, true);
+        if ($status === 'ok') {
+            return 'converted';
         }
-        account_service::convert_to_authenticated($userid, $now);
-        unset_user_preference('auth_flexaccess_pendingemail', $userid);
-        unset_user_preference('auth_flexaccess_followupsent', $userid);
-        $transaction->allow_commit();
-        return 'converted';
+        // Map the central guard's vocabulary onto this endpoint's.
+        return $status === 'notapplicable' ? 'expired' : $status;
     }
 
     /**
@@ -649,6 +666,23 @@ final class api {
             return null;
         }
         return $userid;
+    }
+
+    /**
+     * Roll back a just-created temporary account (compensation for a failed provisioning flow).
+     *
+     * Only a still-temporary account is removed, so a converted account can never be deleted by a
+     * late compensation. Removes the enrolment (via the core user delete) and the FlexAccess rows.
+     *
+     * @param int $userid Moodle user id.
+     * @return bool Whether the account was rolled back.
+     */
+    public static function rollback_temporary_user(int $userid): bool {
+        if (!account_service::is_temporary($userid)) {
+            return false;
+        }
+        account_service::delete_account($userid);
+        return true;
     }
 
     /**

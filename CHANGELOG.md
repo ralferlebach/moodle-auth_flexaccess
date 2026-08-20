@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.15 — 2026-08-20 — RC-Gates (Review 0.9.13): 4 P0 + Reliability + Doku/CI-Sync
+- **P0-1 (Conversion-Race):** `confirm_persistence()` laeuft jetzt durch den zentralen, per-User gelockten `finalise_identity()`. Das Token wird **nicht-konsumierend** geprueft und erst **innerhalb der Transaktion** verbraucht; scheitert die Conversion, rollt alles zurueck (Token bleibt unverbraucht). `finalise_identity()` rollt bei jedem Callback-Fehler transaktional zurueck.
+- **Reliability (§16):** neuer `account_service::delete_account()` loescht den Moodle-User **zuerst**, dann die FlexAccess-Rows; `purge_expired()` nutzt ihn (keine inkonsistenten Reste mehr bei fehlgeschlagenem Core-Delete).
+- **P0-2-Support:** `api::rollback_temporary_user()` (nur fuer noch temporaere Konten) als Compensation-Einstieg fuer die Enrolment-Seite.
+- E2E-Test: Default-Verifikationsfluss (Verifikation AN) request -> Queue -> Worker -> Token -> confirm -> permanenter, login-faehiger Account.
+
 ## 0.9.14 — 2026-08-20 — Einladungen: personengebundenes Single-Use-Modell (Review §9)
 - Keine Codeaenderung.
 

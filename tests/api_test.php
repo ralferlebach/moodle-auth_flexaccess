@@ -322,4 +322,47 @@ final class api_test extends \advanced_testcase {
         // The account stays temporary until the emailed link is followed.
         $this->assertSame(account_type::TEMPORARY_USER, \auth_flexaccess\api::classify_user((int) $user->id));
     }
+
+    /**
+     * End-to-end production-default flow: verification ON, request -> queue -> worker -> token ->
+     * confirm -> the account is a permanent, loginnable authenticated user.
+     *
+     * @return void
+     */
+    public function test_default_verification_flow_end_to_end(): void {
+        global $DB;
+        $this->resetAfterTest();
+        // Verification enabled is the production default.
+        set_config('requireemailverification', 1, 'auth_flexaccess');
+        $now = time();
+        $user = $this->getDataGenerator()->create_user(['email' => 'temp-e2e@flexaccess.invalid']);
+        \auth_flexaccess\local\account_service::create_temporary((int) $user->id, 'REF-E2E', $now + DAYSECS, null, null, $now);
+
+        $sink = $this->redirectEmails();
+        // Request persistence: this does NOT convert; it queues a verification mail.
+        $status = \auth_flexaccess\api::request_persistence((int) $user->id, 'e2e@example.com', 'E', 'Two', 'Str0ng-Pass!23', $now);
+        $this->assertSame('verificationsent', $status);
+        $this->assertSame(account_type::TEMPORARY_USER, \auth_flexaccess\api::classify_user((int) $user->id));
+        $this->assertCount(0, $sink->get_messages());
+
+        // The worker delivers and issues the token at send time.
+        \auth_flexaccess\local\mail_worker::run($now);
+        $messages = $sink->get_messages();
+        $this->assertGreaterThanOrEqual(1, count($messages));
+        $this->assertSame('e2e@example.com', $messages[0]->to);
+        $body = quoted_printable_decode($messages[0]->body);
+        $this->assertSame(1, preg_match('/token=([A-Za-z0-9]+)/', $body, $m));
+        $sink->close();
+
+        // Following the link converts the account (same user id, now permanent).
+        $this->assertSame('converted', \auth_flexaccess\api::confirm_persistence($m[1], $now));
+        $this->assertSame(account_type::AUTHENTICATED_USER, \auth_flexaccess\api::classify_user((int) $user->id));
+        $fresh = $DB->get_record('user', ['id' => $user->id], '*', MUST_EXIST);
+        $this->assertSame('e2e@example.com', $fresh->email);
+        $this->assertSame(0, (int) $fresh->emailstop);
+        // The token is single-use: replay does not re-convert (either the used token is rejected,
+        // or the now-permanent account short-circuits).
+        $this->assertContains(\auth_flexaccess\api::confirm_persistence($m[1], $now), ['converted', 'invalid']);
+        $this->assertSame(account_type::AUTHENTICATED_USER, \auth_flexaccess\api::classify_user((int) $user->id));
+    }
 }

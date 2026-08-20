@@ -282,19 +282,33 @@ final class account_service {
         $records = $DB->get_records_select(self::TABLE, $select, $params, 'timeexpires ASC', '*', 0, max(0, $limit));
         $count = 0;
         foreach ($records as $account) {
-            $userid = (int) $account->userid;
-            $transaction = $DB->start_delegated_transaction();
-            $DB->delete_records('auth_flexaccess_token', ['userid' => $userid]);
-            $DB->delete_records('auth_flexaccess_mailqueue', ['userid' => $userid]);
-            $DB->delete_records(self::TABLE, ['id' => $account->id]);
-            $transaction->allow_commit();
-
-            $user = $DB->get_record('user', ['id' => $userid, 'deleted' => 0]);
-            if ($user) {
-                delete_user($user);
-            }
+            self::delete_account((int) $account->userid);
             $count++;
         }
         return $count;
+    }
+
+    /**
+     * Delete a FlexAccess account and its Moodle user, Moodle-user first.
+     *
+     * Ordering matters for reliability (§ purge): the Moodle user (and thereby its enrolments) is
+     * removed first; the FlexAccess metadata is only cleared once that has succeeded, so a failing
+     * core delete can never leave a Moodle user stripped of its FlexAccess record.
+     *
+     * @param int $userid Moodle user id.
+     * @return void
+     */
+    public static function delete_account(int $userid): void {
+        global $CFG, $DB;
+        require_once($CFG->dirroot . '/user/lib.php');
+        $user = $DB->get_record('user', ['id' => $userid, 'deleted' => 0]);
+        if ($user) {
+            delete_user($user);
+        }
+        $transaction = $DB->start_delegated_transaction();
+        $DB->delete_records('auth_flexaccess_token', ['userid' => $userid]);
+        $DB->delete_records('auth_flexaccess_mailqueue', ['userid' => $userid]);
+        $DB->delete_records(self::TABLE, ['userid' => $userid]);
+        $transaction->allow_commit();
     }
 }
