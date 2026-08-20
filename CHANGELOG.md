@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.9.14 — 2026-08-20 — Einladungen: personengebundenes Single-Use-Modell (Review §9)
+- Keine Codeaenderung.
+
 ## 0.9.13 — 2026-08-20 — P2-Batch: Performance, Retention, Supply-Chain, Doku
 - **Perf:** Compound-Index `(accounttype, accountstate, timeexpires)` auf `auth_flexaccess_account` fuer die Expiry-/Purge-Scans (install.xml + Upgrade 2026081913). Mailqueue-Worker laedt Empfaenger jetzt **gebatcht** statt einer Query pro Job (kein N+1 mehr).
 - **Retention:** `process_mail_queue` bereinigt jetzt zusaetzlich zugestellte/fehlgeschlagene Queue-Zeilen (`mail_worker::prune_delivered`) und tote Token (`token_service::prune`) nach dem Retention-Fenster (Default = `retentiondays`, min. 1 Tag). Tests decken beide Prune-Pfade ab.
