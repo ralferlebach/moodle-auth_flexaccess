@@ -14,7 +14,7 @@ Das Projekt umfasst ausschließlich:
 1. `auth_flexaccess`
 2. `enrol_flexaccess`
 3. `tool_flexaccess` (systemweite Administration und Betrieb)
-4. `mod_flexaccessactivation` (optional installierbare Aktivität)
+4. `mod_flexaccess` (optional installierbare Aktivität)
 
 Nicht Bestandteil sind `local`, `block` und `availability`. Eine generalisierte Availability-Lösung ist ein separates Projekt.
 
@@ -89,7 +89,7 @@ Der Versand muss bei einer externen SMTP-Begrenzung von 100 E-Mails/Stunde zuver
 
 ## 11. Selbstaktivierungs-Aktivität
 
-`mod_flexaccessactivation` kann in Kursen eingebettet werden. Ein temporärer Nutzer kann dort Name, E-Mail und konfigurierte Profilfelder ergänzen und seine Identität bestätigen. Die Umwandlung erfolgt auf derselben Moodle-`userid`; Lernaktivitäten bleiben dadurch dem Konto zugeordnet. Die Aktivierung verändert nicht automatisch die Laufzeit der Kurseinschreibung.
+`mod_flexaccess` kann in Kursen eingebettet werden. Ein temporärer Nutzer kann dort Name, E-Mail und konfigurierte Profilfelder ergänzen und seine Identität bestätigen. Die Umwandlung erfolgt auf derselben Moodle-`userid`; Lernaktivitäten bleiben dadurch dem Konto zugeordnet. Die Aktivierung verändert nicht automatisch die Laufzeit der Kurseinschreibung.
 
 ## 12. Systemweite Administration (`tool_flexaccess`)
 
@@ -125,3 +125,12 @@ Das Tool besitzt **keine eigene Account-, Token-, Mailqueue- oder Policy-Datenha
 ## Zusatzanforderung: Zugangsschlüssel-Challenge
 
 `auth_flexaccess` orchestriert vor temporärer Gast-Anmeldung und Schnellregistrierung optional eine kursbezogene Zugangsschlüssel-Challenge. Die Policy und Verifikation gehören `enrol_flexaccess`; `auth_flexaccess` darf weder System- noch Kurs-Hash lesen oder persistieren. Nach erfolgreicher Prüfung wird ausschließlich eine kurzlebige, kursgebundene Freigabe in der serverseitigen Session gespeichert. Normaler Login, normaler Moodle-Gastzugang und die spätere Selbstaktivierung bleiben unbeeinflusst.
+
+## Scope-Erweiterung 0.1.2 (verbindlich)
+
+**Follow-up-Mails zur Persistierung** als Kernfunktion des Temporary→Persistent-Funnels (Details: `../../docs/Arbeitsplanung.md`, `../../docs/Pflichtenheft.md` S17, ADR-013):
+
+- Versand über die bestehende getaktete Mailqueue; neuer Mailkind `persistence_followup`.
+- Nur solange `accounttype = temporary user` und nicht konvertiert; Sendezeitpunkt wird **vor** den Account-Ablauf geclampt.
+- Single-use, gehashtes Persistierungs-/Conversion-Token; auth führt den Lifecycle aus, `tool_flexaccess` konfiguriert Template/Regeln und zeigt den Status.
+- Architektur-Vorhalt: Event `user provisioned/converted` als Post-Registration-Hook für spätere (separate) Cohort-Zuweisung (ADR-015).

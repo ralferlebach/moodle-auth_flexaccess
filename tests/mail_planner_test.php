@@ -15,40 +15,39 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Mail-rate calculations for auth_flexaccess.
+ * Tests for the FlexAccess mail planner.
  *
  * @package    auth_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-namespace auth_flexaccess\local;
+namespace auth_flexaccess;
+
+use auth_flexaccess\local\mail_planner;
 
 /**
- * Pure helper for the rolling-hour FlexAccess mail limit.
+ * Mail planner tests.
  *
  * @package    auth_flexaccess
+ * @covers     \auth_flexaccess\local\mail_planner
  */
-final class mail_rate {
+final class mail_planner_test extends \advanced_testcase {
     /**
-     * Allowed limits; zero means unlimited.
+     * Unlimited capacity sends all due mails.
      */
-    public const ALLOWED_LIMITS = [0, 10, 50, 100, 500];
+    public function test_unlimited(): void {
+        $this->assertSame(5, mail_planner::sendable(null, 5));
+        $this->assertSame(0, mail_planner::sendable(null, 0));
+    }
 
     /**
-     * Calculate remaining capacity.
-     *
-     * @param int $limit Configured hourly limit, zero for unlimited.
-     * @param int $sent Number sent in the preceding rolling hour.
-     * @return int|null Null means unlimited.
+     * Limited capacity caps the number sent.
      */
-    public static function remaining(int $limit, int $sent): ?int {
-        if (!in_array($limit, self::ALLOWED_LIMITS, true)) {
-            throw new \coding_exception('Unsupported FlexAccess mail limit.');
-        }
-        if ($limit === 0) {
-            return null;
-        }
-        return max(0, $limit - max(0, $sent));
+    public function test_limited(): void {
+        $this->assertSame(3, mail_planner::sendable(3, 5));
+        $this->assertSame(5, mail_planner::sendable(10, 5));
+        $this->assertSame(0, mail_planner::sendable(0, 5));
+        $this->assertSame(0, mail_planner::sendable(3, 0));
     }
 }

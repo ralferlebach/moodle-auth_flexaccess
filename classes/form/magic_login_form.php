@@ -14,15 +14,32 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
+namespace auth_flexaccess\form;
+
+defined('MOODLE_INTERNAL') || die();
+
+require_once($GLOBALS['CFG']->libdir . '/formslib.php');
+
 /**
- * Capabilities for auth_flexaccess.
+ * Form asking for the email address to send a passwordless magic-login link to.
  *
  * @package    auth_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
+class magic_login_form extends \moodleform {
+    /**
+     * Form definition.
+     *
+     * @return void
+     */
+    protected function definition(): void {
+        $mform = $this->_form;
 
-defined('MOODLE_INTERNAL') || die();
+        $mform->addElement('text', 'email', get_string('email'));
+        $mform->setType('email', PARAM_RAW_TRIMMED);
+        $mform->addRule('email', get_string('required'), 'required', null, 'client');
 
-$capabilities = [
-];
+        $this->add_action_buttons(false, get_string('magic:submit', 'auth_flexaccess'));
+    }
+}

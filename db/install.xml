@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<XMLDB PATH="auth/flexaccess/db" VERSION="2026081700" COMMENT="XMLDB file for auth_flexaccess">
+<XMLDB PATH="auth/flexaccess/db" VERSION="2026081700" COMMENT="XMLDB file for auth_flexaccess"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:noNamespaceSchemaLocation="../../../lib/xmldb/xmldb.xsd"
+>
   <TABLES>
     <TABLE NAME="auth_flexaccess_account" COMMENT="FlexAccess account lifecycle metadata">
       <FIELDS>
@@ -19,7 +22,10 @@
         <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
         <KEY NAME="userid_fk" TYPE="foreign-unique" FIELDS="userid" REFTABLE="user" REFFIELDS="id"/>
       </KEYS>
-      <INDEXES><INDEX NAME="referencecode_uix" UNIQUE="true" FIELDS="referencecode"/></INDEXES>
+      <INDEXES>
+        <INDEX NAME="referencecode_uix" UNIQUE="true" FIELDS="referencecode"/>
+        <INDEX NAME="type_state_expiry_ix" UNIQUE="false" FIELDS="accounttype, accountstate, timeexpires"/>
+      </INDEXES>
     </TABLE>
     <TABLE NAME="auth_flexaccess_token" COMMENT="Hashed one-time tokens">
       <FIELDS>
@@ -35,7 +41,9 @@
         <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
         <KEY NAME="userid_fk" TYPE="foreign" FIELDS="userid" REFTABLE="user" REFFIELDS="id"/>
       </KEYS>
-      <INDEXES><INDEX NAME="tokenhash_uix" UNIQUE="true" FIELDS="tokenhash"/></INDEXES>
+      <INDEXES>
+        <INDEX NAME="tokenhash_uix" UNIQUE="true" FIELDS="tokenhash"/>
+      </INDEXES>
     </TABLE>
     <TABLE NAME="auth_flexaccess_mailqueue" COMMENT="Task-based FlexAccess mail queue">
       <FIELDS>
@@ -55,8 +63,23 @@
         <KEY NAME="userid_fk" TYPE="foreign" FIELDS="userid" REFTABLE="user" REFFIELDS="id"/>
       </KEYS>
       <INDEXES>
-        <INDEX NAME="queue_ix" UNIQUE="false" FIELDS="status,nextrun"/>
+        <INDEX NAME="queue_ix" UNIQUE="false" FIELDS="status, nextrun"/>
         <INDEX NAME="sent_ix" UNIQUE="false" FIELDS="timesent"/>
+      </INDEXES>
+    </TABLE>
+    <TABLE NAME="auth_flexaccess_ratehit" COMMENT="Atomic sliding-window rate-limit hits">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="bucket" TYPE="char" LENGTH="64" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="identifier" TYPE="char" LENGTH="64" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="bucket_identifier_time" UNIQUE="false" FIELDS="bucket, identifier, timecreated"/>
+        <INDEX NAME="time_ix" UNIQUE="false" FIELDS="timecreated"/>
       </INDEXES>
     </TABLE>
   </TABLES>

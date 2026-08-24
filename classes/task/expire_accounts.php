@@ -17,21 +17,39 @@
 /**
  * Scheduled task expiring temporary/provisional accounts.
  *
+ * @package    auth_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
 namespace auth_flexaccess\task;
 
-/** Account expiry task scaffold. */
+/**
+ * Scheduled task that expires due temporary accounts and purges them after the retention window.
+ *
+ * @package    auth_flexaccess
+ */
 final class expire_accounts extends \core\task\scheduled_task {
-    /** @return string */
+    /**
+     * Get the task name.
+     *
+     * @return string
+     */
     public function get_name(): string {
         return get_string('task:expireaccounts', 'auth_flexaccess');
     }
 
-    /** Execute task. */
+    /**
+     * Execute task.
+     */
     public function execute(): void {
-        // Phase 2: idempotently suspend/delete expired FlexAccess accounts via Moodle User API.
+        \auth_flexaccess\local\account_service::expire_due();
+        // Persistence follow-up: remind pending-persistence users before their account lapses.
+        \auth_flexaccess\api::send_persistence_followups();
+        // Deletion lifecycle: purge accounts that expired longer ago than the retention window.
+        $retentiondays = (int) get_config('auth_flexaccess', 'retentiondays');
+        if ($retentiondays > 0) {
+            \auth_flexaccess\local\account_service::purge_expired(null, $retentiondays * DAYSECS);
+        }
     }
 }

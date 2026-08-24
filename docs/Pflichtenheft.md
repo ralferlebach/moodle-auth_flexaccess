@@ -5,14 +5,16 @@
 
 ## 1. Systemarchitektur
 
-Die Plugins bilden eine gerichtete Abhängigkeit ohne Zyklus:
+Die Plugins bilden eine gerichtete Abhängigkeit, die den **Zyklus** `auth ↔ enrol` bewusst enthalten darf. Moodle erlaubt zirkuläre Plugin-Abhängigkeiten: der Core prüft nur, ob die deklarierte Abhängigkeit in ausreichender Version **vorhanden** ist (`core_plugin_manager::are_dependencies_satisfied()`), nicht eine zyklenfreie Installationsreihenfolge. Fehlende Komponenten werden bei manueller Installation zur Nachinstallation angefordert (ZIP-Upload oder Moodle Plugins Directory); bei Git-Deployments liegt ohnehin der gesamte Code vor.
 
-`auth_flexaccess` → keine harte FlexAccess-Abhängigkeit  
-`enrol_flexaccess` → `auth_flexaccess`  
-`tool_flexaccess` → `auth_flexaccess` + `enrol_flexaccess`  
-`mod_flexaccessactivation` → `auth_flexaccess` + `enrol_flexaccess`
+**Leitprinzip:** Jede Kopplung, die fachlich Voraussetzung für die Bereitstellung der Funktionalität ist, wird **hart** deklariert (`version.php` → `dependencies`) — auch wenn dadurch ein Zyklus entsteht.
 
-`auth_flexaccess` darf `enrol_flexaccess` nur über eine kleine öffentliche Policy-Schnittstelle abfragen und muss ohne aktivierte Enrolment-Instanz auf den normalen Moodle-Login zurückfallen.
+- `auth_flexaccess` → `enrol_flexaccess` (die anzubietenden Zugangswege ergeben sich aus der Policy, die vollständig in `enrol` liegt)
+- `enrol_flexaccess` → `auth_flexaccess` (temporäre Nutzer/Einschreibungen nur über auth-Account-Services)
+- `tool_flexaccess` → `auth_flexaccess` + `enrol_flexaccess` (Account-/Mail-Services und Enrol-Policy-Diagnose, Pflichtenheft §12)
+- `mod_flexaccess` → `auth_flexaccess` + `enrol_flexaccess` (Delegation der Aktivierung an auth, Profilfeld-Allowlist aus enrol-Policy)
+
+**Laufzeit vs. Installation:** Eine harte Abhängigkeit garantiert nur, dass der **Code** des Partners vorhanden ist — nicht, dass er aktiviert ist oder im Kurs eine aktive Instanz hat. Daher (1) erfolgen plugin-übergreifende Facade-Aufrufe ausschließlich **lazy zur Laufzeit**, niemals in `db/install.php`/`db/upgrade.php` (sonst bricht die Erstinstallation wegen des Zyklus); und (2) `auth_flexaccess` fällt je Kurs auf den normalen Moodle-Login zurück, wenn dort keine aktive `enrol_flexaccess`-Instanz konfiguriert ist — reguläres Laufzeitverhalten, kein „Plugin-fehlt"-Fallback.
 
 ## 2. Zielauflösung
 

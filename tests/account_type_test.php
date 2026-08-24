@@ -17,15 +17,23 @@
 /**
  * Tests for FlexAccess account types.
  *
+ * @package    auth_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
 namespace auth_flexaccess;
 
-/** Tests for account type constants. */
+/**
+ * Tests for account type constants.
+ *
+ * @package    auth_flexaccess
+ * @covers     \auth_flexaccess\local\account_type
+ */
 final class account_type_test extends \advanced_testcase {
-    /** Test exact business labels. */
+    /**
+     * Test exact business labels.
+     */
     public function test_account_type_values_are_stable(): void {
         $this->assertSame(['temporary user', 'authenticated user'], \auth_flexaccess\local\account_type::values());
     }

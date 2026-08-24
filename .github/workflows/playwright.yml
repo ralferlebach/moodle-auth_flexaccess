@@ -1,0 +1,140 @@
+name: Playwright collaboration
+
+# Browser/collaboration tests (AP5). These need a live Moodle site, so they run
+# separately from the moodle-plugin-ci static pipeline. Manual and scheduled by
+# default to keep PR runs fast; enable on push if you want it on every change.
+#
+# NOTE: workflow_dispatch only appears in the Actions UI once this file exists on
+# the repository's DEFAULT branch.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 3 * * 1'
+
+jobs:
+  playwright:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: moodle
+          POSTGRES_PASSWORD: moodle
+          POSTGRES_DB: moodle
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready" --health-interval=10s
+          --health-timeout=5s --health-retries=5
+
+    env:
+      MOODLE_BRANCH: MOODLE_405_STABLE
+      DB: pgsql
+      MOODLE_WWWROOT: http://localhost:8000
+
+    steps:
+      - name: Check out plugin
+        uses: actions/checkout@v4
+        with:
+          path: plugin
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: pgsql, gd, intl, zip, soap, mbstring, curl, xml, exif
+          ini-values: max_input_vars=5000
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Check out Moodle
+        run: git clone --depth 1 --branch "$MOODLE_BRANCH" https://github.com/moodle/moodle.git moodle
+
+      - name: Install plugin into Moodle
+        run: |
+          mkdir -p moodle/auth && cp -a plugin moodle/auth/flexaccess
+          rm -rf moodle/auth/flexaccess/.git
+
+      # install.php WRITES config.php itself and aborts when one already exists
+      # ("The configuration file config.php already exists"), so we must not
+      # pre-create one from config-dist.php.
+      - name: Install Moodle site
+        run: |
+          cd moodle
+          # install.php requires an existing, writable dataroot — it will not
+          # create it ("$CFG->dataroot is not configured properly, directory
+          # does not exist"). It must also live OUTSIDE the Moodle tree.
+          mkdir -p /tmp/moodledata
+          php admin/cli/install.php \
+            --non-interactive --agree-license \
+            --dbtype=pgsql --dbhost=127.0.0.1 --dbport=5432 --dbname=moodle \
+            --dbuser=moodle --dbpass=moodle \
+            --wwwroot="$MOODLE_WWWROOT" --dataroot=/tmp/moodledata \
+            --fullname="CI" --shortname="CI" \
+            --adminpass="Admin!23" --adminemail=ci@example.invalid
+
+      # PHP's built-in server is single-threaded unless PHP_CLI_SERVER_WORKERS is
+      # set. A Moodle page pulls many subresources in parallel, so one worker
+      # stalls (and dies on the first cache-building request) as soon as a
+      # browser hits it.
+      - name: Start Moodle web server
+        run: |
+          cd moodle
+          PHP_CLI_SERVER_WORKERS=8 php -S localhost:8000 -t . >/tmp/moodle-server.log 2>&1 &
+          for i in $(seq 1 40); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 \
+              http://localhost:8000/login/index.php || true)
+            if [ "$code" = "200" ]; then
+              echo "server ready"
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "Moodle did not become ready; server log:"
+          tail -50 /tmp/moodle-server.log
+          exit 1
+
+      # seed.php prints shell "export KEY='value'" lines so it can be sourced
+      # locally. $GITHUB_ENV expects bare KEY=value, so strip the "export "
+      # prefix and the surrounding quotes — otherwise every variable is lost and
+      # support/env.ts throws on the first required one.
+      - name: Seed collaboration fixture
+        run: |
+          cd moodle
+          php auth/flexaccess/tests/playwright/seed.php > /tmp/flexaccess-seed.env
+          echo "Seeded variables:"
+          sed -n "s/^export \([A-Z_][A-Z_]*\)=.*/  \1/p" /tmp/flexaccess-seed.env
+          sed -n "s/^export \([A-Z_][A-Z_]*\)='\(.*\)'$/\1=\2/p" \
+            /tmp/flexaccess-seed.env >> "$GITHUB_ENV"
+
+      - name: Install Playwright and browsers
+        run: |
+          cd moodle/auth/flexaccess/tests/playwright
+          npm install
+          npx playwright install --with-deps chromium
+
+      - name: Run Playwright tests
+        env:
+          FLEXACCESS_BASE_URL: ${{ env.MOODLE_WWWROOT }}
+        run: |
+          cd moodle/auth/flexaccess/tests/playwright
+          npm test
+
+      - name: Show server log on failure
+        if: failure()
+        run: tail -100 /tmp/moodle-server.log || true
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            moodle/auth/flexaccess/tests/playwright/playwright-report
+            moodle/auth/flexaccess/tests/playwright/test-results
+          retention-days: 7
+          if-no-files-found: ignore

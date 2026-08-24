@@ -17,21 +17,41 @@
 /**
  * Scheduled task processing the throttled mail queue.
  *
+ * @package    auth_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
 namespace auth_flexaccess\task;
 
-/** Mail queue task scaffold. */
+/**
+ * Scheduled task that delivers queued FlexAccess mail (rendering tokens at delivery) and prunes rate hits.
+ *
+ * @package    auth_flexaccess
+ */
 final class process_mail_queue extends \core\task\scheduled_task {
-    /** @return string */
+    /**
+     * Get the task name.
+     *
+     * @return string
+     */
     public function get_name(): string {
         return get_string('task:processmailqueue', 'auth_flexaccess');
     }
 
-    /** Execute task. */
+    /**
+     * Execute task.
+     */
     public function execute(): void {
-        // Phase 3: acquire Lock API lock, calculate rolling-hour capacity and process queued semantic mail jobs.
+        \auth_flexaccess\local\mail_worker::run();
+        $now = time();
+        // Housekeeping: drop rate-limit hit rows older than a day so the table stays small.
+        \auth_flexaccess\local\rate_limiter::prune($now - DAYSECS);
+        // Retention: remove delivered/failed queue rows and dead tokens once past the retention
+        // window (defaults to the account retention setting, minimum one day).
+        $retentiondays = (int) get_config('auth_flexaccess', 'retentiondays');
+        $retention = max(DAYSECS, ($retentiondays > 0 ? $retentiondays : 30) * DAYSECS);
+        \auth_flexaccess\local\mail_worker::prune_delivered($now - $retention);
+        \auth_flexaccess\local\token_service::prune($now - $retention);
     }
 }
