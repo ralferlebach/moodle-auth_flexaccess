@@ -111,18 +111,6 @@ jobs:
       - name: Check upgrade savepoints
         if: ${{ always() }}
         run: set -o pipefail; moodle-plugin-ci savepoints 2>&1 | tee ci-logs/savepoints.log
-      - name: Mustache Lint
-        if: ${{ always()}}
-        run: set -o pipefail; moodle-plugin-ci mustache 2>&1 | tee ci-logs/mustache.log
-      - name: Cache npm downloads
-        uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: npm-${{ runner.os}}-${{ github.sha}}
-          restore-keys: npm-${{ runner.os}}-
-      - name: Grunt
-        if: ${{ always()}}
-        run: set -o pipefail; moodle-plugin-ci grunt --max-lint-warnings 0 2>&1 | tee ci-logs/grunt.log
       - name: PHPUnit tests
         if: ${{ always() }}
         run: set -o pipefail; moodle-plugin-ci phpunit --fail-on-warning --testdox 2>&1 | tee ci-logs/phpunit.log

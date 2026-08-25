@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.37 — 2026-08-25 — CI: Dev-Pipeline zieht Geschwister aus develop
+- Die **Dev-Pipeline** (`moodle-plugin-ci-dev.yml`) holt die Geschwister-Plugins jetzt per `add-plugin … --branch develop` aus dem **develop-Branch** statt aus `main`. Damit testet die beschleunigte Pipeline den echten Entwicklungsstand aller vier Plugins gemeinsam — kein Skew mehr durch hinterherhängendes `main`. Die **Main-Pipeline** zieht weiterhin aus `main` (Release-Stand).
+- Versions-Gleichschritt auf `2026082414`.
+
+## 0.9.36 — 2026-08-25 — Versions-Gleichschritt (CI-Fix im enrol-Behat)
+- Keine Codeänderung. Versions-Gleichschritt auf `2026082413`.
+
 ## 0.9.35 — 2026-08-25 — CI-Fix: D2 auf neuen Output-Hook migriert
 - **Behat-Fail behoben:** Der D2-Persistierungshinweis nutzte den **veralteten** Callback `before_standard_top_of_body_html`, den Moodle 4.5+ per `debugging()` bemängelt (Behat wertet das als Fehler). Migriert auf den neuen Hook `\core\hook\output\before_standard_top_of_body_html_generation` (`db/hooks.php` + `classes/hook_callbacks.php`); die alte `lib.php` entfernt.
 - Versions-Gleichschritt auf `2026082412`.
