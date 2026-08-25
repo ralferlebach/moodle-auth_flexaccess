@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.9.29 — 2026-08-25 — P2: PHPUnit-11-Migration + Pakete ohne .git
+- `@covers`-Doc-Annotationen der Testklassen auf `#[CoversClass(...)]`-Attribute umgestellt (keine PHPUnit-Deprecations mehr). `.git`-Verzeichnisse aus dem Paket entfernt. Versions-Gleichschritt auf `2026082406`.
+
 ## 0.9.28 — 2026-08-25 — P2 Login: zweispaltiger Einstieg (L6) + klareres Label (L5)
 - **L6:** `access.php` als zweispaltiger Einstieg umgebaut — links „Temporärer Gastaccount" (temporäre Anmeldung/Schlüssel-Formular + Gast-Button), rechts „Zugang mit Account" (Login, Schnellregistrierung, E-Mail-Link). Formularlogik, Feld „Access key" und „Continue"-Button unverändert (Behat bleibt gültig). Neue Strings `access:coltemporary`, `access:colaccount`, `access:noaccountoptions`.
 - **L5:** Label `accessprovider` von „Flexibler Kurszugang" → „Kurszugang ohne eigenes Konto" (bzw. „Course access without an account") — selbsterklärend auf der Login-Seite.

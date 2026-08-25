@@ -24,6 +24,7 @@
 
 namespace auth_flexaccess;
 
+use PHPUnit\Framework\Attributes\CoversClass;
 use auth_flexaccess\local\account_state;
 use auth_flexaccess\local\account_type;
 
@@ -31,8 +32,8 @@ use auth_flexaccess\local\account_type;
  * Facade tests.
  *
  * @package    auth_flexaccess
- * @covers     \auth_flexaccess\api
  */
+#[CoversClass(\auth_flexaccess\api::class)]
 final class api_test extends \advanced_testcase {
     /**
      * Insert a FlexAccess account row for a user.

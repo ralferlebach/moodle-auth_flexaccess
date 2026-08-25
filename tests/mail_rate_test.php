@@ -24,12 +24,14 @@
 
 namespace auth_flexaccess;
 
+use PHPUnit\Framework\Attributes\CoversClass;
+
 /**
  * Mail-rate helper tests.
  *
  * @package    auth_flexaccess
- * @covers     \auth_flexaccess\local\mail_rate
  */
+#[CoversClass(\auth_flexaccess\local\mail_rate::class)]
 final class mail_rate_test extends \advanced_testcase {
     /**
      * Test rolling-hour remaining capacity.

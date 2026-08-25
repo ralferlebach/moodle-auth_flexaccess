@@ -16,6 +16,7 @@
 
 namespace auth_flexaccess;
 
+use PHPUnit\Framework\Attributes\CoversClass;
 use auth_flexaccess\local\target_resolver;
 
 /**
@@ -24,8 +25,8 @@ use auth_flexaccess\local\target_resolver;
  * @package    auth_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- * @covers     \auth_flexaccess\local\target_resolver
  */
+#[CoversClass(\auth_flexaccess\local\target_resolver::class)]
 final class target_resolver_test extends \advanced_testcase {
     /**
      * A course view URL resolves to that course with no activity.
