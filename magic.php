@@ -63,6 +63,19 @@ if (!\auth_flexaccess\api::magic_login_enabled()) {
     redirect($loginurl, get_string('magic:disabled', 'auth_flexaccess'), null, \core\output\notification::NOTIFY_INFO);
 }
 
+// Direct POST from the inline email form on access.php (sesskey-protected), so the request can be
+// made straight from the FlexAccess entry page without an intermediate form.
+$directemail = optional_param('email', '', PARAM_RAW_TRIMMED);
+if ($directemail !== '' && ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && confirm_sesskey()) {
+    \auth_flexaccess\api::request_magic_login($directemail, getremoteaddr());
+    echo $OUTPUT->header();
+    echo $OUTPUT->heading(get_string('magic:title', 'auth_flexaccess'));
+    echo $OUTPUT->notification(get_string('magic:sent', 'auth_flexaccess', s($directemail)), 'success');
+    echo $OUTPUT->continue_button($loginurl);
+    echo $OUTPUT->footer();
+    exit;
+}
+
 $form = new \auth_flexaccess\form\magic_login_form(new moodle_url('/auth/flexaccess/magic.php'));
 if ($form->is_cancelled()) {
     redirect($loginurl);

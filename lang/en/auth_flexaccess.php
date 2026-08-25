@@ -32,6 +32,7 @@ $string['access:coltemporary'] = 'Temporary guest account';
 $string['access:enterkey'] = 'Access key';
 $string['access:full'] = 'The maximum number of participants has been reached. Please try again later.';
 $string['access:granted'] = 'Temporary access granted. Welcome!';
+$string['access:guestlimitations'] = 'As a guest you can only view the course. You cannot submit work, take tests, post in forums or save any progress.';
 $string['access:intro'] = 'You are about to get temporary access to "{$a}". Your progress can later be kept by activating your account.';
 $string['access:keyblocked'] = 'Too many incorrect attempts. Please wait a few minutes and try again.';
 $string['access:notallowed'] = 'Temporary access is not offered for this course.';
