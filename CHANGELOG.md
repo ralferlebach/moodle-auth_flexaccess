@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.28 — 2026-08-25 — P2 Login: zweispaltiger Einstieg (L6) + klareres Label (L5)
+- **L6:** `access.php` als zweispaltiger Einstieg umgebaut — links „Temporärer Gastaccount" (temporäre Anmeldung/Schlüssel-Formular + Gast-Button), rechts „Zugang mit Account" (Login, Schnellregistrierung, E-Mail-Link). Formularlogik, Feld „Access key" und „Continue"-Button unverändert (Behat bleibt gültig). Neue Strings `access:coltemporary`, `access:colaccount`, `access:noaccountoptions`.
+- **L5:** Label `accessprovider` von „Flexibler Kurszugang" → „Kurszugang ohne eigenes Konto" (bzw. „Course access without an account") — selbsterklärend auf der Login-Seite.
+- Versions-Gleichschritt auf `2026082405`.
+
 ## 0.9.27 — 2026-08-24 — CI-Fix: fehlerhafte Workflow-Ausdrücke (${ } → ${{ }})
 - Fehlerhafte GitHub-Actions-Ausdrücke im `lint-jsamd`-Job korrigiert (`${ } → ${{ }}`); mit `actionlint` gegengeprüft (0 Findings). Kein PHP-Code geändert; Versions-Gleichschritt auf `2026082404`.
 
