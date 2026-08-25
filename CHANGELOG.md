@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.9.31 — 2026-08-25 — Versions-Gleichschritt (enrol: präzisierte Neutralisierungs-Warnung)
+- Keine Codeänderung. Versions-Gleichschritt auf `2026082408`.
+
 ## 0.9.30 — 2026-08-25 — Discoverability D2
 - **D2:** Temporäre Nutzer sehen im Kurs einen Hinweis „Zugang jetzt dauerhaft sichern" (Link zu `persist.php`) — **nur** in Kursen mit einer `mod_flexaccess`-Aktivität und nur für temporäre Konten (`before_standard_top_of_body_html`). Neue `lib.php`, Strings `persisthint:*`.
 - Versions-Gleichschritt auf `2026082407`.
