@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.32 — 2026-08-25 — D3: Direkter FlexAccess-Einstieg statt Standard-Login
+- **Direkt-Routing:** Neuer `pre_loginpage_hook()` leitet einen anonymen Zugriff auf einen FlexAccess-Kurs direkt auf `access.php` (statt auf die Standard-Login-Seite). Nur bei frischem GET; eine Credential-Übermittlung (POST/username/logintoken) wird durchgelassen, damit das eingebettete Login-Formular den Core-Login erreicht.
+- **Login inline:** Ist „normaler Login" erlaubt, erscheint auf der FlexAccess-Seite direkt ein Nutzername/Passwort-Formular (postet an `/login/index.php`, respektiert die gesetzte `wantsurl`), inkl. „Kennwort vergessen".
+- **E-Mail-Link inline:** Ist Magic-Login aktiv, wird direkt das E-Mail-Formular eingebettet (`magic_login_form` → `magic.php`), statt nur zu verlinken.
+- **Moodle-CSS:** Alles in einer `card`/`card-body`; Inputs als `form-control` (Autofill-Gelb kommt vom Browser), Buttons `btn-primary`/`btn-secondary`.
+- Versions-Gleichschritt auf `2026082409`.
+
 ## 0.9.31 — 2026-08-25 — Versions-Gleichschritt (enrol: präzisierte Neutralisierungs-Warnung)
 - Keine Codeänderung. Versions-Gleichschritt auf `2026082408`.
 

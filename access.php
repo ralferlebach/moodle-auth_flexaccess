@@ -102,12 +102,6 @@ $quickreglink = \enrol_flexaccess\api::offers_quick_registration($courseid)
         get_string('access:orregister', 'auth_flexaccess')
     ))
     : '';
-$loginlink = \enrol_flexaccess\api::offers_normal_login($courseid)
-    ? html_writer::tag('p', html_writer::link(
-        new moodle_url('/login/index.php'),
-        get_string('access:orlogin', 'auth_flexaccess')
-    ))
-    : '';
 $guestlink = \enrol_flexaccess\api::offers_guest_access($courseid)
     ? html_writer::tag('div', $OUTPUT->single_button(
         new moodle_url(
@@ -116,12 +110,6 @@ $guestlink = \enrol_flexaccess\api::offers_guest_access($courseid)
         ),
         get_string('access:orguest', 'auth_flexaccess'),
         'post'
-    ))
-    : '';
-$magiclink = \auth_flexaccess\api::magic_login_enabled()
-    ? html_writer::tag('p', html_writer::link(
-        new moodle_url('/auth/flexaccess/magic.php'),
-        get_string('access:ormagic', 'auth_flexaccess')
     ))
     : '';
 $rateid = \enrol_flexaccess\local\access_key_rate::identifier(getremoteaddr(), $courseid);
@@ -201,10 +189,12 @@ if ($failure !== null && $failure !== 'badkey') {
     echo $OUTPUT->notification(get_string('access:' . $failure, 'auth_flexaccess'), 'error');
     echo $OUTPUT->continue_button($courseurl);
 } else {
-    // Two-column entry, mirroring the familiar Moodle "alternate login" layout: on the left the
-    // no-account path (temporary account, guest), on the right the account-based path (log in,
-    // register, email link). Columns stack on narrow screens via Bootstrap's grid.
-    echo html_writer::start_div('row flexaccess-entry');
+    // Two-column entry inside a Moodle card, mirroring the standard login layout: on the left the
+    // no-account path (temporary account, guest), on the right the account-based path with an inline
+    // credentials form and/or an email-link form - so users never bounce to the standard login page.
+    echo html_writer::start_div('flexaccess-entry card');
+    echo html_writer::start_div('card-body');
+    echo html_writer::start_div('row');
 
     echo html_writer::start_div('col-md-6 flexaccess-entry-temporary');
     echo $OUTPUT->heading(get_string('access:coltemporary', 'auth_flexaccess'), 3);
@@ -213,14 +203,77 @@ if ($failure !== null && $failure !== 'badkey') {
     echo $guestlink;
     echo html_writer::end_div();
 
-    $accountside = $loginlink . $quickreglink . $magiclink;
     echo html_writer::start_div('col-md-6 flexaccess-entry-account');
     echo $OUTPUT->heading(get_string('access:colaccount', 'auth_flexaccess'), 3);
-    echo $accountside !== ''
-        ? $accountside
-        : html_writer::tag('p', get_string('access:noaccountoptions', 'auth_flexaccess'));
+    $hasaccountoption = false;
+
+    // Inline credentials login, posting to core login (which honours the wantsurl set above).
+    if (\enrol_flexaccess\api::offers_normal_login($courseid)) {
+        $hasaccountoption = true;
+        $logintoken = \core\session\manager::get_login_token();
+        echo html_writer::start_tag('form', [
+            'action' => (new moodle_url('/login/index.php'))->out(false),
+            'method' => 'post',
+            'class' => 'flexaccess-login-form mb-3',
+        ]);
+        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'logintoken', 'value' => $logintoken]);
+        echo html_writer::div(
+            html_writer::label(get_string('username'), 'flexaccess-username')
+            . html_writer::empty_tag('input', [
+                'type' => 'text',
+                'id' => 'flexaccess-username',
+                'name' => 'username',
+                'class' => 'form-control',
+                'autocomplete' => 'username',
+            ]),
+            'mb-2'
+        );
+        echo html_writer::div(
+            html_writer::label(get_string('password'), 'flexaccess-password')
+            . html_writer::empty_tag('input', [
+                'type' => 'password',
+                'id' => 'flexaccess-password',
+                'name' => 'password',
+                'class' => 'form-control',
+                'autocomplete' => 'current-password',
+            ]),
+            'mb-2'
+        );
+        echo html_writer::empty_tag('input', [
+            'type' => 'submit',
+            'value' => get_string('login'),
+            'class' => 'btn btn-primary',
+        ]);
+        echo ' ' . html_writer::link(
+            new moodle_url('/login/forgot_password.php'),
+            get_string('forgotten'),
+            ['class' => 'btn btn-secondary']
+        );
+        echo html_writer::end_tag('form');
+    }
+
+    // Inline email-link request: enter an email, receive a one-time access link.
+    if (\auth_flexaccess\api::magic_login_enabled()) {
+        $hasaccountoption = true;
+        echo $OUTPUT->heading(get_string('access:ormagic', 'auth_flexaccess'), 4, 'h6 mt-3');
+        $magicform = new \auth_flexaccess\form\magic_login_form(
+            new moodle_url('/auth/flexaccess/magic.php', ['wantsurl' => $wantsurl])
+        );
+        $magicform->display();
+    }
+
+    if ($quickreglink !== '') {
+        $hasaccountoption = true;
+        echo $quickreglink;
+    }
+
+    if (!$hasaccountoption) {
+        echo html_writer::tag('p', get_string('access:noaccountoptions', 'auth_flexaccess'));
+    }
     echo html_writer::end_div();
 
+    echo html_writer::end_div();
+    echo html_writer::end_div();
     echo html_writer::end_div();
 }
 

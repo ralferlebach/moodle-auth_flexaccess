@@ -105,4 +105,39 @@ class auth_plugin_flexaccess extends auth_plugin_base {
             'name' => get_string('accessprovider', 'auth_flexaccess'),
         ]];
     }
+
+    /**
+     * Send an anonymous visitor heading for a FlexAccess course straight to the FlexAccess entry
+     * page instead of the standard login page.
+     *
+     * Only a fresh GET arrival is intercepted: a credential submission (username/logintoken present,
+     * or any POST) is left untouched so the embedded login form on access.php reaches core login.
+     *
+     * @return void
+     */
+    public function pre_loginpage_hook() {
+        global $SESSION;
+
+        if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') {
+            return;
+        }
+        if (optional_param('username', '', PARAM_RAW) !== '' || optional_param('logintoken', '', PARAM_RAW) !== '') {
+            return;
+        }
+        $wantsurl = optional_param('wantsurl', '', PARAM_LOCALURL);
+        if ($wantsurl === '' && !empty($SESSION->wantsurl)) {
+            $wantsurl = (string) $SESSION->wantsurl;
+        }
+        if (!class_exists(\enrol_flexaccess\api::class)) {
+            return;
+        }
+        $target = \auth_flexaccess\local\target_resolver::resolve($wantsurl);
+        if ($target === null || !\enrol_flexaccess\api::offers_anonymous_entry($target->courseid)) {
+            return;
+        }
+        redirect(new moodle_url('/auth/flexaccess/access.php', [
+            'courseid' => $target->courseid,
+            'wantsurl' => $wantsurl,
+        ]));
+    }
 }
