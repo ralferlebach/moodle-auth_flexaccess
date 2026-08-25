@@ -18,7 +18,7 @@
  * Developer tool: batch-fix package docblock annotations in PHP files.
  *
  * Scans all *.php files under the given directory and ensures every file
- * docblock contains the correct package tag for local_instantcoursecompletion.
+ * docblock contains the correct package tag for auth_flexaccess.
  *
  * Run from the command line:
  *   php tools/fix_phpdoc.php [<plugin_dir>]
@@ -27,7 +27,7 @@
  *
  * NOT shipped with the plugin (excluded in .gitattributes export-ignore).
  *
- * @package    local_instantcoursecompletion
+ * @package    auth_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
@@ -41,7 +41,7 @@ if (!is_dir($plugindir)) {
     exit(1);
 }
 
-$component = 'local_instantcoursecompletion';
+$component = 'auth_flexaccess';
 $iterator  = new RecursiveIteratorIterator(
     new RecursiveDirectoryIterator($plugindir, FilesystemIterator::SKIP_DOTS)
 );

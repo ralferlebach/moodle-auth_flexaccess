@@ -30,7 +30,7 @@
  *
  * NOT shipped with the plugin (excluded in .gitattributes export-ignore).
  *
- * @package    local_instantcoursecompletion
+ * @package    auth_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
