@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.30 — 2026-08-25 — Discoverability D2
+- **D2:** Temporäre Nutzer sehen im Kurs einen Hinweis „Zugang jetzt dauerhaft sichern" (Link zu `persist.php`) — **nur** in Kursen mit einer `mod_flexaccess`-Aktivität und nur für temporäre Konten (`before_standard_top_of_body_html`). Neue `lib.php`, Strings `persisthint:*`.
+- Versions-Gleichschritt auf `2026082407`.
+
 ## 0.9.29 — 2026-08-25 — P2: PHPUnit-11-Migration + Pakete ohne .git
 - `@covers`-Doc-Annotationen der Testklassen auf `#[CoversClass(...)]`-Attribute umgestellt (keine PHPUnit-Deprecations mehr). `.git`-Verzeichnisse aus dem Paket entfernt. Versions-Gleichschritt auf `2026082406`.
 
