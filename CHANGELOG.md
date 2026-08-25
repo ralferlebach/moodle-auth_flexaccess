@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.35 — 2026-08-25 — CI-Fix: D2 auf neuen Output-Hook migriert
+- **Behat-Fail behoben:** Der D2-Persistierungshinweis nutzte den **veralteten** Callback `before_standard_top_of_body_html`, den Moodle 4.5+ per `debugging()` bemängelt (Behat wertet das als Fehler). Migriert auf den neuen Hook `\core\hook\output\before_standard_top_of_body_html_generation` (`db/hooks.php` + `classes/hook_callbacks.php`); die alte `lib.php` entfernt.
+- Versions-Gleichschritt auf `2026082412`.
+
 ## 0.9.34 — 2026-08-25 — Login-UI: E-Mail-Login getrennt, Buttons, Gast-Hinweis, Schnellreg
 - **Funktionale Trennung:** Credentials-Login und E-Mail-Link-Login sind jetzt getrennte Zugangswege. Der E-Mail-Link-Login ist eine **eigene Instanz-Option** (siehe enrol) und wird auf `access.php` als eigenständiges Inline-Formular angeboten (E-Mail eingeben → Link zusenden, direkt an `magic.php` per sesskey-POST).
 - **Buttons:** „Weiter" ist Primary, „Abbrechen" Secondary. Sind alternative Zugänge (Temp/Schnellreg/Gast) aktiv, werden die regulären Buttons (Anmelden, Anmeldelink senden) als **Outline** dargestellt.
