@@ -1,5 +1,8 @@
 # Changelog
 
+## 0.9.33 — 2026-08-25 — Versions-Gleichschritt (enrol: Fix Teilnehmerlisten-Sichtbarkeit)
+- Keine Codeänderung. Versions-Gleichschritt auf `2026082410`.
+
 ## 0.9.32 — 2026-08-25 — D3: Direkter FlexAccess-Einstieg statt Standard-Login
 - **Direkt-Routing:** Neuer `pre_loginpage_hook()` leitet einen anonymen Zugriff auf einen FlexAccess-Kurs direkt auf `access.php` (statt auf die Standard-Login-Seite). Nur bei frischem GET; eine Credential-Übermittlung (POST/username/logintoken) wird durchgelassen, damit das eingebettete Login-Formular den Core-Login erreicht.
 - **Login inline:** Ist „normaler Login" erlaubt, erscheint auf der FlexAccess-Seite direkt ein Nutzername/Passwort-Formular (postet an `/login/index.php`, respektiert die gesetzte `wantsurl`), inkl. „Kennwort vergessen".
