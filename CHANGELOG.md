@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.9.46 — 2026-08-26 — Secret-freie Deferred-Mailqueue
+- **Neu `api::queue_deferred_mail()`** samt Worker-Unterstützung (`kind: deferred`): Die Queue-Zeile enthält nur eine Renderer-Klasse und einen **nicht geheimen** Kontext (z. B. eine Datensatz-ID). Der Worker ruft `render_deferred_mail()` unmittelbar vor dem Versand auf — ein Einmal-Token entsteht also erst dort und wird nie gespeichert. Nach erfolgreicher Zustellung meldet der Worker dies über `deferred_mail_sent()` zurück, damit die Komponente ihren „gesendet"-Status erst bei echter Zustellung setzt.
+- Damit können Mails mit Einmal-Secret (Einladungen) die zentrale Queue nutzen und unterliegen wieder Stundenlimit, Retry/Backoff und Monitoring, ohne dass ein Token at rest liegt. Beide Aufrufe sind gegen fehlende oder ältere Geschwister-Plugins abgesichert.
+- **CLI-Guard** in allen `tools/`-Skripten.
+- Versions-Gleichschritt `2026082423`.
+
+## 0.9.45 — 2026-08-26 — Auth-Fassade aufgeteilt, String-IDs vereinheitlicht
+- **`auth_flexaccess\api` intern aufgeteilt** (letzte Review-Rückstellung): drei Cluster wurden verbatim in eigene Services ausgelagert — `local\account_query_service` (Konten- und Mailqueue-Abfragen), `local\persistence_service` (Identitätsübergänge: `finalise_identity`, `persist_temporary_user`, `request_persistence`, `confirm_persistence`, Follow-ups) und `local\magic_service` (E-Mail-Link-Login inkl. Rate-Limiting). `api.php` schrumpft von 1209 auf 801 Zeilen. Die Fassade bleibt der öffentliche Vertrag: alle Signaturen unverändert, per Reflection als identisch verifiziert (15 Methoden), 20 externe Aufrufstellen unangetastet.
+- **String-IDs vereinheitlicht:** Colon-IDs allgemeiner UI-Strings wurden flach gezogen (z. B. `access:title` → `accesstitle`). Capability-, Privacy- und Message-Provider-Keys behalten konventionsgemäß ihren Doppelpunkt.
+- **`queue_token_mail()`** dedupliziert weiterhin pro Nutzer/Empfänger; unverändert.
+- Versions-Gleichschritt `2026082422`.
+
+## 0.9.44 — 2026-08-25 — CI-Release-Gate
+- **`ecosystem-lockstep`** in der Main-Pipeline: Die Freigabe scheitert, wenn nicht alle vier FlexAccess-Plugins dieselbe Version melden.
+- Versions-Gleichschritt `2026082421`.
+
 ## 0.9.43 — 2026-08-25 — CI: Geschwister aus development
 - **Dev-Pipeline und Playwright-Workflow** ziehen die Geschwister-Plugins jetzt per `--branch development` aus dem gemeinsamen Entwicklungszweig, damit das Ökosystem in seinem echten, gemeinsam entwickelten Stand getestet wird. Die Main-Pipeline bleibt auf `main`.
 - Versions-Gleichschritt `2026082420`.

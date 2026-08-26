@@ -27,25 +27,25 @@ defined('MOODLE_INTERNAL') || die();
 if ($ADMIN->fulltree) {
     $settings->add(new admin_setting_heading(
         'auth_flexaccess/accounts',
-        get_string('settings:accounts', 'auth_flexaccess'),
-        get_string('settings:accounts_desc', 'auth_flexaccess')
+        get_string('settingsaccounts', 'auth_flexaccess'),
+        get_string('settingsaccounts_desc', 'auth_flexaccess')
     ));
     $settings->add(new admin_setting_heading(
         'auth_flexaccess/mail',
-        get_string('settings:mail', 'auth_flexaccess'),
+        get_string('settingsmail', 'auth_flexaccess'),
         ''
     ));
     $settings->add(new admin_setting_configcheckbox(
         'auth_flexaccess/requireemailverification',
-        get_string('setting:requireemailverification', 'auth_flexaccess'),
-        get_string('setting:requireemailverification_desc', 'auth_flexaccess'),
+        get_string('settingrequireemailverification', 'auth_flexaccess'),
+        get_string('settingrequireemailverification_desc', 'auth_flexaccess'),
         1
     ));
 
     $settings->add(new admin_setting_configcheckbox(
         'auth_flexaccess/allowmagiclogin',
-        get_string('setting:allowmagiclogin', 'auth_flexaccess'),
-        get_string('setting:allowmagiclogin_desc', 'auth_flexaccess'),
+        get_string('settingallowmagiclogin', 'auth_flexaccess'),
+        get_string('settingallowmagiclogin_desc', 'auth_flexaccess'),
         1
     ));
     $settings->add(new admin_setting_configtext(
@@ -65,42 +65,42 @@ if ($ADMIN->fulltree) {
 
     $settings->add(new admin_setting_configtext(
         'auth_flexaccess/retentiondays',
-        get_string('setting:retentiondays', 'auth_flexaccess'),
-        get_string('setting:retentiondays_desc', 'auth_flexaccess'),
+        get_string('settingretentiondays', 'auth_flexaccess'),
+        get_string('settingretentiondays_desc', 'auth_flexaccess'),
         30,
         PARAM_INT
     ));
 
     $settings->add(new admin_setting_configduration(
         'auth_flexaccess/followupwindow',
-        get_string('setting:followupwindow', 'auth_flexaccess'),
-        get_string('setting:followupwindow_desc', 'auth_flexaccess'),
+        get_string('settingfollowupwindow', 'auth_flexaccess'),
+        get_string('settingfollowupwindow_desc', 'auth_flexaccess'),
         DAYSECS
     ));
 
     $settings->add(new admin_setting_heading(
         'auth_flexaccess/ratelimit',
-        get_string('settings:ratelimit', 'auth_flexaccess'),
-        get_string('settings:ratelimit_desc', 'auth_flexaccess')
+        get_string('settingsratelimit', 'auth_flexaccess'),
+        get_string('settingsratelimit_desc', 'auth_flexaccess')
     ));
     $settings->add(new admin_setting_configtext(
         'auth_flexaccess/magicmaxperip',
-        get_string('setting:magicmaxperip', 'auth_flexaccess'),
-        get_string('setting:magicmaxperip_desc', 'auth_flexaccess'),
+        get_string('settingmagicmaxperip', 'auth_flexaccess'),
+        get_string('settingmagicmaxperip_desc', 'auth_flexaccess'),
         15,
         PARAM_INT
     ));
     $settings->add(new admin_setting_configtext(
         'auth_flexaccess/magicmaxperemail',
-        get_string('setting:magicmaxperemail', 'auth_flexaccess'),
-        get_string('setting:magicmaxperemail_desc', 'auth_flexaccess'),
+        get_string('settingmagicmaxperemail', 'auth_flexaccess'),
+        get_string('settingmagicmaxperemail_desc', 'auth_flexaccess'),
         3,
         PARAM_INT
     ));
     $settings->add(new admin_setting_configtext(
         'auth_flexaccess/magicwindow',
-        get_string('setting:magicwindow', 'auth_flexaccess'),
-        get_string('setting:magicwindow_desc', 'auth_flexaccess'),
+        get_string('settingmagicwindow', 'auth_flexaccess'),
+        get_string('settingmagicwindow_desc', 'auth_flexaccess'),
         600,
         PARAM_INT
     ));

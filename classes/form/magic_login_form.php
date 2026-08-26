@@ -40,6 +40,6 @@ class magic_login_form extends \moodleform {
         $mform->setType('email', PARAM_RAW_TRIMMED);
         $mform->addRule('email', get_string('required'), 'required', null, 'client');
 
-        $this->add_action_buttons(false, get_string('magic:submit', 'auth_flexaccess'));
+        $this->add_action_buttons(false, get_string('magicsubmit', 'auth_flexaccess'));
     }
 }

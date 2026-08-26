@@ -36,7 +36,7 @@ final class process_mail_queue extends \core\task\scheduled_task {
      * @return string
      */
     public function get_name(): string {
-        return get_string('task:processmailqueue', 'auth_flexaccess');
+        return get_string('taskprocessmailqueue', 'auth_flexaccess');
     }
 
     /**

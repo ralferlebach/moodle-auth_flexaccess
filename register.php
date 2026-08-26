@@ -46,11 +46,11 @@ if (!$available) {
     $PAGE->set_context(context_system::instance());
     $PAGE->set_url(new moodle_url('/auth/flexaccess/register.php'));
     $PAGE->set_pagelayout('standard');
-    $PAGE->set_title(get_string('register:title', 'auth_flexaccess'));
-    $PAGE->set_heading(get_string('register:title', 'auth_flexaccess'));
+    $PAGE->set_title(get_string('registertitle', 'auth_flexaccess'));
+    $PAGE->set_heading(get_string('registertitle', 'auth_flexaccess'));
     echo $OUTPUT->header();
-    echo $OUTPUT->heading(get_string('register:title', 'auth_flexaccess'));
-    echo $OUTPUT->notification(get_string('access:unavailable', 'auth_flexaccess'), 'error');
+    echo $OUTPUT->heading(get_string('registertitle', 'auth_flexaccess'));
+    echo $OUTPUT->notification(get_string('accessunavailable', 'auth_flexaccess'), 'error');
     echo $OUTPUT->continue_button(new moodle_url('/login/index.php'));
     echo $OUTPUT->footer();
     exit;
@@ -62,7 +62,7 @@ $returnurl = $target !== null ? $target->redirect_url() : $courseurl;
 $PAGE->set_context(context_course::instance($courseid));
 $PAGE->set_url(new moodle_url('/auth/flexaccess/register.php', ['courseid' => $courseid]));
 $PAGE->set_pagelayout('standard');
-$PAGE->set_title(get_string('register:title', 'auth_flexaccess'));
+$PAGE->set_title(get_string('registertitle', 'auth_flexaccess'));
 $PAGE->set_heading(format_string($course->fullname));
 
 // A real authenticated user has nothing to do here.
@@ -91,18 +91,18 @@ if ($form->is_cancelled()) {
         $user = $DB->get_record('user', ['id' => $result->userid], '*', MUST_EXIST);
         complete_user_login($user);
         $message = $result->status === 'verificationsent'
-            ? get_string('register:verificationsent', 'auth_flexaccess')
-            : get_string('register:success', 'auth_flexaccess');
+            ? get_string('registerverificationsent', 'auth_flexaccess')
+            : get_string('registersuccess', 'auth_flexaccess');
         redirect($returnurl, $message);
     }
     $failure = $result->status;
 }
 
 echo $OUTPUT->header();
-echo $OUTPUT->heading(get_string('register:title', 'auth_flexaccess'));
+echo $OUTPUT->heading(get_string('registertitle', 'auth_flexaccess'));
 if ($failure !== null) {
-    echo $OUTPUT->notification(get_string('access:' . $failure, 'auth_flexaccess'), 'error');
+    echo $OUTPUT->notification(get_string('access' . $failure, 'auth_flexaccess'), 'error');
 }
-echo html_writer::tag('p', get_string('register:intro', 'auth_flexaccess', format_string($course->fullname)));
+echo html_writer::tag('p', get_string('registerintro', 'auth_flexaccess', format_string($course->fullname)));
 $form->display();
 echo $OUTPUT->footer();

@@ -151,20 +151,15 @@ final class api {
     }
 
     /**
-     * Convert a temporary account to an authenticated identity atomically.
+     * Finalise a temporary account into a permanent identity (email, names, state).
      *
-     * Validates the target email, rewrites the user's identity (email, username, name) and flips the
-     * FlexAccess account to authenticated inside a single transaction, so a partial failure never
-     * leaves a half-converted account (§13). An optional callback runs inside the same transaction to
-     * attach a credential (e.g. a password) atomically with the conversion.
-     *
-     * @param int $userid User id of the temporary account.
-     * @param string $email New login email.
-     * @param string $firstname Optional replacement first name.
-     * @param string $lastname Optional replacement last name.
+     * @param int $userid User id.
+     * @param string $email Verified e-mail address.
+     * @param string $firstname First name.
+     * @param string $lastname Last name.
      * @param int $now Current time.
-     * @param callable|null $inside Optional callback executed within the transaction after conversion.
-     * @return string 'ok' on success, or 'notapplicable'|'invalidemail'|'emailtaken'.
+     * @param callable|null $inside Optional callback run inside the conversion lock.
+     * @return string Status string.
      */
     private static function finalise_identity(
         int $userid,
@@ -174,75 +169,19 @@ final class api {
         int $now,
         ?callable $inside = null
     ): string {
-        global $CFG, $DB;
-        require_once($CFG->dirroot . '/user/lib.php');
-
-        // Serialise all conversions for this user so self-, admin- and verification-initiated
-        // conversions cannot race. The guards below run inside the lock, so a second concurrent
-        // attempt sees the account already converted and returns 'notapplicable'.
-        $lockfactory = \core\lock\lock_config::get_lock_factory('auth_flexaccess_conversion');
-        $lock = $lockfactory->get_lock('user_' . $userid, 10);
-        if (!$lock) {
-            return 'locked';
-        }
-        try {
-            if (!account_service::is_convertible($userid, $now)) {
-                return 'notapplicable';
-            }
-            $email = \core_text::strtolower(trim($email));
-            if ($email === '' || !validate_email($email)) {
-                return 'invalidemail';
-            }
-            if (!self::email_available($email, $userid)) {
-                return 'emailtaken';
-            }
-
-            $transaction = $DB->start_delegated_transaction();
-            try {
-                $user = $DB->get_record('user', ['id' => $userid], '*', MUST_EXIST);
-                $user->email = $email;
-                $user->username = $email;
-                $user->emailstop = 0;
-                if (trim($firstname) !== '') {
-                    $user->firstname = clean_param($firstname, PARAM_NOTAGS);
-                }
-                if (trim($lastname) !== '') {
-                    $user->lastname = clean_param($lastname, PARAM_NOTAGS);
-                }
-                if (method_exists(\core\user::class, 'update_user')) {
-                    \core\user::update_user($user, false, true);
-                } else {
-                    user_update_user($user, false, true);
-                }
-                account_service::convert_to_authenticated($userid, $now);
-                if ($inside !== null) {
-                    $inside();
-                }
-                $transaction->allow_commit();
-            } catch (\Throwable $e) {
-                // Roll back so a failure in the credential/token callback cannot leave a
-                // half-converted account (and a consumed single-use token stays unconsumed).
-                $transaction->rollback($e);
-            }
-            return 'ok';
-        } finally {
-            $lock->release();
-        }
+        return local\persistence_service::finalise_identity($userid, $email, $firstname, $lastname, $now, $inside);
     }
 
     /**
-     * Persist the current temporary user: give the existing account a real identity so it survives.
+     * Persist a temporary user immediately (no e-mail verification step).
      *
-     * This keeps the SAME user id, so all enrolments, results and activity are retained; the user
-     * simply gains their own email, name and password and becomes a permanent, loginnable account.
-     *
-     * @param int $userid Temporary user's id.
-     * @param string $email Email address the user provides (also becomes the username).
+     * @param int $userid User id.
+     * @param string $email E-mail address.
      * @param string $firstname First name.
      * @param string $lastname Last name.
-     * @param string $password Clear-text password chosen by the user.
+     * @param string $password New password.
      * @param int|null $now Current time.
-     * @return string Status: 'converted', 'nottemporary' or 'emailtaken'.
+     * @return string Status string.
      */
     public static function persist_temporary_user(
         int $userid,
@@ -252,60 +191,35 @@ final class api {
         string $password,
         ?int $now = null
     ): string {
-        global $CFG;
-        require_once($CFG->dirroot . '/user/lib.php');
-        $now = $now ?? time();
-
-        // Route through the single, locked conversion path (which uses is_convertible, not merely
-        // is_temporary) so an already-expired account can never be revived, and set the password
-        // inside the same transaction.
-        $status = self::finalise_identity(
+        return local\persistence_service::persist_temporary_user(
             $userid,
             $email,
             $firstname,
             $lastname,
-            $now,
-            static function () use ($userid, $password): void {
-                global $DB;
-                $user = $DB->get_record('user', ['id' => $userid], '*', MUST_EXIST);
-                $user->suspended = 0;
-                update_internal_user_password($user, $password);
-            }
+            $password,
+            $now
         );
-        if ($status === 'ok') {
-            return 'converted';
-        }
-        return $status === 'notapplicable' ? 'nottemporary' : $status;
     }
 
     /**
-     * Whether email verification is required before a temporary account is made permanent.
-     *
-     * Enabled by default; administrators can turn it off in the auth_flexaccess settings.
+     * Whether persistence requires e-mail verification on this site.
      *
      * @return bool
      */
     public static function email_verification_required(): bool {
-        $value = get_config('auth_flexaccess', 'requireemailverification');
-        return $value === false ? true : (bool) $value;
+        return local\persistence_service::email_verification_required();
     }
 
     /**
-     * Begin persisting a temporary account: convert immediately, or send an email verification link.
+     * Request persistence of a temporary account (starts verification when required).
      *
-     * When verification is disabled this converts straight away (see {@see self::persist_temporary_user()}).
-     * When enabled, the chosen name and password are stored on the still-temporary account, the
-     * pending email is remembered and a verification link is emailed; the account only becomes
-     * permanent once the link is opened. The squatting-sensitive email/username is set only on
-     * confirmation, so an unverified request cannot claim someone else's address.
-     *
-     * @param int $userid Temporary user's id.
-     * @param string $email Email address the user provides.
+     * @param int $userid User id.
+     * @param string $email Desired e-mail address.
      * @param string $firstname First name.
      * @param string $lastname Last name.
-     * @param string $password Clear-text password chosen by the user.
+     * @param string $password Desired password.
      * @param int|null $now Current time.
-     * @return string Status: 'converted', 'verificationsent', 'nottemporary' or 'emailtaken'.
+     * @return string Status string.
      */
     public static function request_persistence(
         int $userid,
@@ -315,178 +229,39 @@ final class api {
         string $password,
         ?int $now = null
     ): string {
-        global $CFG, $DB;
-        require_once($CFG->dirroot . '/user/lib.php');
-        $now = $now ?? time();
-        $email = \core_text::strtolower(trim($email));
-
-        if (!account_service::is_convertible($userid, $now)) {
-            return 'nottemporary';
-        }
-        if ($email === '' || !validate_email($email)) {
-            return 'invalidemail';
-        }
-        if (!self::email_available($email, $userid)) {
-            return 'emailtaken';
-        }
-        if (!self::email_verification_required()) {
-            return self::persist_temporary_user($userid, $email, $firstname, $lastname, $password, $now);
-        }
-
-        $user = $DB->get_record('user', ['id' => $userid], '*', MUST_EXIST);
-        $user->firstname = $firstname;
-        $user->lastname = $lastname;
-        if (method_exists(\core\user::class, 'update_user')) {
-            \core\user::update_user($user, false, true);
-        } else {
-            user_update_user($user, false, true);
-        }
-        update_internal_user_password($user, $password);
-
-        set_user_preference('auth_flexaccess_pendingemail', $email, $userid);
-        // The account is no longer a bare anonymous visitor: persistence has been requested and is
-        // awaiting email verification. Reflect that in the state machine.
-        account_service::mark_provisional($userid, $now);
-        // SEC-03: the verification link must not outlive the temporary account it would revive.
-        // The token itself is issued by the worker at delivery time (never persisted in the queue).
-        $ttl = token_service::DEFAULT_TTL;
-        $account = self::get_account($userid);
-        if ($account && $account->timeexpires !== null) {
-            $ttl = min($ttl, max(1, (int) $account->timeexpires - $now));
-        }
-        self::queue_token_mail($userid, $email, mail_kind::VERIFICATION, 'persistence', $ttl, null, $now);
-        return 'verificationsent';
+        return local\persistence_service::request_persistence(
+            $userid,
+            $email,
+            $firstname,
+            $lastname,
+            $password,
+            $now
+        );
     }
 
     /**
-     * Send one-time persistence reminders to temporary accounts approaching expiry.
-     *
-     * Closes the "mandatory persistence follow-up" of the account lifecycle: anonymous temporary
-     * accounts cannot be emailed (their address is a non-deliverable placeholder), but a visitor who
-     * has already started persistence has supplied a real pending address. Those users, when their
-     * account is within the follow-up window of expiring and they have not yet been reminded, receive
-     * one fresh verification link so an abandoned activation can still be completed. The reminder is
-     * sent at most once per user (tracked by a preference) and the worker revokes any prior token on
-     * delivery, so only one live link ever exists.
+     * Queue follow-up reminders for pending persistence requests.
      *
      * @param int|null $now Current time.
-     * @param int|null $window Seconds before expiry within which to remind; null reads config; <=0 disables.
-     * @param int $limit Maximum accounts to process in one run.
-     * @return int Number of reminders queued.
+     * @param int|null $window Window in seconds.
+     * @param int $limit Maximum number of follow-ups.
+     * @return int Number queued.
      */
     public static function send_persistence_followups(?int $now = null, ?int $window = null, int $limit = 200): int {
-        global $DB;
-        $now = $now ?? time();
-        $window = $window ?? (int) get_config('auth_flexaccess', 'followupwindow');
-        if ($window <= 0) {
-            return 0;
-        }
-        $select = 'accounttype = :type AND accountstate <> :expired AND accountstate <> :suspended '
-            . 'AND timeexpires > :now AND timeexpires <= :upper';
-        $params = [
-            'type' => account_type::TEMPORARY_USER,
-            'expired' => account_state::EXPIRED,
-            'suspended' => account_state::SUSPENDED,
-            'now' => $now,
-            'upper' => $now + $window,
-        ];
-        $records = $DB->get_records_select(
-            'auth_flexaccess_account',
-            $select,
-            $params,
-            'timeexpires ASC',
-            '*',
-            0,
-            max(0, $limit)
-        );
-        $sent = 0;
-        foreach ($records as $account) {
-            $userid = (int) $account->userid;
-            $pending = get_user_preferences('auth_flexaccess_pendingemail', null, $userid);
-            if (!$pending) {
-                continue;
-            }
-            if (get_user_preferences('auth_flexaccess_followupsent', null, $userid)) {
-                continue;
-            }
-            $ttl = min(token_service::DEFAULT_TTL, max(1, (int) $account->timeexpires - $now));
-            self::queue_token_mail($userid, (string) $pending, mail_kind::VERIFICATION, 'persistence', $ttl, null, $now);
-            set_user_preference('auth_flexaccess_followupsent', $now, $userid);
-            $sent++;
-        }
-        return $sent;
+        return local\persistence_service::send_persistence_followups($now, $window, $limit);
     }
 
     /**
-     * Complete a verified persistence: consume the token and make the account permanent.
+     * Confirm a persistence request from its verification token.
      *
-     * The token authorises on its own (it was mailed to the pending address), so no login is
-     * required to open the link.
-     *
-     * @param string $token Clear-text verification token from the emailed link.
+     * @param string $token Plain verification token.
      * @param int|null $now Current time.
-     * @return string Status: 'converted', 'invalid' or 'emailtaken'.
+     * @return string Status string.
      */
     public static function confirm_persistence(string $token, ?int $now = null): string {
-        global $CFG;
-        require_once($CFG->dirroot . '/user/lib.php');
-        $now = $now ?? time();
-
-        // Verify the token WITHOUT consuming it. Consumption happens inside the locked conversion
-        // (see the $inside callback), so a conversion that fails afterwards never burns the
-        // single-use token, and concurrent verification/admin conversions are serialised.
-        $record = token_service::verify($token, 'persistence', $now);
-        if ($record === null) {
-            return 'invalid';
-        }
-        $userid = (int) $record->userid;
-        if (!account_service::is_temporary($userid)) {
-            // Link already used and the account is already permanent.
-            return 'converted';
-        }
-        $pending = get_user_preferences('auth_flexaccess_pendingemail', null, $userid);
-        if ($pending === null || $pending === '') {
-            return 'invalid';
-        }
-
-        try {
-            $status = self::finalise_identity(
-                $userid,
-                (string) $pending,
-                '',
-                '',
-                $now,
-                static function () use ($userid, $token, $now): void {
-                    global $DB;
-                    // Consume the single-use token inside the transaction. If it was already consumed
-                    // by a concurrent request, abort so the whole conversion rolls back.
-                    if (token_service::consume($token, 'persistence', $now, $userid) === null) {
-                        throw new \moodle_exception('error');
-                    }
-                    $user = $DB->get_record('user', ['id' => $userid], '*', MUST_EXIST);
-                    if ((int) $user->suspended === 1) {
-                        $user->suspended = 0;
-                        if (method_exists(\core\user::class, 'update_user')) {
-                            \core\user::update_user($user, false, true);
-                        } else {
-                            user_update_user($user, false, true);
-                        }
-                    }
-                    unset_user_preference('auth_flexaccess_pendingemail', $userid);
-                    unset_user_preference('auth_flexaccess_followupsent', $userid);
-                }
-            );
-        } catch (\moodle_exception $e) {
-            // The token was consumed concurrently; nothing was converted.
-            return 'invalid';
-        }
-
-        if ($status === 'ok') {
-            return 'converted';
-        }
-        // Map the central guard's vocabulary onto this endpoint's.
-        return $status === 'notapplicable' ? 'expired' : $status;
+        return local\persistence_service::confirm_persistence($token, $now);
     }
+
 
     /**
      * Queue a generic mail for asynchronous, rate-limited delivery by the mail worker.
@@ -518,6 +293,52 @@ final class api {
             'recipient' => $recipient,
             'mailtype' => $mailtype,
             'payloadjson' => json_encode(['subject' => $subject, 'body' => $body, 'bodyhtml' => $bodyhtml]),
+            'status' => 'queued',
+            'attempts' => 0,
+            'timecreated' => $now,
+            'nextrun' => $nextrun ?? $now,
+            'timesent' => null,
+        ]);
+    }
+
+    /**
+     * Queue a mail whose body is rendered by the owning component at delivery time.
+     *
+     * For mails that carry a one-time secret (invitation links, ...): the queue row holds only a
+     * renderer class and a non-secret context, so no token is ever stored at rest, while the mail
+     * still passes through the central FlexAccess queue - and therefore the hourly send limit,
+     * retry/backoff and queue monitoring.
+     *
+     * @param int|null $userid Optional related user id.
+     * @param string $recipient Recipient e-mail address.
+     * @param string $mailtype Mail type tag for reporting.
+     * @param string $renderer Class implementing render_deferred_mail() (and optionally
+     *     deferred_mail_sent()).
+     * @param array $context Non-secret context passed back to the renderer (e.g. a record id).
+     * @param int|null $nextrun Earliest delivery time.
+     * @param int|null $now Current time.
+     * @return int Queue row id.
+     */
+    public static function queue_deferred_mail(
+        ?int $userid,
+        string $recipient,
+        string $mailtype,
+        string $renderer,
+        array $context,
+        ?int $nextrun = null,
+        ?int $now = null
+    ): int {
+        global $DB;
+        $now = $now ?? time();
+        return (int) $DB->insert_record(self::QUEUE_TABLE, (object) [
+            'userid' => $userid,
+            'recipient' => $recipient,
+            'mailtype' => $mailtype,
+            'payloadjson' => json_encode([
+                'kind' => 'deferred',
+                'renderer' => $renderer,
+                'context' => $context,
+            ]),
             'status' => 'queued',
             'attempts' => 0,
             'timecreated' => $now,
@@ -609,109 +430,37 @@ final class api {
     }
 
     /**
-     * Whether passwordless magic-login links are offered.
+     * Whether magic (e-mail link) login is enabled site-wide.
      *
      * @return bool
      */
     public static function magic_login_enabled(): bool {
-        $value = get_config('auth_flexaccess', 'allowmagiclogin');
-        return $value === false ? true : (bool) $value;
+        return local\magic_service::magic_login_enabled();
     }
 
     /**
-     * Request a passwordless magic-login link for a permanent FlexAccess account.
+     * Request a magic-login link for an e-mail address.
      *
-     * To avoid revealing which addresses have accounts, this always reports success; a link is only
-     * actually queued for a valid, active authenticated FlexAccess account. The token lifetime is
-     * capped to the account's remaining validity so an expired account cannot be reactivated.
-     *
-     * @param string $email Email address (or username) entered by the user.
-     * @param string|null $clientip Client address for rate limiting, or null to skip it.
+     * @param string $email E-mail address.
+     * @param string|null $clientip Client IP for rate limiting.
      * @param int|null $now Current time.
-     * @return string 'sent' normally, or 'disabled' when the feature is off.
+     * @return string Status string.
      */
     public static function request_magic_login(string $email, ?string $clientip = null, ?int $now = null): string {
-        global $DB;
-        $now = $now ?? time();
-        if (!self::magic_login_enabled()) {
-            return 'disabled';
-        }
-        $email = \core_text::strtolower(trim($email));
-        if ($email === '') {
-            return 'sent';
-        }
-
-        // Rate limit per client and per target address (atomic, DB-backed). Both silently report
-        // success so the endpoint never reveals whether an account exists and cannot be used to spam
-        // a victim's inbox. Limits are admin-configurable; the constants are the fallback defaults.
-        $maxperip = self::config_int('magicmaxperip', self::MAGIC_MAX_PER_IP);
-        $maxperemail = self::config_int('magicmaxperemail', self::MAGIC_MAX_PER_EMAIL);
-        $window = self::config_int('magicwindow', self::MAGIC_RATE_WINDOW);
-        $blocked = ($clientip !== null && local\rate_limiter::hit('magic_ip', $clientip, $maxperip, $window, $now));
-        $blocked = local\rate_limiter::hit('magic_email', $email, $maxperemail, $window, $now) || $blocked;
-        if ($blocked) {
-            return 'sent';
-        }
-
-        $user = $DB->get_record_select(
-            'user',
-            'deleted = 0 AND auth = :auth AND (LOWER(email) = :email OR username = :username)',
-            ['auth' => 'flexaccess', 'email' => $email, 'username' => $email],
-            '*',
-            IGNORE_MULTIPLE
-        );
-        if ($user) {
-            $account = self::get_account((int) $user->id);
-            if (
-                $account
-                    && $account->accounttype === account_type::AUTHENTICATED_USER
-                    && $account->accountstate === account_state::ACTIVE
-            ) {
-                $ttl = self::MAGIC_LOGIN_TTL;
-                if ($account->timeexpires !== null) {
-                    $ttl = min($ttl, max(0, (int) $account->timeexpires - $now));
-                }
-                if ($ttl > 0) {
-                    self::queue_token_mail(
-                        (int) $user->id,
-                        $user->email,
-                        mail_kind::MAGIC_LOGIN,
-                        'magiclogin',
-                        $ttl,
-                        $now,
-                        $now
-                    );
-                }
-            }
-        }
-        return 'sent';
+        return local\magic_service::request_magic_login($email, $clientip, $now);
     }
 
     /**
-     * Consume a magic-login token and return the user id to log in, or null if invalid.
+     * Consume a magic-login token and return the user it authenticates.
      *
-     * Re-checks the account is still a valid, active authenticated account at consume time.
-     *
-     * @param string $token Clear-text magic-login token.
+     * @param string $token Plain magic-login token.
      * @param int|null $now Current time.
-     * @return int|null User id to log in, or null.
+     * @return int|null User id, or null when invalid.
      */
     public static function consume_magic_login(string $token, ?int $now = null): ?int {
-        $now = $now ?? time();
-        $userid = token_service::consume($token, 'magiclogin', $now, null);
-        if ($userid === null) {
-            return null;
-        }
-        $account = self::get_account($userid);
-        if (
-            !$account
-                || $account->accounttype !== account_type::AUTHENTICATED_USER
-                || $account->accountstate !== account_state::ACTIVE
-        ) {
-            return null;
-        }
-        return $userid;
+        return local\magic_service::consume_magic_login($token, $now);
     }
+
 
     /**
      * Roll back a just-created temporary account (compensation for a failed provisioning flow).
@@ -945,73 +694,35 @@ final class api {
     }
 
     /**
-     * Aggregate account counts for dashboards.
+     * Aggregate counts of FlexAccess accounts by state.
      *
-     * @return array<string, int>
+     * @return array Counts keyed by account state.
      */
     public static function account_stats(): array {
-        global $DB;
-        $t = self::ACCOUNT_TABLE;
-        // A single conditional-aggregate pass instead of six separate COUNT queries.
-        $row = $DB->get_record_sql(
-            "SELECT COUNT(*) AS total,
-                    SUM(CASE WHEN accounttype = :tt THEN 1 ELSE 0 END) AS temporary,
-                    SUM(CASE WHEN accounttype = :ta THEN 1 ELSE 0 END) AS authenticated,
-                    SUM(CASE WHEN accountstate = :sp THEN 1 ELSE 0 END) AS provisional,
-                    SUM(CASE WHEN accountstate = :sac THEN 1 ELSE 0 END) AS active,
-                    SUM(CASE WHEN accountstate = :se THEN 1 ELSE 0 END) AS expired
-               FROM {" . $t . "}",
-            [
-                'tt' => account_type::TEMPORARY_USER,
-                'ta' => account_type::AUTHENTICATED_USER,
-                'sp' => account_state::PROVISIONAL,
-                'sac' => account_state::ACTIVE,
-                'se' => account_state::EXPIRED,
-            ]
-        );
-        return [
-            'total' => (int) $row->total,
-            'temporary' => (int) $row->temporary,
-            'authenticated' => (int) $row->authenticated,
-            'provisional' => (int) $row->provisional,
-            'active' => (int) $row->active,
-            'expired' => (int) $row->expired,
-        ];
+        return local\account_query_service::account_stats();
     }
 
     /**
-     * Summarise the mail queue for dashboards.
+     * Aggregate counts of mail queue rows by status.
      *
-     * @return array<string, int>
+     * @return array Counts keyed by queue status.
      */
     public static function mailqueue_summary(): array {
-        global $DB;
-        $nextdue = $DB->get_field_sql(
-            "SELECT MIN(nextrun) FROM {" . self::QUEUE_TABLE . "} WHERE status = ?",
-            ['queued']
-        );
-        return [
-            'queued' => $DB->count_records(self::QUEUE_TABLE, ['status' => 'queued']),
-            'sent' => $DB->count_records(self::QUEUE_TABLE, ['status' => 'sent']),
-            'failed' => $DB->count_records(self::QUEUE_TABLE, ['status' => 'failed']),
-            'nextdue' => $nextdue ? (int) $nextdue : 0,
-        ];
+        return local\account_query_service::mailqueue_summary();
     }
 
     /**
-     * Count mail-queue rows, optionally filtered by status.
+     * Count mail queue rows matching a status filter.
      *
-     * @param string $status Optional status filter.
+     * @param string $status Status filter ('' for all).
      * @return int
      */
     public static function count_mailqueue(string $status = ''): int {
-        global $DB;
-        $conditions = $status !== '' ? ['status' => $status] : [];
-        return $DB->count_records(self::QUEUE_TABLE, $conditions);
+        return local\account_query_service::count_mailqueue($status);
     }
 
     /**
-     * List mail-queue rows (no secrets; payload is excluded), newest first.
+     * List mail queue rows matching a status filter.
      *
      * @param string $status Optional status filter.
      * @param int $page Zero-based page index.
@@ -1019,21 +730,11 @@ final class api {
      * @return array<\stdClass>
      */
     public static function list_mailqueue(string $status = '', int $page = 0, int $perpage = 50): array {
-        global $DB;
-        $conditions = $status !== '' ? ['status' => $status] : [];
-        $rows = $DB->get_records(
-            self::QUEUE_TABLE,
-            $conditions,
-            'timecreated DESC',
-            'id, recipient, mailtype, status, attempts, timecreated, nextrun, timesent',
-            $page * $perpage,
-            $perpage
-        );
-        return array_values($rows);
+        return local\account_query_service::list_mailqueue($status, $page, $perpage);
     }
 
     /**
-     * Search FlexAccess accounts (read-only), joined with user identity.
+     * Search FlexAccess accounts.
      *
      * @param string $query Substring matched against e-mail and name.
      * @param string|null $type Optional account-type filter.
@@ -1051,15 +752,7 @@ final class api {
         int $perpage = 50,
         ?string $reference = null
     ): array {
-        global $DB;
-        [$where, $params] = self::build_account_filter($query, $type, $state, $reference);
-        $sql = "SELECT a.id, a.userid, a.accounttype, a.accountstate, a.timecreated, a.timeexpires,
-                       u.firstname, u.lastname, u.email
-                  FROM {auth_flexaccess_account} a
-                  JOIN {user} u ON u.id = a.userid
-                 WHERE $where
-              ORDER BY a.timecreated DESC";
-        return array_values($DB->get_records_sql($sql, $params, $page * $perpage, $perpage));
+        return local\account_query_service::search_accounts($query, $type, $state, $page, $perpage, $reference);
     }
 
     /**
@@ -1077,14 +770,9 @@ final class api {
         ?string $state = null,
         ?string $reference = null
     ): int {
-        global $DB;
-        [$where, $params] = self::build_account_filter($query, $type, $state, $reference);
-        $sql = "SELECT COUNT(a.id)
-                  FROM {auth_flexaccess_account} a
-                  JOIN {user} u ON u.id = a.userid
-                 WHERE $where";
-        return (int) $DB->count_records_sql($sql, $params);
+        return local\account_query_service::count_accounts($query, $type, $state, $reference);
     }
+
 
     /**
      * Convert a temporary account administratively and mail the user a set-password link.
@@ -1156,54 +844,5 @@ final class api {
         $user = $DB->get_record('user', ['id' => $userid], '*', MUST_EXIST);
         update_internal_user_password($user, $password);
         return (int) $userid;
-    }
-
-    /**
-     * Build the WHERE clause and parameters for an account filter.
-     *
-     * @param string $query Substring matched against e-mail and name.
-     * @param string|null $type Optional account-type filter.
-     * @param string|null $state Optional account-state filter.
-     * @param string|null $reference Optional exact reference-number match.
-     * @return array{0: string, 1: array}
-     */
-    private static function build_account_filter(
-        string $query,
-        ?string $type,
-        ?string $state,
-        ?string $reference = null
-    ): array {
-        global $DB;
-        $where = ['u.deleted = 0'];
-        $params = [];
-        if ($type !== null && in_array($type, account_type::values(), true)) {
-            $where[] = 'a.accounttype = :type';
-            $params['type'] = $type;
-        }
-        if ($state !== null && in_array($state, account_state::values(), true)) {
-            $where[] = 'a.accountstate = :state';
-            $params['state'] = $state;
-        }
-        $query = trim($query);
-        $reference = $reference !== null ? trim($reference) : '';
-        if ($query !== '' || $reference !== '') {
-            $clauses = [];
-            if ($query !== '') {
-                $like = '%' . $DB->sql_like_escape($query) . '%';
-                $clauses[] = $DB->sql_like('u.email', ':qe', false);
-                $clauses[] = $DB->sql_like('u.firstname', ':qf', false);
-                $clauses[] = $DB->sql_like('u.lastname', ':ql', false);
-                $params['qe'] = $like;
-                $params['qf'] = $like;
-                $params['ql'] = $like;
-            }
-            if ($reference !== '') {
-                // Reference numbers are exact identifiers, so match them exactly.
-                $clauses[] = 'a.referencecode = :qref';
-                $params['qref'] = $reference;
-            }
-            $where[] = '(' . implode(' OR ', $clauses) . ')';
-        }
-        return [implode(' AND ', $where), $params];
     }
 }

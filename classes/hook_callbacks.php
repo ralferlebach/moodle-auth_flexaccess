@@ -55,11 +55,11 @@ class hook_callbacks {
 
         $link = \html_writer::link(
             new \moodle_url('/auth/flexaccess/persist.php'),
-            get_string('persisthint:cta', 'auth_flexaccess'),
+            get_string('persisthintcta', 'auth_flexaccess'),
             ['class' => 'alert-link']
         );
         $hook->add_html(\html_writer::div(
-            get_string('persisthint:text', 'auth_flexaccess') . ' ' . $link,
+            get_string('persisthinttext', 'auth_flexaccess') . ' ' . $link,
             'alert alert-info flexaccess-persist-hint'
         ));
     }

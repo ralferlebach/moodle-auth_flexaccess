@@ -33,8 +33,8 @@ $token = optional_param('token', '', PARAM_ALPHANUM);
 $PAGE->set_context(context_system::instance());
 $PAGE->set_url(new moodle_url('/auth/flexaccess/magic.php'));
 $PAGE->set_pagelayout('login');
-$PAGE->set_title(get_string('magic:title', 'auth_flexaccess'));
-$PAGE->set_heading(get_string('magic:title', 'auth_flexaccess'));
+$PAGE->set_title(get_string('magictitle', 'auth_flexaccess'));
+$PAGE->set_heading(get_string('magictitle', 'auth_flexaccess'));
 
 $loginurl = new moodle_url('/login/index.php');
 
@@ -44,11 +44,11 @@ if ($token !== '') {
     if ($userid !== null) {
         $user = get_complete_user_data('id', $userid);
         complete_user_login($user);
-        redirect(new moodle_url('/my/'), get_string('magic:success', 'auth_flexaccess'));
+        redirect(new moodle_url('/my/'), get_string('magicsuccess', 'auth_flexaccess'));
     }
     echo $OUTPUT->header();
-    echo $OUTPUT->heading(get_string('magic:title', 'auth_flexaccess'));
-    echo $OUTPUT->notification(get_string('magic:invalid', 'auth_flexaccess'), 'error');
+    echo $OUTPUT->heading(get_string('magictitle', 'auth_flexaccess'));
+    echo $OUTPUT->notification(get_string('magicinvalid', 'auth_flexaccess'), 'error');
     echo $OUTPUT->continue_button(new moodle_url('/auth/flexaccess/magic.php'));
     echo $OUTPUT->footer();
     exit;
@@ -60,7 +60,7 @@ if (isloggedin() && !isguestuser()) {
 }
 
 if (!\auth_flexaccess\api::magic_login_enabled()) {
-    redirect($loginurl, get_string('magic:disabled', 'auth_flexaccess'), null, \core\output\notification::NOTIFY_INFO);
+    redirect($loginurl, get_string('magicdisabled', 'auth_flexaccess'), null, \core\output\notification::NOTIFY_INFO);
 }
 
 // Direct POST from the inline email form on access.php (sesskey-protected), so the request can be
@@ -69,8 +69,8 @@ $directemail = optional_param('email', '', PARAM_RAW_TRIMMED);
 if ($directemail !== '' && ($_SERVER['REQUEST_METHOD'] ?? '') === 'POST' && confirm_sesskey()) {
     \auth_flexaccess\api::request_magic_login($directemail, getremoteaddr());
     echo $OUTPUT->header();
-    echo $OUTPUT->heading(get_string('magic:title', 'auth_flexaccess'));
-    echo $OUTPUT->notification(get_string('magic:sent', 'auth_flexaccess', s($directemail)), 'success');
+    echo $OUTPUT->heading(get_string('magictitle', 'auth_flexaccess'));
+    echo $OUTPUT->notification(get_string('magicsent', 'auth_flexaccess', s($directemail)), 'success');
     echo $OUTPUT->continue_button($loginurl);
     echo $OUTPUT->footer();
     exit;
@@ -82,15 +82,15 @@ if ($form->is_cancelled()) {
 } else if ($data = $form->get_data()) {
     \auth_flexaccess\api::request_magic_login($data->email, getremoteaddr());
     echo $OUTPUT->header();
-    echo $OUTPUT->heading(get_string('magic:title', 'auth_flexaccess'));
-    echo $OUTPUT->notification(get_string('magic:sent', 'auth_flexaccess', s($data->email)), 'success');
+    echo $OUTPUT->heading(get_string('magictitle', 'auth_flexaccess'));
+    echo $OUTPUT->notification(get_string('magicsent', 'auth_flexaccess', s($data->email)), 'success');
     echo $OUTPUT->continue_button($loginurl);
     echo $OUTPUT->footer();
     exit;
 }
 
 echo $OUTPUT->header();
-echo $OUTPUT->heading(get_string('magic:title', 'auth_flexaccess'));
-echo html_writer::tag('p', get_string('magic:intro', 'auth_flexaccess'));
+echo $OUTPUT->heading(get_string('magictitle', 'auth_flexaccess'));
+echo html_writer::tag('p', get_string('magicintro', 'auth_flexaccess'));
 $form->display();
 echo $OUTPUT->footer();

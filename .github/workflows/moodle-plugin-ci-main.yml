@@ -150,17 +150,49 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
 
+  ecosystem-lockstep:
+    name: Ecosystem version lockstep
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Check out plugin
+        uses: actions/checkout@v4
+        with:
+          path: plugin
+
+      - name: All four FlexAccess plugins must ship the same version
+        run: |
+          get_version() {
+            grep -oE '\$plugin->version[[:space:]]*=[[:space:]]*[0-9]+' "$1"               | grep -oE '[0-9]+$'
+          }
+          own=$(get_version plugin/version.php)
+          echo "This plugin: $own"
+          rc=0
+          for sib in auth enrol mod tool; do
+            git clone --depth 1 --branch main               "https://github.com/ralferlebach/moodle-${sib}_flexaccess.git" "/tmp/$sib" >/dev/null 2>&1
+            sibver=$(get_version "/tmp/$sib/version.php")
+            echo "  ${sib}_flexaccess: $sibver"
+            if [[ "$sibver" != "$own" ]]; then
+              echo "  MISMATCH: expected $own"
+              rc=1
+            fi
+          done
+          if [[ $rc -ne 0 ]]; then
+            echo "Release gate: the four plugins must be released in lockstep at one version."
+            exit 1
+          fi
+          echo "All four plugins are in lockstep."
+
   ci-complete:
     name: CI complete
-    needs: [test]
+    needs: [test, ecosystem-lockstep]
     runs-on: ubuntu-22.04
     if: always()
     steps:
       - name: All matrix jobs must have succeeded
         run: |
-          if [[ "${{ needs.test.result }}" == "success" ]]; then
+          if [[ "${{ needs.test.result }}" == "success" && "${{ needs.ecosystem-lockstep.result }}" == "success" ]]; then
             echo "All CI matrix jobs passed."
           else
-            echo "CI result: ${{ needs.test.result }} - one or more jobs failed or were cancelled."
+            echo "CI result: ${{ needs.test.result }} / lockstep: ${{ needs.ecosystem-lockstep.result }} - one or more jobs failed or were cancelled."
             exit 1
           fi

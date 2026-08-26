@@ -50,11 +50,11 @@ if (!$available) {
     $PAGE->set_context(context_system::instance());
     $PAGE->set_url(new moodle_url('/auth/flexaccess/access.php'));
     $PAGE->set_pagelayout('standard');
-    $PAGE->set_title(get_string('access:title', 'auth_flexaccess'));
-    $PAGE->set_heading(get_string('access:title', 'auth_flexaccess'));
+    $PAGE->set_title(get_string('accesstitle', 'auth_flexaccess'));
+    $PAGE->set_heading(get_string('accesstitle', 'auth_flexaccess'));
     echo $OUTPUT->header();
-    echo $OUTPUT->heading(get_string('access:title', 'auth_flexaccess'));
-    echo $OUTPUT->notification(get_string('access:unavailable', 'auth_flexaccess'), 'error');
+    echo $OUTPUT->heading(get_string('accesstitle', 'auth_flexaccess'));
+    echo $OUTPUT->notification(get_string('accessunavailable', 'auth_flexaccess'), 'error');
     echo $OUTPUT->continue_button(new moodle_url('/login/index.php'));
     echo $OUTPUT->footer();
     exit;
@@ -66,7 +66,7 @@ $returnurl = $target !== null ? $target->redirect_url() : $courseurl;
 $PAGE->set_context(context_course::instance($courseid));
 $PAGE->set_url(new moodle_url('/auth/flexaccess/access.php', ['courseid' => $courseid]));
 $PAGE->set_pagelayout('standard');
-$PAGE->set_title(get_string('access:title', 'auth_flexaccess'));
+$PAGE->set_title(get_string('accesstitle', 'auth_flexaccess'));
 $PAGE->set_heading(format_string($course->fullname));
 
 // A real authenticated user has nothing to do here.
@@ -115,7 +115,7 @@ if ($confirm && $ispost && confirm_sesskey()) {
             \enrol_flexaccess\local\access_key_rate::reset($rateid);
             $user = $DB->get_record('user', ['id' => $result->userid], '*', MUST_EXIST);
             complete_user_login($user);
-            redirect($returnurl, get_string('access:granted', 'auth_flexaccess'));
+            redirect($returnurl, get_string('accessgranted', 'auth_flexaccess'));
         }
         if ($result->status === 'badkey') {
             \enrol_flexaccess\local\access_key_rate::record_failure($rateid);
@@ -130,7 +130,7 @@ if ($keyrequired) {
     // Render a challenge form: the key is submitted by POST and verified server-side before any
     // account is created.
     if ($failure === 'badkey') {
-        $temporaryentry .= $OUTPUT->notification(get_string('access:badkey', 'auth_flexaccess'), 'error');
+        $temporaryentry .= $OUTPUT->notification(get_string('accessbadkey', 'auth_flexaccess'), 'error');
     }
     $temporaryentry .= html_writer::start_tag('form', [
         'method' => 'post',
@@ -140,7 +140,7 @@ if ($keyrequired) {
     $temporaryentry .= html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'wantsurl', 'value' => $wantsurl]);
     $temporaryentry .= html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'confirm', 'value' => 1]);
     $temporaryentry .= html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
-    $temporaryentry .= html_writer::tag('label', get_string('access:enterkey', 'auth_flexaccess'), ['for' => 'flexaccesskey']);
+    $temporaryentry .= html_writer::tag('label', get_string('accessenterkey', 'auth_flexaccess'), ['for' => 'flexaccesskey']);
     $temporaryentry .= html_writer::empty_tag('input', [
         'type' => 'password',
         'id' => 'flexaccesskey',
@@ -174,11 +174,11 @@ if ($keyrequired) {
 }
 
 echo $OUTPUT->header();
-echo $OUTPUT->heading(get_string('access:title', 'auth_flexaccess'));
+echo $OUTPUT->heading(get_string('accesstitle', 'auth_flexaccess'));
 
 if ($failure !== null && $failure !== 'badkey') {
     // Hard failure (e.g. rate-limited): keep it simple and full width, no entry options.
-    echo $OUTPUT->notification(get_string('access:' . $failure, 'auth_flexaccess'), 'error');
+    echo $OUTPUT->notification(get_string('access' . $failure, 'auth_flexaccess'), 'error');
     echo $OUTPUT->continue_button($courseurl);
 } else {
     // Two-column entry inside a Moodle card, mirroring the standard login layout: on the left the
@@ -208,13 +208,13 @@ if ($failure !== null && $failure !== 'badkey') {
     echo html_writer::start_div('row');
 
     echo html_writer::start_div(($hasaccountoption ? 'col-md-6' : 'col-md-12') . ' flexaccess-entry-temporary');
-    echo $OUTPUT->heading(get_string('access:coltemporary', 'auth_flexaccess'), 3);
-    echo html_writer::tag('p', get_string('access:intro', 'auth_flexaccess', format_string($course->fullname)));
+    echo $OUTPUT->heading(get_string('accesscoltemporary', 'auth_flexaccess'), 3);
+    echo html_writer::tag('p', get_string('accessintro', 'auth_flexaccess', format_string($course->fullname)));
     echo $temporaryentry;
 
     if ($offersguest) {
         // Explain the guest limitations before offering the guest button.
-        echo html_writer::tag('p', get_string('access:guestlimitations', 'auth_flexaccess'), ['class' => 'mt-3 text-muted']);
+        echo html_writer::tag('p', get_string('accessguestlimitations', 'auth_flexaccess'), ['class' => 'mt-3 text-muted']);
         echo html_writer::start_tag('form', [
             'method' => 'post',
             'action' => (new moodle_url(
@@ -225,7 +225,7 @@ if ($failure !== null && $failure !== 'badkey') {
         echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
         echo html_writer::empty_tag('input', [
             'type' => 'submit',
-            'value' => get_string('access:orguest', 'auth_flexaccess'),
+            'value' => get_string('accessorguest', 'auth_flexaccess'),
             'class' => 'btn btn-secondary',
         ]);
         echo html_writer::end_tag('form');
@@ -233,7 +233,7 @@ if ($failure !== null && $failure !== 'badkey') {
     if ($offersquick) {
         echo html_writer::div(html_writer::link(
             new moodle_url('/auth/flexaccess/register.php', ['courseid' => $courseid, 'wantsurl' => $wantsurl]),
-            get_string('access:orregister', 'auth_flexaccess'),
+            get_string('accessorregister', 'auth_flexaccess'),
             ['class' => 'btn btn-secondary mt-3']
         ));
     }
@@ -241,7 +241,7 @@ if ($failure !== null && $failure !== 'badkey') {
 
     if ($hasaccountoption) {
         echo html_writer::start_div('col-md-6 flexaccess-entry-account');
-        echo $OUTPUT->heading(get_string('access:colaccount', 'auth_flexaccess'), 3);
+        echo $OUTPUT->heading(get_string('accesscolaccount', 'auth_flexaccess'), 3);
 
         // Inline credentials login, posting to core login (which honours the wantsurl set above).
         if ($offersnormallogin) {
@@ -290,7 +290,7 @@ if ($failure !== null && $failure !== 'badkey') {
         // Inline email-link (magic) login, an independent per-instance method. Enter an email,
         // receive a one-time access link. Requires the site-wide auth master switch as well.
         if ($offersmagiclogin) {
-            echo $OUTPUT->heading(get_string('access:ormagic', 'auth_flexaccess'), 4, 'h6 mt-3');
+            echo $OUTPUT->heading(get_string('accessormagic', 'auth_flexaccess'), 4, 'h6 mt-3');
             echo html_writer::start_tag('form', [
                 'method' => 'post',
                 'action' => (new moodle_url('/auth/flexaccess/magic.php', ['wantsurl' => $wantsurl]))->out(false),
@@ -310,7 +310,7 @@ if ($failure !== null && $failure !== 'badkey') {
             );
             echo html_writer::empty_tag('input', [
                 'type' => 'submit',
-                'value' => get_string('magic:submit', 'auth_flexaccess'),
+                'value' => get_string('magicsubmit', 'auth_flexaccess'),
                 'class' => $regularprimary,
             ]);
             echo html_writer::end_tag('form');

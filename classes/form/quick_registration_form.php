@@ -47,12 +47,12 @@ class quick_registration_form extends \moodleform {
         $mform->setDefault('wantsurl', (string) ($this->_customdata['wantsurl'] ?? ''));
 
         if (($this->_customdata['gatemode'] ?? 'none') === 'password') {
-            $mform->addElement('passwordunmask', 'accesspassword', get_string('register:accesspassword', 'auth_flexaccess'));
+            $mform->addElement('passwordunmask', 'accesspassword', get_string('registeraccesspassword', 'auth_flexaccess'));
             $mform->setType('accesspassword', PARAM_RAW);
             $mform->addRule('accesspassword', get_string('required'), 'required', null, 'client');
         }
 
-        $this->add_action_buttons(true, get_string('register:submit', 'auth_flexaccess'));
+        $this->add_action_buttons(true, get_string('registersubmit', 'auth_flexaccess'));
     }
 
     /**

@@ -36,7 +36,7 @@ final class expire_accounts extends \core\task\scheduled_task {
      * @return string
      */
     public function get_name(): string {
-        return get_string('task:expireaccounts', 'auth_flexaccess');
+        return get_string('taskexpireaccounts', 'auth_flexaccess');
     }
 
     /**
