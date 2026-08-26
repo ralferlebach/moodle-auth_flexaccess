@@ -524,6 +524,27 @@ final class api {
     }
 
     /**
+     * Send a FlexAccess mail immediately (no persistent queue row), for bodies that carry a
+     * single-use secret such as an invitation link. The secret is therefore never stored at rest.
+     *
+     * @param int|null $userid Optional related user id (from-name resolution only).
+     * @param string $email Recipient email address.
+     * @param string $subject Subject.
+     * @param string $body Plain-text body.
+     * @param string $bodyhtml HTML body.
+     * @return bool Whether the mail was accepted for delivery.
+     */
+    public static function send_mail_now(
+        ?int $userid,
+        string $email,
+        string $subject,
+        string $body,
+        string $bodyhtml
+    ): bool {
+        return \auth_flexaccess\local\mail_worker::send_now($userid, $email, $subject, $body, $bodyhtml);
+    }
+
+    /**
      * Queue a token-bearing mail without persisting the secret.
      *
      * Only the mail type, recipient, subject user and token parameters are stored. The token itself
@@ -887,6 +908,13 @@ final class api {
         global $DB;
         $user = $DB->get_record('user', ['id' => $userid], '*', IGNORE_MISSING);
         if (!$user) {
+            return false;
+        }
+        // Hard safety boundary (P0-1): this must never be a general password reset. It only applies
+        // to FlexAccess-managed batch placeholder accounts that have NOT been personalised. Once an
+        // account is converted/personalised, finalise_identity() has replaced the placeholder email
+        // with the real one, so we refuse - the batch may no longer touch that permanent account.
+        if ($user->auth !== 'flexaccess' || !str_ends_with((string) $user->email, '@flexaccess.invalid')) {
             return false;
         }
         return (bool) update_internal_user_password($user, $password);

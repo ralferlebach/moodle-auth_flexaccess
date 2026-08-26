@@ -231,6 +231,24 @@ final class mail_worker {
     }
 
     /**
+     * Send a mail immediately to an email address, bypassing the persistent queue.
+     *
+     * Used for mails whose body carries a single-use secret (e.g. invitation links): rendering and
+     * delivery happen in one step so the plaintext secret is never written to the queue at rest.
+     *
+     * @param int|null $userid Optional related user id (for from-name resolution only).
+     * @param string $email Recipient email address.
+     * @param string $subject Subject.
+     * @param string $body Plain-text body.
+     * @param string $bodyhtml HTML body.
+     * @return bool Whether the mail was accepted for delivery.
+     */
+    public static function send_now(?int $userid, string $email, string $subject, string $body, string $bodyhtml): bool {
+        $job = (object) ['userid' => $userid, 'recipient' => $email];
+        return (bool) email_to_user(self::recipient_user($job), self::from_user(), $subject, $body, $bodyhtml);
+    }
+
+    /**
      * Build the recipient user object for a queued job (a real user, addressed at job->recipient).
      *
      * @param \stdClass $job Queue row.

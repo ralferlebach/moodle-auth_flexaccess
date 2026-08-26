@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.9.39 — 2026-08-25 — Versions-Gleichschritt (enrol: Zugangsschlüssel-Fix)
+- Keine Codeänderung. Versions-Gleichschritt auf `2026082416`.
+
+## 0.9.38 — 2026-08-25 — Security-Härtung + Entry-Page-UX + CI-Rollback
+- **P0-1 (Härtung):** `api::set_account_password()` ist keine allgemeine Passwort-Reset-API mehr. Sie wirkt nur noch auf FlexAccess-Batch-Platzhalterkonten mit `@flexaccess.invalid`-E-Mail; sobald ein Konto personalisiert/konvertiert wurde (echte E-Mail via `finalise_identity`), wird der Reset verweigert. Erlaubt weiterhin temporäre **und** permanente Batch-Konten.
+- **P0-2:** Neue `api::send_mail_now()` (nutzt `mail_worker::send_now`) für Mails mit Einmal-Secret (Invitations): sofortiger Versand ohne persistente Queue-Zeile, damit der Token nie at rest gespeichert wird.
+- **Entry-Page (access.php):** Die Spalte „Zugang mit Account" wird nur noch angezeigt, wenn der Kurs tatsächlich einen kontobasierten Zugang (Login und/oder Magic-Login) anbietet. Andernfalls entfällt die Spalte und die Gastaccount-Spalte nutzt die volle Breite.
+- **CI:** Dev-Pipeline-Rollback (Geschwister wieder aus `main`).
+- Versions-Gleichschritt `2026082415`.
+
+## 0.9.38 — 2026-08-25 — CI-Rollback + P0-Security-Härtung
+
+- **CI:** Rücknahme der develop-Branch-Umstellung; die Dev-Pipeline zieht die Geschwister wieder aus dem Default-Branch (`main`).
+- **P0-1:** `set_account_password()` ist keine allgemeine Reset-API mehr — sie wirkt ausschließlich auf FlexAccess-Batch-Platzhalterkonten mit `@flexaccess.invalid`-E-Mail und verweigert personalisierte/konvertierte Konten.
+- **P0-2:** Neue `send_mail_now()`-API (sofortiger Versand über `mail_worker::send_now()`), damit Bodies mit Einmal-Token nie in der persistenten Mailqueue landen.
+- Versions-Gleichschritt `2026082415`.
+
 ## 0.9.37 — 2026-08-25 — CI: Dev-Pipeline zieht Geschwister aus develop
 - Die **Dev-Pipeline** (`moodle-plugin-ci-dev.yml`) holt die Geschwister-Plugins jetzt per `add-plugin … --branch develop` aus dem **develop-Branch** statt aus `main`. Damit testet die beschleunigte Pipeline den echten Entwicklungsstand aller vier Plugins gemeinsam — kein Skew mehr durch hinterherhängendes `main`. Die **Main-Pipeline** zieht weiterhin aus `main` (Release-Stand).
 - Versions-Gleichschritt auf `2026082414`.

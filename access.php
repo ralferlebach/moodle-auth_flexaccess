@@ -192,11 +192,18 @@ if ($failure !== null && $failure !== 'badkey') {
     $hasalternatives = \enrol_flexaccess\api::offers_anonymous_entry($courseid) || $offersguest || $offersquick;
     $regularprimary = $hasalternatives ? 'btn btn-outline-primary' : 'btn btn-primary';
 
+    // Determine account-path availability up front: if the course exposes no account-based entry,
+    // the whole "account" column is dropped (an empty "not available" column is confusing) and the
+    // temporary column widens to fill the row.
+    $offersnormallogin = \enrol_flexaccess\api::offers_normal_login($courseid);
+    $offersmagiclogin = \enrol_flexaccess\api::offers_magic_login($courseid) && \auth_flexaccess\api::magic_login_enabled();
+    $hasaccountoption = $offersnormallogin || $offersmagiclogin;
+
     echo html_writer::start_div('flexaccess-entry card');
     echo html_writer::start_div('card-body');
     echo html_writer::start_div('row');
 
-    echo html_writer::start_div('col-md-6 flexaccess-entry-temporary');
+    echo html_writer::start_div(($hasaccountoption ? 'col-md-6' : 'col-md-12') . ' flexaccess-entry-temporary');
     echo $OUTPUT->heading(get_string('access:coltemporary', 'auth_flexaccess'), 3);
     echo html_writer::tag('p', get_string('access:intro', 'auth_flexaccess', format_string($course->fullname)));
     echo $temporaryentry;
@@ -228,89 +235,85 @@ if ($failure !== null && $failure !== 'badkey') {
     }
     echo html_writer::end_div();
 
-    echo html_writer::start_div('col-md-6 flexaccess-entry-account');
-    echo $OUTPUT->heading(get_string('access:colaccount', 'auth_flexaccess'), 3);
-    $hasaccountoption = false;
+    if ($hasaccountoption) {
+        echo html_writer::start_div('col-md-6 flexaccess-entry-account');
+        echo $OUTPUT->heading(get_string('access:colaccount', 'auth_flexaccess'), 3);
 
-    // Inline credentials login, posting to core login (which honours the wantsurl set above).
-    if (\enrol_flexaccess\api::offers_normal_login($courseid)) {
-        $hasaccountoption = true;
-        $logintoken = \core\session\manager::get_login_token();
-        echo html_writer::start_tag('form', [
-            'action' => (new moodle_url('/login/index.php'))->out(false),
-            'method' => 'post',
-            'class' => 'flexaccess-login-form mb-3',
-        ]);
-        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'logintoken', 'value' => $logintoken]);
-        echo html_writer::div(
-            html_writer::label(get_string('username'), 'flexaccess-username')
-            . html_writer::empty_tag('input', [
-                'type' => 'text',
-                'id' => 'flexaccess-username',
-                'name' => 'username',
-                'class' => 'form-control',
-                'autocomplete' => 'username',
-            ]),
-            'mb-2'
-        );
-        echo html_writer::div(
-            html_writer::label(get_string('password'), 'flexaccess-password')
-            . html_writer::empty_tag('input', [
-                'type' => 'password',
-                'id' => 'flexaccess-password',
-                'name' => 'password',
-                'class' => 'form-control',
-                'autocomplete' => 'current-password',
-            ]),
-            'mb-2'
-        );
-        echo html_writer::empty_tag('input', [
-            'type' => 'submit',
-            'value' => get_string('login'),
-            'class' => $regularprimary,
-        ]);
-        echo ' ' . html_writer::link(
-            new moodle_url('/login/forgot_password.php'),
-            get_string('forgotten'),
-            ['class' => 'btn btn-outline-secondary']
-        );
-        echo html_writer::end_tag('form');
-    }
+        // Inline credentials login, posting to core login (which honours the wantsurl set above).
+        if ($offersnormallogin) {
+            $logintoken = \core\session\manager::get_login_token();
+            echo html_writer::start_tag('form', [
+                'action' => (new moodle_url('/login/index.php'))->out(false),
+                'method' => 'post',
+                'class' => 'flexaccess-login-form mb-3',
+            ]);
+            echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'logintoken', 'value' => $logintoken]);
+            echo html_writer::div(
+                html_writer::label(get_string('username'), 'flexaccess-username')
+                . html_writer::empty_tag('input', [
+                    'type' => 'text',
+                    'id' => 'flexaccess-username',
+                    'name' => 'username',
+                    'class' => 'form-control',
+                    'autocomplete' => 'username',
+                ]),
+                'mb-2'
+            );
+            echo html_writer::div(
+                html_writer::label(get_string('password'), 'flexaccess-password')
+                . html_writer::empty_tag('input', [
+                    'type' => 'password',
+                    'id' => 'flexaccess-password',
+                    'name' => 'password',
+                    'class' => 'form-control',
+                    'autocomplete' => 'current-password',
+                ]),
+                'mb-2'
+            );
+            echo html_writer::empty_tag('input', [
+                'type' => 'submit',
+                'value' => get_string('login'),
+                'class' => $regularprimary,
+            ]);
+            echo ' ' . html_writer::link(
+                new moodle_url('/login/forgot_password.php'),
+                get_string('forgotten'),
+                ['class' => 'btn btn-outline-secondary']
+            );
+            echo html_writer::end_tag('form');
+        }
 
-    // Inline email-link (magic) login, now an independent per-instance method. Enter an email,
-    // receive a one-time access link. Requires the site-wide auth master switch as well.
-    if (\enrol_flexaccess\api::offers_magic_login($courseid) && \auth_flexaccess\api::magic_login_enabled()) {
-        $hasaccountoption = true;
-        echo $OUTPUT->heading(get_string('access:ormagic', 'auth_flexaccess'), 4, 'h6 mt-3');
-        echo html_writer::start_tag('form', [
-            'method' => 'post',
-            'action' => (new moodle_url('/auth/flexaccess/magic.php', ['wantsurl' => $wantsurl]))->out(false),
-            'class' => 'flexaccess-magic-form',
-        ]);
-        echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
-        echo html_writer::div(
-            html_writer::label(get_string('email'), 'flexaccess-magic-email')
-            . html_writer::empty_tag('input', [
-                'type' => 'email',
-                'id' => 'flexaccess-magic-email',
-                'name' => 'email',
-                'class' => 'form-control',
-                'autocomplete' => 'email',
-            ]),
-            'mb-2'
-        );
-        echo html_writer::empty_tag('input', [
-            'type' => 'submit',
-            'value' => get_string('magic:submit', 'auth_flexaccess'),
-            'class' => $regularprimary,
-        ]);
-        echo html_writer::end_tag('form');
-    }
+        // Inline email-link (magic) login, an independent per-instance method. Enter an email,
+        // receive a one-time access link. Requires the site-wide auth master switch as well.
+        if ($offersmagiclogin) {
+            echo $OUTPUT->heading(get_string('access:ormagic', 'auth_flexaccess'), 4, 'h6 mt-3');
+            echo html_writer::start_tag('form', [
+                'method' => 'post',
+                'action' => (new moodle_url('/auth/flexaccess/magic.php', ['wantsurl' => $wantsurl]))->out(false),
+                'class' => 'flexaccess-magic-form',
+            ]);
+            echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'sesskey', 'value' => sesskey()]);
+            echo html_writer::div(
+                html_writer::label(get_string('email'), 'flexaccess-magic-email')
+                . html_writer::empty_tag('input', [
+                    'type' => 'email',
+                    'id' => 'flexaccess-magic-email',
+                    'name' => 'email',
+                    'class' => 'form-control',
+                    'autocomplete' => 'email',
+                ]),
+                'mb-2'
+            );
+            echo html_writer::empty_tag('input', [
+                'type' => 'submit',
+                'value' => get_string('magic:submit', 'auth_flexaccess'),
+                'class' => $regularprimary,
+            ]);
+            echo html_writer::end_tag('form');
+        }
 
-    if (!$hasaccountoption) {
-        echo html_writer::tag('p', get_string('access:noaccountoptions', 'auth_flexaccess'));
+        echo html_writer::end_div();
     }
-    echo html_writer::end_div();
 
     echo html_writer::end_div();
     echo html_writer::end_div();
