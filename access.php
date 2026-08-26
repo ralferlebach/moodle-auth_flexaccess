@@ -38,6 +38,13 @@ $target = \auth_flexaccess\local\target_resolver::resolve($wantsurl);
 if ($courseid <= 0 && $target !== null) {
     $courseid = $target->courseid;
 }
+// P1-8: courseid and wantsurl must describe the same target. Otherwise the policy and capacity of
+// course A would be evaluated and the visitor then redirected into course B. A contradicting
+// wantsurl is dropped rather than trusted, so the request stays entirely within $courseid.
+if ($courseid > 0 && $target !== null && (int) $target->courseid !== $courseid) {
+    $target = null;
+    $wantsurl = '';
+}
 
 // Enumeration guard: do not reveal course existence or name unless the course is visible and
 // actually offers an anonymous FlexAccess entry method. Otherwise render a generic notice.
