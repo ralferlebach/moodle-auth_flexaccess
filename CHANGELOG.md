@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.51 — 2026-08-27 — Coverage- und Maturity-Gate
+- **Neue `tests/coverage.php`** definiert den Coverage-Messumfang dieses Plugins.
+- **Neue CI-Gates** `coverage` (erzwungene Mindest-Line-Coverage) und `maturity-gate` (`MATURITY_STABLE` nur bei durchgehend grünen Release-Gates und dokumentierten Scope-Entscheidungen).
+- Die Maturity bleibt bewusst `MATURITY_BETA`, bis der Reviewer die Blocker unabhängig als geschlossen bestätigt.
+- Versions-Gleichschritt `2026082428`.
+
 ## 0.9.50 — 2026-08-26 — Privacy: Rate-Limit-Telemetrie deklariert
 - **`auth_flexaccess_ratehit` ist jetzt in den Privacy-Metadaten deklariert.** Die Tabelle leitet sich aus personenbezogenen Daten ab (Client-Adresse bzw. E-Mail), speichert den Handelnden aber ausschließlich als HMAC mit Site-Geheimnis: Einträge sind keiner Person zuordenbar und daher weder exportierbar noch personenbezogen löschbar. Beschreibung, Aufbewahrung (automatische Entfernung nach 24 Stunden durch den Mailqueue-Task) und die Nichtumkehrbarkeit sind in den Sprachstrings dokumentiert.
 - Versions-Gleichschritt `2026082427`.
