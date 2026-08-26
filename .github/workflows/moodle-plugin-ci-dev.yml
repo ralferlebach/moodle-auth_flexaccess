@@ -343,16 +343,48 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
 
+  stale-files:
+    name: Stale files
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Check out plugin
+        uses: actions/checkout@v4
+
+      - name: Files removed in earlier releases must not still be present
+        run: |
+          # Unpacking a plugin ZIP adds and overwrites files but never deletes any, so a file
+          # removed upstream survives in an installed copy or in a repository updated that way.
+          # It then still autoloads, duplicates a class, or reads columns that no longer exist.
+          # This job turns that into a loud failure instead of confusing downstream errors.
+          list=db/removed_files.txt
+          if [[ ! -f "$list" ]]; then
+            echo "Keine Liste entfernter Dateien vorhanden - nichts zu pruefen."
+            exit 0
+          fi
+          rc=0
+          while IFS= read -r path; do
+            [[ -z "$path" || "$path" == \#* ]] && continue
+            if [[ -e "$path" ]]; then
+              echo "Veraltete Datei ist noch vorhanden: $path"
+              rc=1
+            fi
+          done < "$list"
+          if [[ $rc -ne 0 ]]; then
+            echo "Diese Dateien wurden in frueheren Releases entfernt und muessen geloescht werden."
+            exit 1
+          fi
+          echo "Keine veralteten Dateien gefunden."
+
   ci-complete:
     name: CI complete
-    needs: [lint-php, codeanalysis, quality, phpunit, behat]
+    needs: [lint-php, codeanalysis, quality, phpunit, behat, stale-files]
     runs-on: ubuntu-22.04
     if: always()
     steps:
       - name: All dev jobs must have succeeded
         run: |
-          result="${{ needs.lint-php.result }}-${{ needs.codeanalysis.result }}-${{ needs.quality.result }}-${{ needs.phpunit.result }}-${{ needs.behat.result }}"
-          if [[ "$result" == "success-success-success-success-success" ]]; then
+          result="${{ needs.lint-php.result }}-${{ needs.codeanalysis.result }}-${{ needs.quality.result }}-${{ needs.phpunit.result }}-${{ needs.behat.result }}-${{ needs.stale-files.result }}"
+          if [[ "$result" == "success-success-success-success-success-success" ]]; then
             echo "All dev CI jobs passed."
           else
             echo "CI result: $result - one or more jobs failed or were cancelled."

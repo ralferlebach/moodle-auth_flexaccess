@@ -182,15 +182,187 @@ jobs:
           fi
           echo "All four plugins are in lockstep."
 
+  release-artefact:
+    name: Release artefact contents
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Check out plugin
+        uses: actions/checkout@v4
+
+      - name: Build the release archive exactly as it will be distributed
+        run: |
+          # git archive is what honours .gitattributes export-ignore. Building the artefact here
+          # means the gate tests the file set that is actually shipped, not the working tree.
+          git archive --format=tar --prefix=flexaccess/ HEAD > /tmp/release.tar
+          tar -tf /tmp/release.tar > /tmp/release.list
+          echo "Artefakt enthält $(wc -l < /tmp/release.list) Einträge."
+
+      - name: No developer tooling, CI plumbing or test harnesses may ship
+        run: |
+          rc=0
+          while read -r forbidden; do
+            if grep -qE "^flexaccess/${forbidden}" /tmp/release.list; then
+              echo "VERBOTEN im Release-Artefakt: $forbidden"
+              grep -E "^flexaccess/${forbidden}" /tmp/release.list | head -5
+              rc=1
+            fi
+          done <<'PATTERNS'
+          tools/
+          docs/
+          \.github/
+          tests/load/
+          tests/playwright/
+          \.gitattributes
+          \.gitignore
+          makefile
+          phpcs\.xml
+          PATTERNS
+          if [[ $rc -ne 0 ]]; then
+            echo "Das Release-Artefakt darf keine Entwicklerwerkzeuge enthalten."
+            exit 1
+          fi
+          echo "Artefakt ist sauber."
+
+      - name: The artefact must still contain what Moodle runs
+        run: |
+          for required in flexaccess/version.php flexaccess/lang flexaccess/db; do
+            if ! grep -q "^${required}" /tmp/release.list; then
+              echo "FEHLT im Release-Artefakt: $required"
+              exit 1
+            fi
+          done
+          echo "Pflichtinhalte vorhanden."
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-22.04
+    services:
+      postgres:
+        image: postgres@sha256:6efd0df010dc3cb40d5e33e3ef84acecc5e73161bd3df06029ee8698e5e12c60
+        env:
+          POSTGRES_USER: 'postgres'
+          POSTGRES_HOST_AUTH_METHOD: 'trust'
+        ports:
+          - 5432:5432
+        options: --health-cmd=pg_isready --health-interval=10s --health-timeout=5s --health-retries=3
+    steps:
+      - name: Check out plugin
+        uses: actions/checkout@v4
+        with:
+          path: plugin
+
+      - name: Set up PHP with a coverage driver
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+          extensions: pgsql, zip, gd, xmlrpc, soap, intl
+          # pcov is enough for line coverage and far faster than xdebug.
+          coverage: pcov
+          ini-values: max_input_vars=5000
+
+      - name: Initialise moodle-plugin-ci
+        run: |
+          composer create-project -n --no-dev --prefer-dist             moodlehq/moodle-plugin-ci ci ^4
+          echo $(cd ci/bin; pwd) >> $GITHUB_PATH
+          echo $(cd ci/vendor/bin; pwd) >> $GITHUB_PATH
+          sudo locale-gen en_AU.UTF-8
+          echo "NVM_DIR=$HOME/.nvm" >> $GITHUB_ENV
+
+      - name: Install Moodle and the plugin ecosystem
+        run: |
+          moodle-plugin-ci add-plugin ralferlebach/moodle-enrol_flexaccess
+          moodle-plugin-ci add-plugin ralferlebach/moodle-mod_flexaccess
+          moodle-plugin-ci add-plugin ralferlebach/moodle-tool_flexaccess
+          moodle-plugin-ci install --plugin ./plugin --db-host=127.0.0.1
+        env:
+          DB: pgsql
+          MOODLE_BRANCH: MOODLE_405_STABLE
+
+      - name: Run PHPUnit with coverage and enforce the floor
+        run: |
+          moodle-plugin-ci phpunit --coverage-text --fail-on-warning ./plugin | tee /tmp/coverage.txt
+          # Extract the reported line coverage and compare it against the agreed floor. Without
+          # this the coverage run would be decorative: it would report a number nobody enforces.
+          pct=$(grep -oE 'Lines:[[:space:]]+[0-9.]+%' /tmp/coverage.txt | grep -oE '[0-9.]+' | head -1)
+          if [[ -z "$pct" ]]; then
+            echo "Es wurde keine Line-Coverage berichtet - Gate kann nicht bewertet werden."
+            exit 1
+          fi
+          echo "Line coverage: $pct% (Mindestwert: $COVERAGE_FLOOR%)"
+          awk -v got="$pct" -v min="$COVERAGE_FLOOR"             'BEGIN { if (got + 0 < min + 0) { print "Coverage unter dem Mindestwert."; exit 1 } }'
+        env:
+          COVERAGE_FLOOR: '60'
+
+  maturity-gate:
+    name: Maturity gate
+    needs: [test, ecosystem-lockstep, release-artefact, coverage]
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Check out plugin
+        uses: actions/checkout@v4
+
+      - name: MATURITY_STABLE requires every release gate to be green
+        run: |
+          # MATURITY_STABLE is a promise to administrators that this build passed the full release
+          # checklist. It may therefore only be declared on a build where every gate above is green.
+          if ! grep -q 'MATURITY_STABLE' version.php; then
+            echo "Maturity ist nicht MATURITY_STABLE - kein weiterer Nachweis erforderlich."
+            exit 0
+          fi
+          for job in "${{ needs.test.result }}" "${{ needs.ecosystem-lockstep.result }}"                      "${{ needs.release-artefact.result }}" "${{ needs.coverage.result }}"; do
+            if [[ "$job" != "success" ]]; then
+              echo "MATURITY_STABLE ist deklariert, aber nicht alle Release-Gates sind gruen."
+              exit 1
+            fi
+          done
+          # Scope exceptions must be written down, not carried in someone's head.
+          if [[ ! -f docs/scope-decisions-1.0.md && ! -f ../docs/scope-decisions-1.0.md ]]; then
+            echo "MATURITY_STABLE erfordert dokumentierte Scope-Entscheidungen."
+            exit 1
+          fi
+          echo "MATURITY_STABLE ist durch gruene Gates gedeckt."
+
+  stale-files:
+    name: Stale files
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Check out plugin
+        uses: actions/checkout@v4
+
+      - name: Files removed in earlier releases must not still be present
+        run: |
+          # Unpacking a plugin ZIP adds and overwrites files but never deletes any, so a file
+          # removed upstream survives in an installed copy or in a repository updated that way.
+          # It then still autoloads, duplicates a class, or reads columns that no longer exist.
+          # This job turns that into a loud failure instead of confusing downstream errors.
+          list=db/removed_files.txt
+          if [[ ! -f "$list" ]]; then
+            echo "Keine Liste entfernter Dateien vorhanden - nichts zu pruefen."
+            exit 0
+          fi
+          rc=0
+          while IFS= read -r path; do
+            [[ -z "$path" || "$path" == \#* ]] && continue
+            if [[ -e "$path" ]]; then
+              echo "Veraltete Datei ist noch vorhanden: $path"
+              rc=1
+            fi
+          done < "$list"
+          if [[ $rc -ne 0 ]]; then
+            echo "Diese Dateien wurden in frueheren Releases entfernt und muessen geloescht werden."
+            exit 1
+          fi
+          echo "Keine veralteten Dateien gefunden."
+
   ci-complete:
     name: CI complete
-    needs: [test, ecosystem-lockstep]
+    needs: [test, ecosystem-lockstep, release-artefact, coverage, maturity-gate, stale-files]
     runs-on: ubuntu-22.04
     if: always()
     steps:
       - name: All matrix jobs must have succeeded
         run: |
-          if [[ "${{ needs.test.result }}" == "success" && "${{ needs.ecosystem-lockstep.result }}" == "success" ]]; then
+          if [[ "${{ needs.test.result }}" == "success" && "${{ needs.ecosystem-lockstep.result }}" == "success"              && "${{ needs.release-artefact.result }}" == "success"              && "${{ needs.coverage.result }}" == "success"              && "${{ needs.maturity-gate.result }}" == "success" ]]; then
             echo "All CI matrix jobs passed."
           else
             echo "CI result: ${{ needs.test.result }} / lockstep: ${{ needs.ecosystem-lockstep.result }} - one or more jobs failed or were cancelled."

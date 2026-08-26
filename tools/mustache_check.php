@@ -35,6 +35,18 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
+// Developer tool: refuse to run anywhere but on a CLI. This file is excluded from release
+// artefacts (.gitattributes export-ignore), but a hard guard means that even a stray copy on a
+// web-reachable path cannot be invoked over HTTP.
+//
+// This is a standalone maintenance script, not a file included by Moodle, so a MOODLE_INTERNAL
+// check would be wrong here - the SAPI guard is the correct protection.
+// phpcs:disable moodle.Files.MoodleInternal.MoodleInternalGlobalState
+if (PHP_SAPI !== 'cli') {
+    http_response_code(403);
+    die('This developer tool can only be run from the command line.');
+}
+
 // phpcs:disable moodle.Files.MoodleInternal.MoodleInternalGlobalState
 
 $dir = $argv[1] ?? dirname(__DIR__) . '/templates';

@@ -28,6 +28,10 @@
 
 defined('MOODLE_INTERNAL') || die();
 
+// Deliberately the global class name: on Moodle 4.5 that IS the class, and on 5.x it is a
+// maintained alias for \core\test\phpunit\coverage_info. The namespaced name does not exist on
+// 4.5, so using it breaks PHPUnit initialisation on a supported version.
+
 /**
  * Coverage scope definition for this plugin.
  *
@@ -35,7 +39,7 @@ defined('MOODLE_INTERNAL') || die();
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-return new class extends \core\test\phpunit\coverage_info {
+return new class extends \phpunit_coverage_info {
     /** @var array Directories whose files are included in coverage. */
     protected $includelistfolders = [
         'classes',

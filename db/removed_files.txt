@@ -1,0 +1,9 @@
+# Files removed in earlier releases of this plugin.
+#
+# Updating a Moodle plugin by unpacking a ZIP adds and overwrites files, but never deletes any.
+# A file removed upstream therefore survives in an installed copy (and in a git repository updated
+# the same way), where it can still be autoloaded, duplicate a class, or reference database columns
+# that no longer exist. Every path listed here must be deleted from the installation/repository.
+#
+# The stale-files CI job fails the build while any of these paths still exists.
+lib.php
