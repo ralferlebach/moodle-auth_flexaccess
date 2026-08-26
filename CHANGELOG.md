@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.47 — 2026-08-26 — Release-Gate auf dem tatsächlichen Artefakt
+- **Neuer CI-Job `release-artefact`** in der Main-Pipeline: Er baut das Release-Archiv mit `git archive` (nur dieses respektiert `.gitattributes export-ignore`) und prüft die **tatsächlich ausgelieferte Dateiliste** — kein `tools/`, `docs/`, `.github/`, `tests/load/`, `tests/playwright/` und keine CI-Konfiguration; zugleich muss enthalten sein, was Moodle ausführt. `ci-complete` hängt daran. Damit prüft das Gate das Artefakt statt nur identischer Versionsnummern.
+- Versions-Gleichschritt `2026082424`.
+
 ## 0.9.46 — 2026-08-26 — Secret-freie Deferred-Mailqueue
 - **Neu `api::queue_deferred_mail()`** samt Worker-Unterstützung (`kind: deferred`): Die Queue-Zeile enthält nur eine Renderer-Klasse und einen **nicht geheimen** Kontext (z. B. eine Datensatz-ID). Der Worker ruft `render_deferred_mail()` unmittelbar vor dem Versand auf — ein Einmal-Token entsteht also erst dort und wird nie gespeichert. Nach erfolgreicher Zustellung meldet der Worker dies über `deferred_mail_sent()` zurück, damit die Komponente ihren „gesendet"-Status erst bei echter Zustellung setzt.
 - Damit können Mails mit Einmal-Secret (Einladungen) die zentrale Queue nutzen und unterliegen wieder Stundenlimit, Retry/Backoff und Monitoring, ohne dass ein Token at rest liegt. Beide Aufrufe sind gegen fehlende oder ältere Geschwister-Plugins abgesichert.
