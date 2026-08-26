@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.49 — 2026-08-26 — Persistierte Konten sind endlich nutzbar
+- **Passwortänderung und -zurücksetzung funktionieren.** `auth_flexaccess` überschrieb weder `can_change_password()` noch `can_reset_password()`; die Basisklasse liefert `false`, weshalb Moodle jede Anforderung mit „Leider kann das Kennwort auf diesem Weg nicht geändert werden. Wenden Sie sich bitte an die Administrator/innen" beantwortete — für ein vollwertiges, dauerhaftes Konto ein Ausschlusskriterium. Beide Methoden geben jetzt `true` zurück, `change_password_url()` liefert `null` (Moodles eigene Seite).
+- **Willkommensmail nach erfolgreicher Persistierung.** Der Anmeldename wird beim temporären Zugang automatisch erzeugt; die Nutzer/innen haben ihn nie gesehen und konnten sich deshalb nach der Aktivierung nicht mehr anmelden. Nach der Persistierung — sowohl in Eigenregie (`mod_flexaccess`) als auch durch die Administration (`tool_flexaccess`) — geht jetzt eine Mail heraus mit Begrüßung, **Anmeldename**, Login-URL und dem Hinweis auf die E-Mail-Wiederherstellung. Das Passwort wird bewusst **nicht** mitgeschickt: Es wurde selbst gewählt und lässt sich jederzeit selbst neu setzen. Versand über die zentrale Mailqueue (Stundenlimit, Retry, Monitoring).
+- Test `persistence_welcome_test`: prüft die Passwort-Fähigkeiten und dass die Mail Anmeldename, Login- und Recovery-URL enthält — und das Passwort nicht.
+- Versions-Gleichschritt `2026082426`.
+
 ## 0.9.48 — 2026-08-26 — P1-8: courseid und wantsurl müssen denselben Kurs beschreiben
 - **Zielkonsistenz erzwungen:** Widerspricht ein übergebenes `wantsurl` dem `courseid`, wird das Ziel verworfen statt ihm zu folgen. Bisher konnten Richtlinie und Kapazität von Kurs A geprüft und der Besucher anschließend nach Kurs B weitergeleitet werden. Tests `target_consistency_test` (Kurs-URL, Kurs-Mismatch, Aktivitäts-URL).
 - Versions-Gleichschritt `2026082425`.

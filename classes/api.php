@@ -811,6 +811,8 @@ final class api {
             null,
             $now
         );
+        // The user has never seen the generated username; tell them how to log in from now on.
+        local\persistence_service::send_welcome($userid, $now);
         return 'converted';
     }
 

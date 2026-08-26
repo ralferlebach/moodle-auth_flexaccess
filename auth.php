@@ -77,6 +77,40 @@ class auth_plugin_flexaccess extends auth_plugin_base {
     }
 
     /**
+     * FlexAccess accounts keep their password in Moodle, so users may change it themselves.
+     *
+     * Without this the base class returns false, and Moodle then refuses a password change for a
+     * persisted (fully-fledged) account - which left users with an account they could not manage.
+     *
+     * @return bool
+     */
+    public function can_change_password(): bool {
+        return true;
+    }
+
+    /**
+     * Use Moodle's own change-password page rather than an external one.
+     *
+     * @return \moodle_url|null
+     */
+    public function change_password_url(): ?\moodle_url {
+        return null;
+    }
+
+    /**
+     * Allow the standard "forgotten password" flow.
+     *
+     * A persisted account has a real, verified email address, so email-based recovery is exactly
+     * the right mechanism. Temporary accounts carry a placeholder address and simply will not be
+     * found by the recovery form.
+     *
+     * @return bool
+     */
+    public function can_reset_password(): bool {
+        return true;
+    }
+
+    /**
      * Advertise the FlexAccess entry point while preserving the requested URL.
      *
      * @param string $wantsurl Requested return URL.

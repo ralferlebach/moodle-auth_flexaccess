@@ -138,3 +138,15 @@ $string['taskprocessmailqueue'] = 'FlexAccess-Mailqueue verarbeiten';
 $string['temporaryfirstname'] = 'FlexAccess';
 $string['temporarylastname'] = 'Gast';
 $string['unlimited'] = 'Unbegrenzt';
+$string['welcomebody'] = 'Guten Tag {$a->firstname},
+
+Ihr Zugang ist jetzt dauerhaft. Ihr Lernfortschritt bleibt damit gespeichert und Sie können jederzeit zurückkehren.
+
+Ihr Anmeldename: {$a->username}
+Hier anmelden: {$a->loginurl}
+
+Aus Sicherheitsgründen versenden wir keine Passwörter per E-Mail. Bitte verwenden Sie das Passwort, das Sie selbst vergeben haben. Falls Sie es einmal vergessen, können Sie sich jederzeit selbst ein neues setzen:
+{$a->forgoturl}
+
+Mit freundlichen Grüßen';
+$string['welcomesubject'] = 'Ihr dauerhafter Zugang: Anmeldename und Anmeldung';

@@ -138,3 +138,15 @@ $string['taskprocessmailqueue'] = 'Process FlexAccess mail queue';
 $string['temporaryfirstname'] = 'FlexAccess';
 $string['temporarylastname'] = 'Guest';
 $string['unlimited'] = 'Unlimited';
+$string['welcomebody'] = 'Hello {$a->firstname},
+
+your account is now permanent, so your progress is saved and you can come back at any time.
+
+Your username: {$a->username}
+Log in here: {$a->loginurl}
+
+For security reasons we do not send passwords by email. Please use the password you chose yourself. If you ever forget it, you can set a new one at any time:
+{$a->forgoturl}
+
+Kind regards';
+$string['welcomesubject'] = 'Your permanent account: username and login';

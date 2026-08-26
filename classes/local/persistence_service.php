@@ -108,6 +108,43 @@ final class persistence_service {
     }
 
     /**
+     * Send the post-persistence welcome mail: greeting, username and where to log in.
+     *
+     * A persisted account is a fully-fledged Moodle account, but the user has never been told its
+     * username - the temporary one was generated. Without this mail they cannot log in again, and
+     * cannot use password recovery either (that needs the address, which they do know, but they
+     * have no idea which account it belongs to). The password is deliberately NOT included: the
+     * user chose it themselves, and if they forget it the standard email recovery applies.
+     *
+     * Queued through the central FlexAccess mail queue, so the hourly limit and retries apply. The
+     * body carries no secret, so a plain queued mail is appropriate here.
+     *
+     * @param int $userid User id of the now-permanent account.
+     * @param int|null $now Current time.
+     * @return void
+     */
+    public static function send_welcome(int $userid, ?int $now = null): void {
+        global $DB, $CFG;
+        $now = $now ?? time();
+        $user = $DB->get_record('user', ['id' => $userid], 'id, username, firstname, lastname, email', IGNORE_MISSING);
+        if (!$user || empty($user->email) || \core_text::strpos($user->email, '@flexaccess.invalid') !== false) {
+            // No usable address (still a placeholder): nothing to send.
+            return;
+        }
+        $data = (object) [
+            'firstname' => $user->firstname,
+            'username' => $user->username,
+            'siteurl' => $CFG->wwwroot,
+            'loginurl' => $CFG->wwwroot . '/login/index.php',
+            'forgoturl' => $CFG->wwwroot . '/login/forgot_password.php',
+        ];
+        $subject = get_string('welcomesubject', 'auth_flexaccess', $data);
+        $body = get_string('welcomebody', 'auth_flexaccess', $data);
+        $bodyhtml = \html_writer::tag('p', nl2br(s($body)));
+        \auth_flexaccess\api::queue_mail($userid, $user->email, $subject, $body, $bodyhtml, 'welcome', $now);
+    }
+
+    /**
      * Persist the current temporary user: give the existing account a real identity so it survives.
      *
      * This keeps the SAME user id, so all enrolments, results and activity are retained; the user
@@ -150,6 +187,7 @@ final class persistence_service {
             }
         );
         if ($status === 'ok') {
+            self::send_welcome($userid, $now);
             return 'converted';
         }
         return $status === 'notapplicable' ? 'nottemporary' : $status;
@@ -367,6 +405,7 @@ final class persistence_service {
         }
 
         if ($status === 'ok') {
+            self::send_welcome($userid, $now);
             return 'converted';
         }
         // Map the central guard's vocabulary onto this endpoint's.
