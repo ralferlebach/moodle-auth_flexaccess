@@ -86,6 +86,16 @@ final class provider implements
             'status' => 'privacy:metadata:mail:status',
             'timecreated' => 'privacy:metadata:mail:timecreated',
         ], 'privacy:metadata:mail');
+        // Rate-limit telemetry. The actor (client address or email) is stored only as an HMAC with
+        // a site secret, so a row cannot be traced back to a person and cannot be exported for a
+        // subject access request - but it is declared here because it derives from personal data,
+        // and it is purged with the rest of the plugin's data.
+        $collection->add_database_table('auth_flexaccess_ratehit', [
+            'bucket' => 'privacy:metadata:ratehit:bucket',
+            'identifier' => 'privacy:metadata:ratehit:identifier',
+            'timecreated' => 'privacy:metadata:ratehit:timecreated',
+        ], 'privacy:metadata:ratehit');
+
         $collection->add_user_preference(self::PENDING_PREF, 'privacy:metadata:preference:pendingemail');
         $collection->add_user_preference(self::FOLLOWUP_PREF, 'privacy:metadata:preference:followupsent');
         return $collection;

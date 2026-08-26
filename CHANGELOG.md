@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.50 — 2026-08-26 — Privacy: Rate-Limit-Telemetrie deklariert
+- **`auth_flexaccess_ratehit` ist jetzt in den Privacy-Metadaten deklariert.** Die Tabelle leitet sich aus personenbezogenen Daten ab (Client-Adresse bzw. E-Mail), speichert den Handelnden aber ausschließlich als HMAC mit Site-Geheimnis: Einträge sind keiner Person zuordenbar und daher weder exportierbar noch personenbezogen löschbar. Beschreibung, Aufbewahrung (automatische Entfernung nach 24 Stunden durch den Mailqueue-Task) und die Nichtumkehrbarkeit sind in den Sprachstrings dokumentiert.
+- Versions-Gleichschritt `2026082427`.
+
 ## 0.9.49 — 2026-08-26 — Persistierte Konten sind endlich nutzbar
 - **Passwortänderung und -zurücksetzung funktionieren.** `auth_flexaccess` überschrieb weder `can_change_password()` noch `can_reset_password()`; die Basisklasse liefert `false`, weshalb Moodle jede Anforderung mit „Leider kann das Kennwort auf diesem Weg nicht geändert werden. Wenden Sie sich bitte an die Administrator/innen" beantwortete — für ein vollwertiges, dauerhaftes Konto ein Ausschlusskriterium. Beide Methoden geben jetzt `true` zurück, `change_password_url()` liefert `null` (Moodles eigene Seite).
 - **Willkommensmail nach erfolgreicher Persistierung.** Der Anmeldename wird beim temporären Zugang automatisch erzeugt; die Nutzer/innen haben ihn nie gesehen und konnten sich deshalb nach der Aktivierung nicht mehr anmelden. Nach der Persistierung — sowohl in Eigenregie (`mod_flexaccess`) als auch durch die Administration (`tool_flexaccess`) — geht jetzt eine Mail heraus mit Begrüßung, **Anmeldename**, Login-URL und dem Hinweis auf die E-Mail-Wiederherstellung. Das Passwort wird bewusst **nicht** mitgeschickt: Es wurde selbst gewählt und lässt sich jederzeit selbst neu setzen. Versand über die zentrale Mailqueue (Stundenlimit, Retry, Monitoring).
