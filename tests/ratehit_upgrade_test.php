@@ -16,6 +16,8 @@
 
 namespace auth_flexaccess;
 
+use PHPUnit\Framework\Attributes\CoversClass;
+
 /**
  * Guards the ratehit.identifier widen upgrade (SHA1/40 -> HMAC-SHA256/64) against the
  * index-dependency failure seen on real MySQL/MariaDB upgrades.
@@ -23,8 +25,8 @@ namespace auth_flexaccess;
  * @package    auth_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- * @covers     \xmldb_auth_flexaccess_upgrade
  */
+#[CoversClass(\xmldb_auth_flexaccess_upgrade::class)]
 final class ratehit_upgrade_test extends \advanced_testcase {
     /**
      * Widening the indexed identifier column requires dropping and recreating the index; doing it

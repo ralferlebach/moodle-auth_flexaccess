@@ -16,6 +16,7 @@
 
 namespace auth_flexaccess;
 
+use PHPUnit\Framework\Attributes\CoversClass;
 use auth_flexaccess\privacy\provider;
 use auth_flexaccess\local\account_service;
 use core_privacy\local\request\writer;
@@ -28,8 +29,8 @@ use core_privacy\local\request\approved_userlist;
  * @package    auth_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- * @covers     \auth_flexaccess\privacy\provider
  */
+#[CoversClass(\auth_flexaccess\privacy\provider::class)]
 final class privacy_provider_test extends \core_privacy\tests\provider_testcase {
     /**
      * Create a user with a FlexAccess account, a token, a queued mail and a pending-email preference.

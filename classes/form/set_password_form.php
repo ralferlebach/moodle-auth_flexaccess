@@ -39,15 +39,15 @@ final class set_password_form extends \moodleform {
         $mform->addElement('hidden', 'token');
         $mform->setType('token', PARAM_ALPHANUM);
 
-        $mform->addElement('passwordunmask', 'password', get_string('setpassword:password', 'auth_flexaccess'));
+        $mform->addElement('passwordunmask', 'password', get_string('setpasswordpassword', 'auth_flexaccess'));
         $mform->setType('password', PARAM_RAW);
         $mform->addRule('password', get_string('required'), 'required', null, 'client');
 
-        $mform->addElement('passwordunmask', 'password2', get_string('setpassword:password2', 'auth_flexaccess'));
+        $mform->addElement('passwordunmask', 'password2', get_string('setpasswordpassword2', 'auth_flexaccess'));
         $mform->setType('password2', PARAM_RAW);
         $mform->addRule('password2', get_string('required'), 'required', null, 'client');
 
-        $this->add_action_buttons(false, get_string('setpassword:submit', 'auth_flexaccess'));
+        $this->add_action_buttons(false, get_string('setpasswordsubmit', 'auth_flexaccess'));
     }
 
     /**
@@ -60,7 +60,7 @@ final class set_password_form extends \moodleform {
     public function validation($data, $files): array {
         $errors = parent::validation($data, $files);
         if (($data['password'] ?? '') !== ($data['password2'] ?? '')) {
-            $errors['password2'] = get_string('setpassword:mismatch', 'auth_flexaccess');
+            $errors['password2'] = get_string('setpasswordmismatch', 'auth_flexaccess');
             return $errors;
         }
         $errmsg = '';

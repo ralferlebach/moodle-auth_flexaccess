@@ -24,14 +24,15 @@
 
 namespace auth_flexaccess;
 
+use PHPUnit\Framework\Attributes\CoversClass;
 use auth_flexaccess\local\mail_planner;
 
 /**
  * Mail planner tests.
  *
  * @package    auth_flexaccess
- * @covers     \auth_flexaccess\local\mail_planner
  */
+#[CoversClass(\auth_flexaccess\local\mail_planner::class)]
 final class mail_planner_test extends \advanced_testcase {
     /**
      * Unlimited capacity sends all due mails.

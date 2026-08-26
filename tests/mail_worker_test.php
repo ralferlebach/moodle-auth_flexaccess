@@ -24,6 +24,7 @@
 
 namespace auth_flexaccess;
 
+use PHPUnit\Framework\Attributes\CoversClass;
 use auth_flexaccess\local\mail_kind;
 use auth_flexaccess\local\mail_worker;
 
@@ -31,8 +32,8 @@ use auth_flexaccess\local\mail_worker;
  * Mail worker tests.
  *
  * @package    auth_flexaccess
- * @covers     \auth_flexaccess\local\mail_worker
  */
+#[CoversClass(\auth_flexaccess\local\mail_worker::class)]
 final class mail_worker_test extends \advanced_testcase {
     /**
      * Queue a due generic mail for a fresh user.

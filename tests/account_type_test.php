@@ -24,12 +24,14 @@
 
 namespace auth_flexaccess;
 
+use PHPUnit\Framework\Attributes\CoversClass;
+
 /**
  * Tests for account type constants.
  *
  * @package    auth_flexaccess
- * @covers     \auth_flexaccess\local\account_type
  */
+#[CoversClass(\auth_flexaccess\local\account_type::class)]
 final class account_type_test extends \advanced_testcase {
     /**
      * Test exact business labels.

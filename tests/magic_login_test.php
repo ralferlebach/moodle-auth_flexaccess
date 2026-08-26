@@ -16,6 +16,7 @@
 
 namespace auth_flexaccess;
 
+use PHPUnit\Framework\Attributes\CoversClass;
 use auth_flexaccess\local\account_service;
 use auth_flexaccess\local\account_type;
 use auth_flexaccess\local\account_state;
@@ -27,8 +28,8 @@ use auth_flexaccess\local\mail_worker;
  * @package    auth_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- * @covers     \auth_flexaccess\api
  */
+#[CoversClass(\auth_flexaccess\api::class)]
 final class magic_login_test extends \advanced_testcase {
     /**
      * Create a permanent, active FlexAccess account for a fresh user.

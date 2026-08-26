@@ -1,0 +1,370 @@
+##############################################################################
+# Moodle Plugin CI - main (release) pipeline - auth_flexaccess
+#
+# Runs ONLY on push / PR to main; provides the "CI complete" status check for
+# branch protection. Full SEQUENTIAL pipeline per matrix cell across the
+# supported Moodle 4.5/5.0/5.2 x PHP x DB matrix. PHP-only plugin: no grunt /
+# mustache. The fast parallel pipeline lives in moodle-plugin-ci-dev.yml.
+##############################################################################
+
+name: Moodle Plugin CI Main
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: ci-main-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: "CI / ${{ matrix.moodle }} / PHP ${{ matrix.php }} / ${{ matrix.database }}"
+    runs-on: ubuntu-22.04
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: 'postgres'
+          POSTGRES_HOST_AUTH_METHOD: 'trust'
+        ports:
+          - 5432:5432
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 3
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MYSQL_USER: 'root'
+          MYSQL_ALLOW_EMPTY_PASSWORD: "true"
+        ports:
+          - 3306:3306
+        options: --health-cmd="mysqladmin ping" --health-interval 10s --health-timeout 5s --health-retries 3
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { moodle: MOODLE_405_STABLE, php: '8.1', database: pgsql }
+          - { moodle: MOODLE_405_STABLE, php: '8.1', database: mariadb }
+          - { moodle: MOODLE_405_STABLE, php: '8.2', database: pgsql }
+          - { moodle: MOODLE_405_STABLE, php: '8.3', database: mariadb }
+          - { moodle: MOODLE_500_STABLE, php: '8.2', database: pgsql }
+          - { moodle: MOODLE_500_STABLE, php: '8.3', database: mariadb }
+          - { moodle: MOODLE_502_STABLE, php: '8.3', database: pgsql }
+          - { moodle: MOODLE_502_STABLE, php: '8.3', database: mariadb }
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+        with:
+          path: plugin
+      - name: Prepare log directory
+        run: mkdir -p ci-logs
+      - name: Setup PHP ${{ matrix.php }}
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          ini-values: max_input_vars=5000
+          coverage: none
+      - name: Cache Composer downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/composer
+          key: composer-${{ runner.os }}-${{ github.sha }}
+          restore-keys: composer-${{ runner.os }}-
+      - name: Initialise moodle-plugin-ci
+        run: |
+          composer create-project -n --no-dev --prefer-dist moodlehq/moodle-plugin-ci ci ^4
+          echo $(cd ci/bin; pwd) >> $GITHUB_PATH
+          echo $(cd ci/vendor/bin; pwd) >> $GITHUB_PATH
+          sudo locale-gen en_AU.UTF-8
+      - name: Install Moodle, dependencies and plugin
+        run: |
+          moodle-plugin-ci add-plugin ralferlebach/moodle-enrol_flexaccess
+          moodle-plugin-ci add-plugin ralferlebach/moodle-mod_flexaccess
+          moodle-plugin-ci add-plugin ralferlebach/moodle-tool_flexaccess
+          moodle-plugin-ci install --plugin ./plugin --db-host=127.0.0.1
+        env:
+          DB: ${{ matrix.database }}
+          MOODLE_BRANCH: ${{ matrix.moodle }}
+      - name: PHP Lint
+        if: ${{ always() }}
+        run: set -o pipefail; moodle-plugin-ci phplint 2>&1 | tee ci-logs/phplint.log
+      - name: PHP Copy/Paste Detector
+        continue-on-error: true
+        if: ${{ always() }}
+        run: set -o pipefail; moodle-plugin-ci phpcpd 2>&1 | tee ci-logs/phpcpd.log
+      - name: PHP Mess Detector
+        continue-on-error: true
+        if: ${{ always() }}
+        run: set -o pipefail; moodle-plugin-ci phpmd 2>&1 | tee ci-logs/phpmd.log
+      - name: Moodle Code Checker
+        if: ${{ always() }}
+        run: set -o pipefail; moodle-plugin-ci codechecker --max-warnings 0 --exclude=PSR1.Classes.ClassDeclaration,moodle.Commenting.TodoComment 2>&1 | tee ci-logs/codechecker.log
+      - name: Moodle PHPDoc Checker
+        if: ${{ always() }}
+        run: set -o pipefail; moodle-plugin-ci phpdoc --max-warnings 0 2>&1 | tee ci-logs/phpdoc.log
+      - name: Validating
+        if: ${{ always() }}
+        run: set -o pipefail; moodle-plugin-ci validate 2>&1 | tee ci-logs/validate.log
+      - name: Check upgrade savepoints
+        if: ${{ always() }}
+        run: set -o pipefail; moodle-plugin-ci savepoints 2>&1 | tee ci-logs/savepoints.log
+      - name: PHPUnit tests
+        if: ${{ always() }}
+        run: set -o pipefail; moodle-plugin-ci phpunit --fail-on-warning --testdox 2>&1 | tee ci-logs/phpunit.log
+      - name: Behat features
+        id: behat
+        if: ${{ always() }}
+        run: set -o pipefail; moodle-plugin-ci behat --profile chrome --tags "@auth_flexaccess&&~@broken" --dump 2>&1 | tee ci-logs/behat.log
+      - name: Collect error summary
+        if: ${{ always() }}
+        run: |
+          if [ -d "$GITHUB_WORKSPACE/moodledata/behat_dump" ]; then
+            mkdir -p ci-logs/behat_dump
+            cp -a "$GITHUB_WORKSPACE/moodledata/behat_dump/." ci-logs/behat_dump/
+          fi
+          {
+            echo "job: ${{ github.job }} (${{ matrix.moodle }} / PHP ${{ matrix.php }} / ${{ matrix.database }})"
+            echo "status: ${{ job.status }}"
+            echo "ref:    ${{ github.ref }}"
+            echo ""
+            ls -1 ci-logs
+          } > ci-logs/summary.txt
+          cat ci-logs/summary.txt
+      - name: Upload error summary (ZIP)
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: error-summary-main-${{ matrix.moodle }}-${{ matrix.php }}-${{ matrix.database }}
+          path: ci-logs
+          retention-days: 7
+          if-no-files-found: ignore
+      - name: Upload Behat screenshots (ZIP)
+        if: ${{ failure() && steps.behat.outcome == 'failure' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: behat-screenshots-main-${{ matrix.moodle }}-${{ matrix.php }}-${{ matrix.database }}
+          path: ${{ github.workspace }}/moodledata/behat_dump
+          retention-days: 7
+          if-no-files-found: warn
+
+  ecosystem-lockstep:
+    name: Ecosystem version lockstep
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Check out plugin
+        uses: actions/checkout@v4
+        with:
+          path: plugin
+
+      - name: All four FlexAccess plugins must ship the same version
+        run: |
+          get_version() {
+            grep -oE '\$plugin->version[[:space:]]*=[[:space:]]*[0-9]+' "$1"               | grep -oE '[0-9]+$'
+          }
+          own=$(get_version plugin/version.php)
+          echo "This plugin: $own"
+          rc=0
+          for sib in auth enrol mod tool; do
+            git clone --depth 1 --branch main               "https://github.com/ralferlebach/moodle-${sib}_flexaccess.git" "/tmp/$sib" >/dev/null 2>&1
+            sibver=$(get_version "/tmp/$sib/version.php")
+            echo "  ${sib}_flexaccess: $sibver"
+            if [[ "$sibver" != "$own" ]]; then
+              echo "  MISMATCH: expected $own"
+              rc=1
+            fi
+          done
+          if [[ $rc -ne 0 ]]; then
+            echo "Release gate: the four plugins must be released in lockstep at one version."
+            exit 1
+          fi
+          echo "All four plugins are in lockstep."
+
+  release-artefact:
+    name: Release artefact contents
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Check out plugin
+        uses: actions/checkout@v4
+
+      - name: Build the release archive exactly as it will be distributed
+        run: |
+          # git archive is what honours .gitattributes export-ignore. Building the artefact here
+          # means the gate tests the file set that is actually shipped, not the working tree.
+          git archive --format=tar --prefix=flexaccess/ HEAD > /tmp/release.tar
+          tar -tf /tmp/release.tar > /tmp/release.list
+          echo "Artefakt enthält $(wc -l < /tmp/release.list) Einträge."
+
+      - name: No developer tooling, CI plumbing or test harnesses may ship
+        run: |
+          rc=0
+          while read -r forbidden; do
+            if grep -qE "^flexaccess/${forbidden}" /tmp/release.list; then
+              echo "VERBOTEN im Release-Artefakt: $forbidden"
+              grep -E "^flexaccess/${forbidden}" /tmp/release.list | head -5
+              rc=1
+            fi
+          done <<'PATTERNS'
+          tools/
+          docs/
+          \.github/
+          tests/load/
+          tests/playwright/
+          \.gitattributes
+          \.gitignore
+          makefile
+          phpcs\.xml
+          PATTERNS
+          if [[ $rc -ne 0 ]]; then
+            echo "Das Release-Artefakt darf keine Entwicklerwerkzeuge enthalten."
+            exit 1
+          fi
+          echo "Artefakt ist sauber."
+
+      - name: The artefact must still contain what Moodle runs
+        run: |
+          for required in flexaccess/version.php flexaccess/lang flexaccess/db; do
+            if ! grep -q "^${required}" /tmp/release.list; then
+              echo "FEHLT im Release-Artefakt: $required"
+              exit 1
+            fi
+          done
+          echo "Pflichtinhalte vorhanden."
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-22.04
+    services:
+      postgres:
+        image: postgres@sha256:6efd0df010dc3cb40d5e33e3ef84acecc5e73161bd3df06029ee8698e5e12c60
+        env:
+          POSTGRES_USER: 'postgres'
+          POSTGRES_HOST_AUTH_METHOD: 'trust'
+        ports:
+          - 5432:5432
+        options: --health-cmd=pg_isready --health-interval=10s --health-timeout=5s --health-retries=3
+    steps:
+      - name: Check out plugin
+        uses: actions/checkout@v4
+        with:
+          path: plugin
+
+      - name: Set up PHP with a coverage driver
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+          extensions: pgsql, zip, gd, xmlrpc, soap, intl
+          # pcov is enough for line coverage and far faster than xdebug.
+          coverage: pcov
+          ini-values: max_input_vars=5000
+
+      - name: Initialise moodle-plugin-ci
+        run: |
+          composer create-project -n --no-dev --prefer-dist             moodlehq/moodle-plugin-ci ci ^4
+          echo $(cd ci/bin; pwd) >> $GITHUB_PATH
+          echo $(cd ci/vendor/bin; pwd) >> $GITHUB_PATH
+          sudo locale-gen en_AU.UTF-8
+          echo "NVM_DIR=$HOME/.nvm" >> $GITHUB_ENV
+
+      - name: Install Moodle and the plugin ecosystem
+        run: |
+          moodle-plugin-ci add-plugin ralferlebach/moodle-enrol_flexaccess
+          moodle-plugin-ci add-plugin ralferlebach/moodle-mod_flexaccess
+          moodle-plugin-ci add-plugin ralferlebach/moodle-tool_flexaccess
+          moodle-plugin-ci install --plugin ./plugin --db-host=127.0.0.1
+        env:
+          DB: pgsql
+          MOODLE_BRANCH: MOODLE_405_STABLE
+
+      - name: Run PHPUnit with coverage and enforce the floor
+        run: |
+          moodle-plugin-ci phpunit --coverage-text --fail-on-warning ./plugin | tee /tmp/coverage.txt
+          # Extract the reported line coverage and compare it against the agreed floor. Without
+          # this the coverage run would be decorative: it would report a number nobody enforces.
+          pct=$(grep -oE 'Lines:[[:space:]]+[0-9.]+%' /tmp/coverage.txt | grep -oE '[0-9.]+' | head -1)
+          if [[ -z "$pct" ]]; then
+            echo "Es wurde keine Line-Coverage berichtet - Gate kann nicht bewertet werden."
+            exit 1
+          fi
+          echo "Line coverage: $pct% (Mindestwert: $COVERAGE_FLOOR%)"
+          awk -v got="$pct" -v min="$COVERAGE_FLOOR"             'BEGIN { if (got + 0 < min + 0) { print "Coverage unter dem Mindestwert."; exit 1 } }'
+        env:
+          COVERAGE_FLOOR: '60'
+
+  maturity-gate:
+    name: Maturity gate
+    needs: [test, ecosystem-lockstep, release-artefact, coverage]
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Check out plugin
+        uses: actions/checkout@v4
+
+      - name: MATURITY_STABLE requires every release gate to be green
+        run: |
+          # MATURITY_STABLE is a promise to administrators that this build passed the full release
+          # checklist. It may therefore only be declared on a build where every gate above is green.
+          if ! grep -q 'MATURITY_STABLE' version.php; then
+            echo "Maturity ist nicht MATURITY_STABLE - kein weiterer Nachweis erforderlich."
+            exit 0
+          fi
+          for job in "${{ needs.test.result }}" "${{ needs.ecosystem-lockstep.result }}"                      "${{ needs.release-artefact.result }}" "${{ needs.coverage.result }}"; do
+            if [[ "$job" != "success" ]]; then
+              echo "MATURITY_STABLE ist deklariert, aber nicht alle Release-Gates sind gruen."
+              exit 1
+            fi
+          done
+          # Scope exceptions must be written down, not carried in someone's head.
+          if [[ ! -f docs/scope-decisions-1.0.md && ! -f ../docs/scope-decisions-1.0.md ]]; then
+            echo "MATURITY_STABLE erfordert dokumentierte Scope-Entscheidungen."
+            exit 1
+          fi
+          echo "MATURITY_STABLE ist durch gruene Gates gedeckt."
+
+  stale-files:
+    name: Stale files
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Check out plugin
+        uses: actions/checkout@v4
+
+      - name: Files removed in earlier releases must not still be present
+        run: |
+          # Unpacking a plugin ZIP adds and overwrites files but never deletes any, so a file
+          # removed upstream survives in an installed copy or in a repository updated that way.
+          # It then still autoloads, duplicates a class, or reads columns that no longer exist.
+          # This job turns that into a loud failure instead of confusing downstream errors.
+          list=db/removed_files.txt
+          if [[ ! -f "$list" ]]; then
+            echo "Keine Liste entfernter Dateien vorhanden - nichts zu pruefen."
+            exit 0
+          fi
+          rc=0
+          while IFS= read -r path; do
+            [[ -z "$path" || "$path" == \#* ]] && continue
+            if [[ -e "$path" ]]; then
+              echo "Veraltete Datei ist noch vorhanden: $path"
+              rc=1
+            fi
+          done < "$list"
+          if [[ $rc -ne 0 ]]; then
+            echo "Diese Dateien wurden in frueheren Releases entfernt und muessen geloescht werden."
+            exit 1
+          fi
+          echo "Keine veralteten Dateien gefunden."
+
+  ci-complete:
+    name: CI complete
+    needs: [test, ecosystem-lockstep, release-artefact, coverage, maturity-gate, stale-files]
+    runs-on: ubuntu-22.04
+    if: always()
+    steps:
+      - name: All matrix jobs must have succeeded
+        run: |
+          if [[ "${{ needs.test.result }}" == "success" && "${{ needs.ecosystem-lockstep.result }}" == "success"              && "${{ needs.release-artefact.result }}" == "success"              && "${{ needs.coverage.result }}" == "success"              && "${{ needs.maturity-gate.result }}" == "success" ]]; then
+            echo "All CI matrix jobs passed."
+          else
+            echo "CI result: ${{ needs.test.result }} / lockstep: ${{ needs.ecosystem-lockstep.result }} - one or more jobs failed or were cancelled."
+            exit 1
+          fi

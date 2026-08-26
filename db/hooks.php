@@ -1,5 +1,5 @@
 <?php
-// This file is part of Moodle - http://moodle.org/
+// This file is part of Moodle - https://moodle.org/
 //
 // Moodle is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
@@ -12,10 +12,10 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+// along with Moodle.  If not, see <https://www.gnu.org/licenses/>.
 
 /**
- * Plugin version definition for auth_flexaccess.
+ * Hook callback registrations for auth_flexaccess.
  *
  * @package    auth_flexaccess
  * @copyright  2026 Ralf Erlebach
@@ -24,14 +24,9 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->component = 'auth_flexaccess';
-$plugin->version = 2026082429;
-$plugin->requires = 2024100700; // Moodle 4.5.
-$plugin->supported = [405, 502];
-$plugin->maturity = MATURITY_BETA;
-$plugin->release = '0.9.52';
-$plugin->dependencies = [
-    // Hard dependency: the access-method policy lives entirely in enrol_flexaccess.
-    // Moodle supports the resulting auth <-> enrol cycle (presence+version check only).
-    'enrol_flexaccess' => 2026082429,
+$callbacks = [
+    [
+        'hook' => \core\hook\output\before_standard_top_of_body_html_generation::class,
+        'callback' => '\auth_flexaccess\hook_callbacks::before_standard_top_of_body_html_generation',
+    ],
 ];

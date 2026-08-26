@@ -1,5 +1,146 @@
 # Changelog
 
+## 0.9.52 — 2026-08-27 — CI-Fix: Coverage-Konfiguration war nicht 4.5-kompatibel
+- **Alle PHPUnit- und Behat-Jobs scheiterten an `Class "core\test\phpunit\coverage_info" not found`.** Die in 0.9.51 eingeführte `tests/coverage.php` verwendete den **namespaced** Klassennamen; den gibt es erst ab Moodle 5.x. Auf dem unterstützten Moodle 4.5 heißt die Klasse `phpunit_coverage_info`. Sie wird jetzt über diesen globalen Namen abgeleitet — auf 4.5 ist das die Klasse selbst, auf 5.x ein gepflegter Alias, also für alle unterstützten Versionen korrekt.
+- **Neue Datei `db/removed_files.txt` und neuer CI-Job `stale-files`.** Ein Plugin-Update per ZIP fügt Dateien hinzu und überschreibt sie, **löscht aber nie**. In früheren Releases entfernte Dateien überleben deshalb in einer Installation oder in einem so aktualisierten Repository — mit Folgen wie doppelten Klassen (phpcpd) oder Zugriffen auf nicht mehr existierende Spalten. Der Job schlägt fehl, solange eine gelistete Datei noch vorhanden ist, statt die Ursache in Folgefehlern zu verstecken. In Dev- **und** Main-Pipeline verdrahtet, `ci-complete` hängt daran.
+- Versions-Gleichschritt `2026082429`.
+
+- **Zu löschen in diesem Repository:** `lib.php` (in 0.9.35 entfernt, Inhalt in `classes/hook_callbacks.php` überführt).
+
+## 0.9.51 — 2026-08-27 — Coverage- und Maturity-Gate
+- **Neue `tests/coverage.php`** definiert den Coverage-Messumfang dieses Plugins.
+- **Neue CI-Gates** `coverage` (erzwungene Mindest-Line-Coverage) und `maturity-gate` (`MATURITY_STABLE` nur bei durchgehend grünen Release-Gates und dokumentierten Scope-Entscheidungen).
+- Die Maturity bleibt bewusst `MATURITY_BETA`, bis der Reviewer die Blocker unabhängig als geschlossen bestätigt.
+- Versions-Gleichschritt `2026082428`.
+
+## 0.9.50 — 2026-08-26 — Privacy: Rate-Limit-Telemetrie deklariert
+- **`auth_flexaccess_ratehit` ist jetzt in den Privacy-Metadaten deklariert.** Die Tabelle leitet sich aus personenbezogenen Daten ab (Client-Adresse bzw. E-Mail), speichert den Handelnden aber ausschließlich als HMAC mit Site-Geheimnis: Einträge sind keiner Person zuordenbar und daher weder exportierbar noch personenbezogen löschbar. Beschreibung, Aufbewahrung (automatische Entfernung nach 24 Stunden durch den Mailqueue-Task) und die Nichtumkehrbarkeit sind in den Sprachstrings dokumentiert.
+- Versions-Gleichschritt `2026082427`.
+
+## 0.9.49 — 2026-08-26 — Persistierte Konten sind endlich nutzbar
+- **Passwortänderung und -zurücksetzung funktionieren.** `auth_flexaccess` überschrieb weder `can_change_password()` noch `can_reset_password()`; die Basisklasse liefert `false`, weshalb Moodle jede Anforderung mit „Leider kann das Kennwort auf diesem Weg nicht geändert werden. Wenden Sie sich bitte an die Administrator/innen" beantwortete — für ein vollwertiges, dauerhaftes Konto ein Ausschlusskriterium. Beide Methoden geben jetzt `true` zurück, `change_password_url()` liefert `null` (Moodles eigene Seite).
+- **Willkommensmail nach erfolgreicher Persistierung.** Der Anmeldename wird beim temporären Zugang automatisch erzeugt; die Nutzer/innen haben ihn nie gesehen und konnten sich deshalb nach der Aktivierung nicht mehr anmelden. Nach der Persistierung — sowohl in Eigenregie (`mod_flexaccess`) als auch durch die Administration (`tool_flexaccess`) — geht jetzt eine Mail heraus mit Begrüßung, **Anmeldename**, Login-URL und dem Hinweis auf die E-Mail-Wiederherstellung. Das Passwort wird bewusst **nicht** mitgeschickt: Es wurde selbst gewählt und lässt sich jederzeit selbst neu setzen. Versand über die zentrale Mailqueue (Stundenlimit, Retry, Monitoring).
+- Test `persistence_welcome_test`: prüft die Passwort-Fähigkeiten und dass die Mail Anmeldename, Login- und Recovery-URL enthält — und das Passwort nicht.
+- Versions-Gleichschritt `2026082426`.
+
+## 0.9.48 — 2026-08-26 — P1-8: courseid und wantsurl müssen denselben Kurs beschreiben
+- **Zielkonsistenz erzwungen:** Widerspricht ein übergebenes `wantsurl` dem `courseid`, wird das Ziel verworfen statt ihm zu folgen. Bisher konnten Richtlinie und Kapazität von Kurs A geprüft und der Besucher anschließend nach Kurs B weitergeleitet werden. Tests `target_consistency_test` (Kurs-URL, Kurs-Mismatch, Aktivitäts-URL).
+- Versions-Gleichschritt `2026082425`.
+
+## 0.9.47 — 2026-08-26 — Release-Gate auf dem tatsächlichen Artefakt
+- **Neuer CI-Job `release-artefact`** in der Main-Pipeline: Er baut das Release-Archiv mit `git archive` (nur dieses respektiert `.gitattributes export-ignore`) und prüft die **tatsächlich ausgelieferte Dateiliste** — kein `tools/`, `docs/`, `.github/`, `tests/load/`, `tests/playwright/` und keine CI-Konfiguration; zugleich muss enthalten sein, was Moodle ausführt. `ci-complete` hängt daran. Damit prüft das Gate das Artefakt statt nur identischer Versionsnummern.
+- Versions-Gleichschritt `2026082424`.
+
+## 0.9.46 — 2026-08-26 — Secret-freie Deferred-Mailqueue
+- **Neu `api::queue_deferred_mail()`** samt Worker-Unterstützung (`kind: deferred`): Die Queue-Zeile enthält nur eine Renderer-Klasse und einen **nicht geheimen** Kontext (z. B. eine Datensatz-ID). Der Worker ruft `render_deferred_mail()` unmittelbar vor dem Versand auf — ein Einmal-Token entsteht also erst dort und wird nie gespeichert. Nach erfolgreicher Zustellung meldet der Worker dies über `deferred_mail_sent()` zurück, damit die Komponente ihren „gesendet"-Status erst bei echter Zustellung setzt.
+- Damit können Mails mit Einmal-Secret (Einladungen) die zentrale Queue nutzen und unterliegen wieder Stundenlimit, Retry/Backoff und Monitoring, ohne dass ein Token at rest liegt. Beide Aufrufe sind gegen fehlende oder ältere Geschwister-Plugins abgesichert.
+- **CLI-Guard** in allen `tools/`-Skripten.
+- Versions-Gleichschritt `2026082423`.
+
+## 0.9.45 — 2026-08-26 — Auth-Fassade aufgeteilt, String-IDs vereinheitlicht
+- **`auth_flexaccess\api` intern aufgeteilt** (letzte Review-Rückstellung): drei Cluster wurden verbatim in eigene Services ausgelagert — `local\account_query_service` (Konten- und Mailqueue-Abfragen), `local\persistence_service` (Identitätsübergänge: `finalise_identity`, `persist_temporary_user`, `request_persistence`, `confirm_persistence`, Follow-ups) und `local\magic_service` (E-Mail-Link-Login inkl. Rate-Limiting). `api.php` schrumpft von 1209 auf 801 Zeilen. Die Fassade bleibt der öffentliche Vertrag: alle Signaturen unverändert, per Reflection als identisch verifiziert (15 Methoden), 20 externe Aufrufstellen unangetastet.
+- **String-IDs vereinheitlicht:** Colon-IDs allgemeiner UI-Strings wurden flach gezogen (z. B. `access:title` → `accesstitle`). Capability-, Privacy- und Message-Provider-Keys behalten konventionsgemäß ihren Doppelpunkt.
+- **`queue_token_mail()`** dedupliziert weiterhin pro Nutzer/Empfänger; unverändert.
+- Versions-Gleichschritt `2026082422`.
+
+## 0.9.44 — 2026-08-25 — CI-Release-Gate
+- **`ecosystem-lockstep`** in der Main-Pipeline: Die Freigabe scheitert, wenn nicht alle vier FlexAccess-Plugins dieselbe Version melden.
+- Versions-Gleichschritt `2026082421`.
+
+## 0.9.43 — 2026-08-25 — CI: Geschwister aus development
+- **Dev-Pipeline und Playwright-Workflow** ziehen die Geschwister-Plugins jetzt per `--branch development` aus dem gemeinsamen Entwicklungszweig, damit das Ökosystem in seinem echten, gemeinsam entwickelten Stand getestet wird. Die Main-Pipeline bleibt auf `main`.
+- Versions-Gleichschritt `2026082420`.
+
+## 0.9.42 — 2026-08-25 — Skew-Schutz auf der Zugangsseite
+- **`access.php`** ruft `enrol_flexaccess\api::offers_magic_login()` jetzt nur nach `method_exists()`-Prüfung auf. Ein älteres, gemeinsam installiertes enrol hätte hier sonst einen Fatal auf der anonymen Einstiegsseite ausgelöst (gleiches Muster wie in `enrol/lib.php` für tool-Aufrufe).
+- Versions-Gleichschritt `2026082419`.
+
+## 0.9.41 — 2026-08-25 — Review-P1: Mail-Rate-Limit pro Nutzer
+- **`queue_token_mail()` dedupliziert pro Nutzer/Empfänger:** Eine identische, noch offene Token-Mail (Verifikation, Magic-Login, …) innerhalb von 5 Minuten erzeugt keine zweite Queue-Zeile mehr, sondern nutzt die bestehende. Damit kann ein einzelner temporärer Nutzer nicht mehr durch wiederholte Anfragen einen großen Teil des SMTP-Budgets belegen (das globale Stundenlimit im Worker bleibt zusätzlich aktiv). Der Token wird weiterhin erst beim Versand erzeugt, der Link bleibt also gültig.
+- Versions-Gleichschritt `2026082418`.
+
+## 0.9.40 — 2026-08-25 — Versions-Gleichschritt
+- Keine Codeänderung. Versions-Gleichschritt auf `2026082417`.
+
+## 0.9.39 — 2026-08-25 — Versions-Gleichschritt (enrol: Zugangsschlüssel-Fix)
+- Keine Codeänderung. Versions-Gleichschritt auf `2026082416`.
+
+## 0.9.38 — 2026-08-25 — Security-Härtung + Entry-Page-UX + CI-Rollback
+- **P0-1 (Härtung):** `api::set_account_password()` ist keine allgemeine Passwort-Reset-API mehr. Sie wirkt nur noch auf FlexAccess-Batch-Platzhalterkonten mit `@flexaccess.invalid`-E-Mail; sobald ein Konto personalisiert/konvertiert wurde (echte E-Mail via `finalise_identity`), wird der Reset verweigert. Erlaubt weiterhin temporäre **und** permanente Batch-Konten.
+- **P0-2:** Neue `api::send_mail_now()` (nutzt `mail_worker::send_now`) für Mails mit Einmal-Secret (Invitations): sofortiger Versand ohne persistente Queue-Zeile, damit der Token nie at rest gespeichert wird.
+- **Entry-Page (access.php):** Die Spalte „Zugang mit Account" wird nur noch angezeigt, wenn der Kurs tatsächlich einen kontobasierten Zugang (Login und/oder Magic-Login) anbietet. Andernfalls entfällt die Spalte und die Gastaccount-Spalte nutzt die volle Breite.
+- **CI:** Dev-Pipeline-Rollback (Geschwister wieder aus `main`).
+- Versions-Gleichschritt `2026082415`.
+
+## 0.9.38 — 2026-08-25 — CI-Rollback + P0-Security-Härtung
+
+- **CI:** Rücknahme der develop-Branch-Umstellung; die Dev-Pipeline zieht die Geschwister wieder aus dem Default-Branch (`main`).
+- **P0-1:** `set_account_password()` ist keine allgemeine Reset-API mehr — sie wirkt ausschließlich auf FlexAccess-Batch-Platzhalterkonten mit `@flexaccess.invalid`-E-Mail und verweigert personalisierte/konvertierte Konten.
+- **P0-2:** Neue `send_mail_now()`-API (sofortiger Versand über `mail_worker::send_now()`), damit Bodies mit Einmal-Token nie in der persistenten Mailqueue landen.
+- Versions-Gleichschritt `2026082415`.
+
+## 0.9.37 — 2026-08-25 — CI: Dev-Pipeline zieht Geschwister aus develop
+- Die **Dev-Pipeline** (`moodle-plugin-ci-dev.yml`) holt die Geschwister-Plugins jetzt per `add-plugin … --branch develop` aus dem **develop-Branch** statt aus `main`. Damit testet die beschleunigte Pipeline den echten Entwicklungsstand aller vier Plugins gemeinsam — kein Skew mehr durch hinterherhängendes `main`. Die **Main-Pipeline** zieht weiterhin aus `main` (Release-Stand).
+- Versions-Gleichschritt auf `2026082414`.
+
+## 0.9.36 — 2026-08-25 — Versions-Gleichschritt (CI-Fix im enrol-Behat)
+- Keine Codeänderung. Versions-Gleichschritt auf `2026082413`.
+
+## 0.9.35 — 2026-08-25 — CI-Fix: D2 auf neuen Output-Hook migriert
+- **Behat-Fail behoben:** Der D2-Persistierungshinweis nutzte den **veralteten** Callback `before_standard_top_of_body_html`, den Moodle 4.5+ per `debugging()` bemängelt (Behat wertet das als Fehler). Migriert auf den neuen Hook `\core\hook\output\before_standard_top_of_body_html_generation` (`db/hooks.php` + `classes/hook_callbacks.php`); die alte `lib.php` entfernt.
+- Versions-Gleichschritt auf `2026082412`.
+
+## 0.9.34 — 2026-08-25 — Login-UI: E-Mail-Login getrennt, Buttons, Gast-Hinweis, Schnellreg
+- **Funktionale Trennung:** Credentials-Login und E-Mail-Link-Login sind jetzt getrennte Zugangswege. Der E-Mail-Link-Login ist eine **eigene Instanz-Option** (siehe enrol) und wird auf `access.php` als eigenständiges Inline-Formular angeboten (E-Mail eingeben → Link zusenden, direkt an `magic.php` per sesskey-POST).
+- **Buttons:** „Weiter" ist Primary, „Abbrechen" Secondary. Sind alternative Zugänge (Temp/Schnellreg/Gast) aktiv, werden die regulären Buttons (Anmelden, Anmeldelink senden) als **Outline** dargestellt.
+- **Gast-Hinweis:** Über dem Gast-Button steht jetzt ein erklärender Text zu den Einschränkungen des Gastzugangs.
+- **Schnellregistrierung:** als eigener Button in der linken Spalte (Alternativen), nicht mehr als unscheinbarer Link.
+- Versions-Gleichschritt auf `2026082411`.
+
+## 0.9.33 — 2026-08-25 — Versions-Gleichschritt (enrol: Fix Teilnehmerlisten-Sichtbarkeit)
+- Keine Codeänderung. Versions-Gleichschritt auf `2026082410`.
+
+## 0.9.32 — 2026-08-25 — D3: Direkter FlexAccess-Einstieg statt Standard-Login
+- **Direkt-Routing:** Neuer `pre_loginpage_hook()` leitet einen anonymen Zugriff auf einen FlexAccess-Kurs direkt auf `access.php` (statt auf die Standard-Login-Seite). Nur bei frischem GET; eine Credential-Übermittlung (POST/username/logintoken) wird durchgelassen, damit das eingebettete Login-Formular den Core-Login erreicht.
+- **Login inline:** Ist „normaler Login" erlaubt, erscheint auf der FlexAccess-Seite direkt ein Nutzername/Passwort-Formular (postet an `/login/index.php`, respektiert die gesetzte `wantsurl`), inkl. „Kennwort vergessen".
+- **E-Mail-Link inline:** Ist Magic-Login aktiv, wird direkt das E-Mail-Formular eingebettet (`magic_login_form` → `magic.php`), statt nur zu verlinken.
+- **Moodle-CSS:** Alles in einer `card`/`card-body`; Inputs als `form-control` (Autofill-Gelb kommt vom Browser), Buttons `btn-primary`/`btn-secondary`.
+- Versions-Gleichschritt auf `2026082409`.
+
+## 0.9.31 — 2026-08-25 — Versions-Gleichschritt (enrol: präzisierte Neutralisierungs-Warnung)
+- Keine Codeänderung. Versions-Gleichschritt auf `2026082408`.
+
+## 0.9.30 — 2026-08-25 — Discoverability D2
+- **D2:** Temporäre Nutzer sehen im Kurs einen Hinweis „Zugang jetzt dauerhaft sichern" (Link zu `persist.php`) — **nur** in Kursen mit einer `mod_flexaccess`-Aktivität und nur für temporäre Konten (`before_standard_top_of_body_html`). Neue `lib.php`, Strings `persisthint:*`.
+- Versions-Gleichschritt auf `2026082407`.
+
+## 0.9.29 — 2026-08-25 — P2: PHPUnit-11-Migration + Pakete ohne .git
+- `@covers`-Doc-Annotationen der Testklassen auf `#[CoversClass(...)]`-Attribute umgestellt (keine PHPUnit-Deprecations mehr). `.git`-Verzeichnisse aus dem Paket entfernt. Versions-Gleichschritt auf `2026082406`.
+
+## 0.9.28 — 2026-08-25 — P2 Login: zweispaltiger Einstieg (L6) + klareres Label (L5)
+- **L6:** `access.php` als zweispaltiger Einstieg umgebaut — links „Temporärer Gastaccount" (temporäre Anmeldung/Schlüssel-Formular + Gast-Button), rechts „Zugang mit Account" (Login, Schnellregistrierung, E-Mail-Link). Formularlogik, Feld „Access key" und „Continue"-Button unverändert (Behat bleibt gültig). Neue Strings `access:coltemporary`, `access:colaccount`, `access:noaccountoptions`.
+- **L5:** Label `accessprovider` von „Flexibler Kurszugang" → „Kurszugang ohne eigenes Konto" (bzw. „Course access without an account") — selbsterklärend auf der Login-Seite.
+- Versions-Gleichschritt auf `2026082405`.
+
+## 0.9.27 — 2026-08-24 — CI-Fix: fehlerhafte Workflow-Ausdrücke (${ } → ${{ }})
+- Fehlerhafte GitHub-Actions-Ausdrücke im `lint-jsamd`-Job korrigiert (`${ } → ${{ }}`); mit `actionlint` gegengeprüft (0 Findings). Kein PHP-Code geändert; Versions-Gleichschritt auf `2026082404`.
+
+## 0.9.26 — 2026-08-24 — CI: JS/AMD/Mustache-Job wiederhergestellt (catquiz-Form 1:1)
+- `lint-jsamd` (grunt + mustache) in dev wiederhergestellt; Mustache/npm/Grunt in main ergänzt. Kein PHP-Code geändert; Versions-Gleichschritt auf `2026082403`.
+
+## 0.9.25 — 2026-08-24 — CI-Fixes (DB-Versionen, vollständige Geschwister, eine Main-Pipeline)
+- CI: `postgres:13→16`, `mariadb:10.8→10.11`; jede Pipeline installiert alle drei Geschwister (Ökosystem-Tests); `moodle-release.yml` entfernt.
+- Kein PHP-Code geändert; Versions-Gleichschritt auf `2026082402`.
+
+## 0.9.24 — 2026-08-24 — Versions-Gleichschritt (enrol: L3-Kurs-Einstieg + Load-Pläne + CI-Konsolidierung)
+- Keine Codeänderung in diesem Plugin. CI: eine Main-Pipeline (Ökosystem-`main.yml` entfernt); Load-Workflows liegen im Hub `enrol_flexaccess`.
+- Versions-Gleichschritt auf `2026082401`.
+
+## 0.9.23 — 2026-08-24 — Versions-Gleichschritt (enrol: Zugangs-Blocker-Fix + Kopplungscheck)
+- Keine Codeänderung in diesem Plugin; gemeinsamer Versions-Bump auf `2026082400` und aktualisierte Abhängigkeits-Pins.
+- **CI-Fix:** `@package`-Korrektur in `tools/mustache_check.php` und `tools/fix_phpdoc.php` (Copy-Paste-Rest).
+- **CI-Pipeline:** getrennte Dev-/Main-Workflows + dispatch-only JMeter-/k6-Lastworkflows (catquiz-Vorbild, FlexAccess-Geschwister als Abhängigkeit).
+
 ## 0.9.22 — 2026-08-20 — Fix: PHPDoc-Checker (CI) — @param-Vollstaendigkeit
 - Keine Codeaenderung.
 

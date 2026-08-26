@@ -33,8 +33,8 @@ $context = context_system::instance();
 $PAGE->set_context($context);
 $PAGE->set_url(new moodle_url('/auth/flexaccess/persist.php'));
 $PAGE->set_pagelayout('standard');
-$PAGE->set_title(get_string('persist:title', 'auth_flexaccess'));
-$PAGE->set_heading(get_string('persist:title', 'auth_flexaccess'));
+$PAGE->set_title(get_string('persisttitle', 'auth_flexaccess'));
+$PAGE->set_heading(get_string('persisttitle', 'auth_flexaccess'));
 
 $myurl = new moodle_url('/my/');
 
@@ -43,13 +43,13 @@ $token = optional_param('token', '', PARAM_ALPHANUM);
 if ($token !== '') {
     $status = \auth_flexaccess\api::confirm_persistence($token);
     echo $OUTPUT->header();
-    echo $OUTPUT->heading(get_string('persist:title', 'auth_flexaccess'));
+    echo $OUTPUT->heading(get_string('persisttitle', 'auth_flexaccess'));
     if ($status === 'converted') {
-        echo $OUTPUT->notification(get_string('persist:success', 'auth_flexaccess'), 'success');
+        echo $OUTPUT->notification(get_string('persistsuccess', 'auth_flexaccess'), 'success');
     } else if ($status === 'emailtaken') {
-        echo $OUTPUT->notification(get_string('register:emailtaken', 'auth_flexaccess'), 'error');
+        echo $OUTPUT->notification(get_string('registeremailtaken', 'auth_flexaccess'), 'error');
     } else {
-        echo $OUTPUT->notification(get_string('persist:invalid', 'auth_flexaccess'), 'error');
+        echo $OUTPUT->notification(get_string('persistinvalid', 'auth_flexaccess'), 'error');
     }
     echo $OUTPUT->continue_button(new moodle_url('/login/index.php'));
     echo $OUTPUT->footer();
@@ -61,8 +61,8 @@ require_login();
 // Only a current temporary FlexAccess user has anything to persist.
 if (!account_service::is_temporary((int) $USER->id)) {
     echo $OUTPUT->header();
-    echo $OUTPUT->heading(get_string('persist:title', 'auth_flexaccess'));
-    echo $OUTPUT->notification(get_string('persist:notapplicable', 'auth_flexaccess'), 'info');
+    echo $OUTPUT->heading(get_string('persisttitle', 'auth_flexaccess'));
+    echo $OUTPUT->notification(get_string('persistnotapplicable', 'auth_flexaccess'), 'info');
     echo $OUTPUT->continue_button($myurl);
     echo $OUTPUT->footer();
     exit;
@@ -85,13 +85,13 @@ if ($form->is_cancelled()) {
         // Refresh the session so the new identity is reflected immediately.
         \core\session\manager::gc();
         $USER = get_complete_user_data('id', $USER->id);
-        redirect($myurl, get_string('persist:success', 'auth_flexaccess'));
+        redirect($myurl, get_string('persistsuccess', 'auth_flexaccess'));
     }
     if ($status === 'verificationsent') {
         echo $OUTPUT->header();
-        echo $OUTPUT->heading(get_string('persist:title', 'auth_flexaccess'));
+        echo $OUTPUT->heading(get_string('persisttitle', 'auth_flexaccess'));
         echo $OUTPUT->notification(
-            get_string('persist:verificationsent', 'auth_flexaccess', s($data->email)),
+            get_string('persistverificationsent', 'auth_flexaccess', s($data->email)),
             'success'
         );
         echo $OUTPUT->continue_button($myurl);
@@ -102,12 +102,12 @@ if ($form->is_cancelled()) {
 }
 
 echo $OUTPUT->header();
-echo $OUTPUT->heading(get_string('persist:title', 'auth_flexaccess'));
+echo $OUTPUT->heading(get_string('persisttitle', 'auth_flexaccess'));
 if ($failure === 'emailtaken') {
-    echo $OUTPUT->notification(get_string('register:emailtaken', 'auth_flexaccess'), 'error');
+    echo $OUTPUT->notification(get_string('registeremailtaken', 'auth_flexaccess'), 'error');
 } else if ($failure !== null) {
-    echo $OUTPUT->notification(get_string('persist:invalid', 'auth_flexaccess'), 'error');
+    echo $OUTPUT->notification(get_string('persistinvalid', 'auth_flexaccess'), 'error');
 }
-echo html_writer::tag('p', get_string('persist:intro', 'auth_flexaccess'));
+echo html_writer::tag('p', get_string('persistintro', 'auth_flexaccess'));
 $form->display();
 echo $OUTPUT->footer();

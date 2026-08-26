@@ -77,6 +77,40 @@ class auth_plugin_flexaccess extends auth_plugin_base {
     }
 
     /**
+     * FlexAccess accounts keep their password in Moodle, so users may change it themselves.
+     *
+     * Without this the base class returns false, and Moodle then refuses a password change for a
+     * persisted (fully-fledged) account - which left users with an account they could not manage.
+     *
+     * @return bool
+     */
+    public function can_change_password(): bool {
+        return true;
+    }
+
+    /**
+     * Use Moodle's own change-password page rather than an external one.
+     *
+     * @return \moodle_url|null
+     */
+    public function change_password_url(): ?\moodle_url {
+        return null;
+    }
+
+    /**
+     * Allow the standard "forgotten password" flow.
+     *
+     * A persisted account has a real, verified email address, so email-based recovery is exactly
+     * the right mechanism. Temporary accounts carry a placeholder address and simply will not be
+     * found by the recovery form.
+     *
+     * @return bool
+     */
+    public function can_reset_password(): bool {
+        return true;
+    }
+
+    /**
      * Advertise the FlexAccess entry point while preserving the requested URL.
      *
      * @param string $wantsurl Requested return URL.
@@ -104,5 +138,40 @@ class auth_plugin_flexaccess extends auth_plugin_base {
             'icon' => new pix_icon('t/login', ''),
             'name' => get_string('accessprovider', 'auth_flexaccess'),
         ]];
+    }
+
+    /**
+     * Send an anonymous visitor heading for a FlexAccess course straight to the FlexAccess entry
+     * page instead of the standard login page.
+     *
+     * Only a fresh GET arrival is intercepted: a credential submission (username/logintoken present,
+     * or any POST) is left untouched so the embedded login form on access.php reaches core login.
+     *
+     * @return void
+     */
+    public function pre_loginpage_hook() {
+        global $SESSION;
+
+        if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') {
+            return;
+        }
+        if (optional_param('username', '', PARAM_RAW) !== '' || optional_param('logintoken', '', PARAM_RAW) !== '') {
+            return;
+        }
+        $wantsurl = optional_param('wantsurl', '', PARAM_LOCALURL);
+        if ($wantsurl === '' && !empty($SESSION->wantsurl)) {
+            $wantsurl = (string) $SESSION->wantsurl;
+        }
+        if (!class_exists(\enrol_flexaccess\api::class)) {
+            return;
+        }
+        $target = \auth_flexaccess\local\target_resolver::resolve($wantsurl);
+        if ($target === null || !\enrol_flexaccess\api::offers_anonymous_entry($target->courseid)) {
+            return;
+        }
+        redirect(new moodle_url('/auth/flexaccess/access.php', [
+            'courseid' => $target->courseid,
+            'wantsurl' => $wantsurl,
+        ]));
     }
 }

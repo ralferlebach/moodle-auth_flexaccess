@@ -148,6 +148,50 @@ final class mail_worker {
     }
 
     /**
+     * Render a deferred job by delegating to the component that queued it.
+     *
+     * The payload carries only a renderer class and a non-secret context (e.g. a record id). The
+     * renderer mints any one-time token at this point, so the secret exists only in the outgoing
+     * message. The call is guarded because the owning plugin may be absent or older.
+     *
+     * @param array $payload Decoded queue payload.
+     * @param int $now Current time.
+     * @return array{0:string,1:string,2:string} Subject, plain body, HTML body.
+     */
+    private static function render_deferred_job(array $payload, int $now): array {
+        $renderer = (string) ($payload['renderer'] ?? '');
+        $context = (array) ($payload['context'] ?? []);
+        if ($renderer === '' || !class_exists($renderer) || !method_exists($renderer, 'render_deferred_mail')) {
+            return ['', '', ''];
+        }
+        $rendered = $renderer::render_deferred_mail($context, $now);
+        if (!is_array($rendered) || count($rendered) < 3) {
+            return ['', '', ''];
+        }
+        return [(string) $rendered[0], (string) $rendered[1], (string) $rendered[2]];
+    }
+
+    /**
+     * Tell the owning component that its deferred mail was actually delivered.
+     *
+     * Lets the component stamp its own "sent" state only on real delivery, instead of at queue time.
+     *
+     * @param mixed $payload Decoded queue payload.
+     * @param int $now Current time.
+     * @return void
+     */
+    private static function notify_deferred_sent($payload, int $now): void {
+        if (!is_array($payload) || ($payload['kind'] ?? '') !== 'deferred') {
+            return;
+        }
+        $renderer = (string) ($payload['renderer'] ?? '');
+        if ($renderer === '' || !class_exists($renderer) || !method_exists($renderer, 'deferred_mail_sent')) {
+            return;
+        }
+        $renderer::deferred_mail_sent((array) ($payload['context'] ?? []), $now);
+    }
+
+    /**
      * Issue a fresh token and render a token job's subject and body at delivery time.
      *
      * The secret is created here, immediately before sending, so it is never persisted in the queue.
@@ -196,6 +240,10 @@ final class mail_worker {
             $payload = json_decode((string) $job->payloadjson, true);
             if (is_array($payload) && ($payload['kind'] ?? '') === 'token') {
                 [$subject, $body, $bodyhtml] = self::render_token_job($job, $payload, $now);
+            } else if (is_array($payload) && ($payload['kind'] ?? '') === 'deferred') {
+                // Secret-free queue row: the owning component renders the body here, immediately
+                // before delivery, so any one-time token it mints is never stored at rest.
+                [$subject, $body, $bodyhtml] = self::render_deferred_job($payload, $now);
             } else {
                 $subject = is_array($payload) ? (string) ($payload['subject'] ?? '') : '';
                 $body = is_array($payload) ? (string) ($payload['body'] ?? '') : '';
@@ -217,6 +265,7 @@ final class mail_worker {
             $job->status = 'sent';
             $job->timesent = $now;
             $DB->update_record(self::TABLE, $job);
+            self::notify_deferred_sent($payload, $now);
             return true;
         } catch (\Throwable $e) {
             $job->attempts = (int) $job->attempts + 1;
@@ -228,6 +277,24 @@ final class mail_worker {
             $DB->update_record(self::TABLE, $job);
             return false;
         }
+    }
+
+    /**
+     * Send a mail immediately to an email address, bypassing the persistent queue.
+     *
+     * Used for mails whose body carries a single-use secret (e.g. invitation links): rendering and
+     * delivery happen in one step so the plaintext secret is never written to the queue at rest.
+     *
+     * @param int|null $userid Optional related user id (for from-name resolution only).
+     * @param string $email Recipient email address.
+     * @param string $subject Subject.
+     * @param string $body Plain-text body.
+     * @param string $bodyhtml HTML body.
+     * @return bool Whether the mail was accepted for delivery.
+     */
+    public static function send_now(?int $userid, string $email, string $subject, string $body, string $bodyhtml): bool {
+        $job = (object) ['userid' => $userid, 'recipient' => $email];
+        return (bool) email_to_user(self::recipient_user($job), self::from_user(), $subject, $body, $bodyhtml);
     }
 
     /**

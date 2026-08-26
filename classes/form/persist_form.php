@@ -37,7 +37,7 @@ class persist_form extends \moodleform {
      */
     protected function definition(): void {
         $this->add_identity_fields();
-        $this->add_action_buttons(true, get_string('persist:submit', 'auth_flexaccess'));
+        $this->add_action_buttons(true, get_string('persistsubmit', 'auth_flexaccess'));
     }
 
     /**

@@ -36,9 +36,9 @@ final class mail_renderer {
      */
     public static function render(string $mailtype, string $link): array {
         [$subjectkey, $bodykey] = match ($mailtype) {
-            mail_kind::MAGIC_LOGIN => ['magic:emailsubject', 'magic:emailbody'],
-            mail_kind::VERIFICATION => ['persist:emailsubject', 'persist:emailbody'],
-            mail_kind::SET_PASSWORD => ['setpassword:emailsubject', 'setpassword:emailbody'],
+            mail_kind::MAGIC_LOGIN => ['magicemailsubject', 'magicemailbody'],
+            mail_kind::VERIFICATION => ['persistemailsubject', 'persistemailbody'],
+            mail_kind::SET_PASSWORD => ['setpasswordemailsubject', 'setpasswordemailbody'],
             default => ['', ''],
         };
         if ($subjectkey === '') {

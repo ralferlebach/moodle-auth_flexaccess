@@ -66,7 +66,7 @@ trait identity_fields {
         if (!validate_email($email)) {
             $errors['email'] = get_string('invalidemail');
         } else if (!\auth_flexaccess\api::email_available($email, $excludeuserid)) {
-            $errors['email'] = get_string('register:emailtaken', 'auth_flexaccess');
+            $errors['email'] = get_string('registeremailtaken', 'auth_flexaccess');
         }
 
         $policyerror = '';

@@ -34,8 +34,8 @@ $context = context_system::instance();
 $PAGE->set_context($context);
 $PAGE->set_url(new moodle_url('/auth/flexaccess/setpassword.php'));
 $PAGE->set_pagelayout('standard');
-$PAGE->set_title(get_string('setpassword:title', 'auth_flexaccess'));
-$PAGE->set_heading(get_string('setpassword:title', 'auth_flexaccess'));
+$PAGE->set_title(get_string('setpasswordtitle', 'auth_flexaccess'));
+$PAGE->set_heading(get_string('setpasswordtitle', 'auth_flexaccess'));
 
 $loginurl = new moodle_url('/login/index.php');
 $homeurl = new moodle_url('/');
@@ -47,13 +47,13 @@ if ($form->is_cancelled()) {
 } else if ($data = $form->get_data()) {
     $userid = \auth_flexaccess\api::complete_set_password($data->token, $data->password);
     echo $OUTPUT->header();
-    echo $OUTPUT->heading(get_string('setpassword:title', 'auth_flexaccess'));
+    echo $OUTPUT->heading(get_string('setpasswordtitle', 'auth_flexaccess'));
     if ($userid !== null) {
         $user = $DB->get_record('user', ['id' => $userid], '*', MUST_EXIST);
         complete_user_login($user);
-        redirect($homeurl, get_string('setpassword:success', 'auth_flexaccess'));
+        redirect($homeurl, get_string('setpasswordsuccess', 'auth_flexaccess'));
     }
-    echo $OUTPUT->notification(get_string('setpassword:invalid', 'auth_flexaccess'), 'error');
+    echo $OUTPUT->notification(get_string('setpasswordinvalid', 'auth_flexaccess'), 'error');
     echo $OUTPUT->continue_button($loginurl);
     echo $OUTPUT->footer();
     exit;
@@ -63,14 +63,14 @@ if ($form->is_cancelled()) {
 $valid = \auth_flexaccess\api::begin_set_password($token) !== null;
 
 echo $OUTPUT->header();
-echo $OUTPUT->heading(get_string('setpassword:title', 'auth_flexaccess'));
+echo $OUTPUT->heading(get_string('setpasswordtitle', 'auth_flexaccess'));
 if (!$valid) {
-    echo $OUTPUT->notification(get_string('setpassword:invalid', 'auth_flexaccess'), 'error');
+    echo $OUTPUT->notification(get_string('setpasswordinvalid', 'auth_flexaccess'), 'error');
     echo $OUTPUT->continue_button($loginurl);
     echo $OUTPUT->footer();
     exit;
 }
-echo html_writer::tag('p', get_string('setpassword:intro', 'auth_flexaccess'));
+echo html_writer::tag('p', get_string('setpasswordintro', 'auth_flexaccess'));
 $form->set_data(['token' => $token]);
 $form->display();
 echo $OUTPUT->footer();
