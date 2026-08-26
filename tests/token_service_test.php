@@ -24,15 +24,14 @@
 
 namespace auth_flexaccess;
 
-use PHPUnit\Framework\Attributes\CoversClass;
 use auth_flexaccess\local\token_service;
 
 /**
  * Token service tests.
  *
  * @package    auth_flexaccess
+ * @covers \auth_flexaccess\local\token_service
  */
-#[CoversClass(\auth_flexaccess\local\token_service::class)]
 final class token_service_test extends \advanced_testcase {
     /**
      * Only the hash is stored, never the clear-text token.

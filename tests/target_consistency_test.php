@@ -28,8 +28,8 @@ use auth_flexaccess\local\target_resolver;
  * @package    auth_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ * @covers \auth_flexaccess\local\target_resolver
  */
-#[\PHPUnit\Framework\Attributes\CoversClass(\auth_flexaccess\local\target_resolver::class)]
 final class target_consistency_test extends \advanced_testcase {
     public function test_resolver_reports_the_course_of_a_course_url(): void {
         $this->resetAfterTest();

@@ -101,7 +101,7 @@ jobs:
           sudo locale-gen en_AU.UTF-8
       - name: Moodle Code Checker
         if: ${{ always() }}
-        run: set -o pipefail; moodle-plugin-ci codechecker plugin --max-warnings 0 --exclude=PSR1.Classes.ClassDeclaration,moodle.Commenting.TodoComment 2>&1 | tee ci-logs/codechecker.log
+        run: set -o pipefail; moodle-plugin-ci codechecker --max-warnings 0 --exclude=PSR1.Classes.ClassDeclaration,moodle.Commenting.TodoComment 2>&1 | tee ci-logs/codechecker.log
       - name: PHP Mess Detector
         continue-on-error: true
         if: ${{ always() }}

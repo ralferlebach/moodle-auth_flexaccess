@@ -16,7 +16,6 @@
 
 namespace auth_flexaccess;
 
-use PHPUnit\Framework\Attributes\CoversClass;
 use auth_flexaccess\local\rate_limiter;
 
 /**
@@ -25,8 +24,8 @@ use auth_flexaccess\local\rate_limiter;
  * @package    auth_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ * @covers \auth_flexaccess\local\rate_limiter
  */
-#[CoversClass(\auth_flexaccess\local\rate_limiter::class)]
 final class rate_limiter_test extends \advanced_testcase {
     /**
      * hit() records the action and reports over-limit atomically; identifiers are independent.

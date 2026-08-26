@@ -16,7 +16,6 @@
 
 namespace auth_flexaccess;
 
-use PHPUnit\Framework\Attributes\CoversClass;
 use auth_flexaccess\local\account_service;
 use auth_flexaccess\local\mail_worker;
 
@@ -26,9 +25,8 @@ use auth_flexaccess\local\mail_worker;
  * @package    auth_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ * @covers \auth_flexaccess\local\mail_worker
  */
-#[CoversClass(\auth_flexaccess\local\mail_worker::class)]
-#[CoversClass(\auth_flexaccess\local\mail_renderer::class)]
 final class token_mail_security_test extends \advanced_testcase {
     /**
      * The queued magic-login job carries no token; the token appears only in the delivered mail.

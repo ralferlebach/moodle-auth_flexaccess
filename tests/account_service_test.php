@@ -24,7 +24,6 @@
 
 namespace auth_flexaccess;
 
-use PHPUnit\Framework\Attributes\CoversClass;
 use auth_flexaccess\local\account_service;
 use auth_flexaccess\local\account_state;
 use auth_flexaccess\local\account_type;
@@ -33,8 +32,8 @@ use auth_flexaccess\local\account_type;
  * Account service tests.
  *
  * @package    auth_flexaccess
+ * @covers \auth_flexaccess\local\account_service
  */
-#[CoversClass(\auth_flexaccess\local\account_service::class)]
 final class account_service_test extends \advanced_testcase {
     /**
      * Creating a temporary account stores temporary/ephemeral metadata.
