@@ -196,7 +196,11 @@ if ($failure !== null && $failure !== 'badkey') {
     // the whole "account" column is dropped (an empty "not available" column is confusing) and the
     // temporary column widens to fill the row.
     $offersnormallogin = \enrol_flexaccess\api::offers_normal_login($courseid);
-    $offersmagiclogin = \enrol_flexaccess\api::offers_magic_login($courseid) && \auth_flexaccess\api::magic_login_enabled();
+    // Guarded with method_exists: offers_magic_login() is newer than some co-installed enrol
+    // siblings, and a missing method here would be a fatal on the anonymous entry page.
+    $offersmagiclogin = method_exists(\enrol_flexaccess\api::class, 'offers_magic_login')
+        && \enrol_flexaccess\api::offers_magic_login($courseid)
+        && \auth_flexaccess\api::magic_login_enabled();
     $hasaccountoption = $offersnormallogin || $offersmagiclogin;
 
     echo html_writer::start_div('flexaccess-entry card');

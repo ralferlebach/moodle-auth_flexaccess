@@ -45,6 +45,9 @@ final class api {
      */
     private const QUEUE_TABLE = 'auth_flexaccess_mailqueue';
 
+    /** Cooldown for identical, still-pending token mails to one recipient (per-user rate limit). */
+    private const TOKEN_MAIL_COOLDOWN = 300;
+
     /**
      * Magic-login token lifetime in seconds (15 minutes).
      */
@@ -571,6 +574,27 @@ final class api {
     ): int {
         global $DB;
         $now = $now ?? time();
+        // P1: per-user/per-recipient rate limit. Without this, a single temporary user could burn a
+        // large share of the site's mail budget by repeatedly requesting verification links. An
+        // identical, still-pending request within the cooldown window is de-duplicated: the existing
+        // queue row is reused (the token is issued at delivery, so the user still gets a valid link).
+        $existing = $DB->get_record_select(
+            self::QUEUE_TABLE,
+            'userid = :userid AND recipient = :recipient AND mailtype = :mailtype
+                 AND status = :status AND timecreated > :cutoff',
+            [
+                'userid' => $userid,
+                'recipient' => $recipient,
+                'mailtype' => $mailtype,
+                'status' => 'queued',
+                'cutoff' => $now - self::TOKEN_MAIL_COOLDOWN,
+            ],
+            'id',
+            IGNORE_MULTIPLE
+        );
+        if ($existing) {
+            return (int) $existing->id;
+        }
         return (int) $DB->insert_record(self::QUEUE_TABLE, (object) [
             'userid' => $userid,
             'recipient' => $recipient,

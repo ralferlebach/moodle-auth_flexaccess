@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.9.42 — 2026-08-25 — Skew-Schutz auf der Zugangsseite
+- **`access.php`** ruft `enrol_flexaccess\api::offers_magic_login()` jetzt nur nach `method_exists()`-Prüfung auf. Ein älteres, gemeinsam installiertes enrol hätte hier sonst einen Fatal auf der anonymen Einstiegsseite ausgelöst (gleiches Muster wie in `enrol/lib.php` für tool-Aufrufe).
+- Versions-Gleichschritt `2026082419`.
+
+## 0.9.41 — 2026-08-25 — Review-P1: Mail-Rate-Limit pro Nutzer
+- **`queue_token_mail()` dedupliziert pro Nutzer/Empfänger:** Eine identische, noch offene Token-Mail (Verifikation, Magic-Login, …) innerhalb von 5 Minuten erzeugt keine zweite Queue-Zeile mehr, sondern nutzt die bestehende. Damit kann ein einzelner temporärer Nutzer nicht mehr durch wiederholte Anfragen einen großen Teil des SMTP-Budgets belegen (das globale Stundenlimit im Worker bleibt zusätzlich aktiv). Der Token wird weiterhin erst beim Versand erzeugt, der Link bleibt also gültig.
+- Versions-Gleichschritt `2026082418`.
+
+## 0.9.40 — 2026-08-25 — Versions-Gleichschritt
+- Keine Codeänderung. Versions-Gleichschritt auf `2026082417`.
+
 ## 0.9.39 — 2026-08-25 — Versions-Gleichschritt (enrol: Zugangsschlüssel-Fix)
 - Keine Codeänderung. Versions-Gleichschritt auf `2026082416`.
 

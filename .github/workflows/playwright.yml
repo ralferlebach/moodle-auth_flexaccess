@@ -54,10 +54,21 @@ jobs:
       - name: Check out Moodle
         run: git clone --depth 1 --branch "$MOODLE_BRANCH" https://github.com/moodle/moodle.git moodle
 
-      - name: Install plugin into Moodle
+      - name: Install plugins into Moodle
         run: |
           mkdir -p moodle/auth && cp -a plugin moodle/auth/flexaccess
           rm -rf moodle/auth/flexaccess/.git
+          # The four FlexAccess plugins declare each other as dependencies (auth <-> enrol is
+          # circular), so Moodle cannot be installed with only one of them present.
+          git clone --depth 1 https://github.com/ralferlebach/moodle-enrol_flexaccess.git /tmp/enrol_flexaccess
+          mkdir -p moodle/enrol && cp -a /tmp/enrol_flexaccess moodle/enrol/flexaccess
+          rm -rf moodle/enrol/flexaccess/.git
+          git clone --depth 1 https://github.com/ralferlebach/moodle-mod_flexaccess.git /tmp/mod_flexaccess
+          mkdir -p moodle/mod && cp -a /tmp/mod_flexaccess moodle/mod/flexaccess
+          rm -rf moodle/mod/flexaccess/.git
+          git clone --depth 1 https://github.com/ralferlebach/moodle-tool_flexaccess.git /tmp/tool_flexaccess
+          mkdir -p moodle/admin/tool && cp -a /tmp/tool_flexaccess moodle/admin/tool/flexaccess
+          rm -rf moodle/admin/tool/flexaccess/.git
 
       # install.php WRITES config.php itself and aborts when one already exists
       # ("The configuration file config.php already exists"), so we must not
@@ -105,7 +116,7 @@ jobs:
       - name: Seed collaboration fixture
         run: |
           cd moodle
-          php auth/flexaccess/tests/playwright/seed.php > /tmp/flexaccess-seed.env
+          php enrol/flexaccess/tests/playwright/seed.php > /tmp/flexaccess-seed.env
           echo "Seeded variables:"
           sed -n "s/^export \([A-Z_][A-Z_]*\)=.*/  \1/p" /tmp/flexaccess-seed.env
           sed -n "s/^export \([A-Z_][A-Z_]*\)='\(.*\)'$/\1=\2/p" \
@@ -113,15 +124,15 @@ jobs:
 
       - name: Install Playwright and browsers
         run: |
-          cd moodle/auth/flexaccess/tests/playwright
-          npm install
+          cd moodle/enrol/flexaccess/tests/playwright
+          npm ci
           npx playwright install --with-deps chromium
 
       - name: Run Playwright tests
         env:
           FLEXACCESS_BASE_URL: ${{ env.MOODLE_WWWROOT }}
         run: |
-          cd moodle/auth/flexaccess/tests/playwright
+          cd moodle/enrol/flexaccess/tests/playwright
           npm test
 
       - name: Show server log on failure
