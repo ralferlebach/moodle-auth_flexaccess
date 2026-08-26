@@ -60,13 +60,13 @@ jobs:
           rm -rf moodle/auth/flexaccess/.git
           # The four FlexAccess plugins declare each other as dependencies (auth <-> enrol is
           # circular), so Moodle cannot be installed with only one of them present.
-          git clone --depth 1 https://github.com/ralferlebach/moodle-enrol_flexaccess.git /tmp/enrol_flexaccess
+          git clone --depth 1 --branch development https://github.com/ralferlebach/moodle-enrol_flexaccess.git /tmp/enrol_flexaccess
           mkdir -p moodle/enrol && cp -a /tmp/enrol_flexaccess moodle/enrol/flexaccess
           rm -rf moodle/enrol/flexaccess/.git
-          git clone --depth 1 https://github.com/ralferlebach/moodle-mod_flexaccess.git /tmp/mod_flexaccess
+          git clone --depth 1 --branch development https://github.com/ralferlebach/moodle-mod_flexaccess.git /tmp/mod_flexaccess
           mkdir -p moodle/mod && cp -a /tmp/mod_flexaccess moodle/mod/flexaccess
           rm -rf moodle/mod/flexaccess/.git
-          git clone --depth 1 https://github.com/ralferlebach/moodle-tool_flexaccess.git /tmp/tool_flexaccess
+          git clone --depth 1 --branch development https://github.com/ralferlebach/moodle-tool_flexaccess.git /tmp/tool_flexaccess
           mkdir -p moodle/admin/tool && cp -a /tmp/tool_flexaccess moodle/admin/tool/flexaccess
           rm -rf moodle/admin/tool/flexaccess/.git
 

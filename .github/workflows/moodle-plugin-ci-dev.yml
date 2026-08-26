@@ -161,9 +161,9 @@ jobs:
           sudo locale-gen en_AU.UTF-8
       - name: Install Moodle, dependencies and plugin (no test init)
         run: |
-          moodle-plugin-ci add-plugin ralferlebach/moodle-enrol_flexaccess
-          moodle-plugin-ci add-plugin ralferlebach/moodle-mod_flexaccess
-          moodle-plugin-ci add-plugin ralferlebach/moodle-tool_flexaccess
+          moodle-plugin-ci add-plugin ralferlebach/moodle-enrol_flexaccess --branch development
+          moodle-plugin-ci add-plugin ralferlebach/moodle-mod_flexaccess --branch development
+          moodle-plugin-ci add-plugin ralferlebach/moodle-tool_flexaccess --branch development
           moodle-plugin-ci install --plugin ./plugin --db-host=127.0.0.1 --no-init
         env:
           DB: pgsql
@@ -244,9 +244,9 @@ jobs:
           sudo locale-gen en_AU.UTF-8
       - name: Install Moodle, dependencies and plugin
         run: |
-          moodle-plugin-ci add-plugin ralferlebach/moodle-enrol_flexaccess
-          moodle-plugin-ci add-plugin ralferlebach/moodle-mod_flexaccess
-          moodle-plugin-ci add-plugin ralferlebach/moodle-tool_flexaccess
+          moodle-plugin-ci add-plugin ralferlebach/moodle-enrol_flexaccess --branch development
+          moodle-plugin-ci add-plugin ralferlebach/moodle-mod_flexaccess --branch development
+          moodle-plugin-ci add-plugin ralferlebach/moodle-tool_flexaccess --branch development
           moodle-plugin-ci install --plugin ./plugin --db-host=127.0.0.1
         env:
           DB: ${{ matrix.database }}
@@ -306,9 +306,9 @@ jobs:
           sudo locale-gen en_AU.UTF-8
       - name: Install Moodle, dependencies and plugin
         run: |
-          moodle-plugin-ci add-plugin ralferlebach/moodle-enrol_flexaccess
-          moodle-plugin-ci add-plugin ralferlebach/moodle-mod_flexaccess
-          moodle-plugin-ci add-plugin ralferlebach/moodle-tool_flexaccess
+          moodle-plugin-ci add-plugin ralferlebach/moodle-enrol_flexaccess --branch development
+          moodle-plugin-ci add-plugin ralferlebach/moodle-mod_flexaccess --branch development
+          moodle-plugin-ci add-plugin ralferlebach/moodle-tool_flexaccess --branch development
           moodle-plugin-ci install --plugin ./plugin --db-host=127.0.0.1
         env:
           DB: mariadb

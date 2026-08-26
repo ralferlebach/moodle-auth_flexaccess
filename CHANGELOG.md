@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.43 — 2026-08-25 — CI: Geschwister aus development
+- **Dev-Pipeline und Playwright-Workflow** ziehen die Geschwister-Plugins jetzt per `--branch development` aus dem gemeinsamen Entwicklungszweig, damit das Ökosystem in seinem echten, gemeinsam entwickelten Stand getestet wird. Die Main-Pipeline bleibt auf `main`.
+- Versions-Gleichschritt `2026082420`.
+
 ## 0.9.42 — 2026-08-25 — Skew-Schutz auf der Zugangsseite
 - **`access.php`** ruft `enrol_flexaccess\api::offers_magic_login()` jetzt nur nach `method_exists()`-Prüfung auf. Ein älteres, gemeinsam installiertes enrol hätte hier sonst einen Fatal auf der anonymen Einstiegsseite ausgelöst (gleiches Muster wie in `enrol/lib.php` für tool-Aufrufe).
 - Versions-Gleichschritt `2026082419`.
