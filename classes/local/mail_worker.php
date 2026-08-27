@@ -42,6 +42,12 @@ final class mail_worker {
      * Queue table.
      */
     private const TABLE = 'auth_flexaccess_mailqueue';
+
+    /** Mail delivered, but the owning component has not acknowledged it yet. */
+    private const STATUS_ACKPENDING = 'ackpending';
+
+    /** Mail delivered, but the acknowledgement kept failing and needs manual repair. */
+    private const STATUS_ACKFAILED = 'ackfailed';
     /**
      * Max delivery attempts before a job is marked failed.
      */
@@ -119,8 +125,8 @@ final class mail_worker {
         global $DB;
         $due = $DB->get_records_select(
             self::TABLE,
-            "status = :status AND nextrun <= :now",
-            ['status' => 'queued', 'now' => $now],
+            "status IN (:queued, :ackpending) AND nextrun <= :now",
+            ['queued' => 'queued', 'ackpending' => self::STATUS_ACKPENDING, 'now' => $now],
             'nextrun ASC',
             '*',
             0,
@@ -145,6 +151,34 @@ final class mail_worker {
             }
         }
         return $sent;
+    }
+
+    /**
+     * Tell the owning component about a delivered mail, retrying only that step.
+     *
+     * Delivery and acknowledgement are separate outcomes: the mail cannot be un-sent, so a failing
+     * callback must not put the job back in line for another delivery. It is parked in its own
+     * state instead and retried from there.
+     *
+     * @param \stdClass $job Queue row (already marked as sent).
+     * @param mixed $payload Decoded payload.
+     * @param int $now Current time.
+     * @return void
+     */
+    private static function acknowledge(\stdClass $job, $payload, int $now): void {
+        global $DB;
+        try {
+            self::notify_deferred_sent($payload, $now);
+            if ($job->status === self::STATUS_ACKPENDING) {
+                $job->status = 'sent';
+                $DB->update_record(self::TABLE, $job);
+            }
+        } catch (\Throwable $e) {
+            $job->attempts = (int) $job->attempts + 1;
+            $job->status = $job->attempts >= self::MAX_ATTEMPTS ? self::STATUS_ACKFAILED : self::STATUS_ACKPENDING;
+            $job->nextrun = $now + self::BACKOFF;
+            $DB->update_record(self::TABLE, $job);
+        }
     }
 
     /**
@@ -236,6 +270,12 @@ final class mail_worker {
      */
     private static function deliver(\stdClass $job, int $now, array $usermap = []): bool {
         global $DB;
+        if ($job->status === self::STATUS_ACKPENDING) {
+            // The mail already went out; only the owner's acknowledgement is outstanding.
+            $payload = json_decode((string) $job->payloadjson, true);
+            self::acknowledge($job, $payload, $now);
+            return true;
+        }
         try {
             $payload = json_decode((string) $job->payloadjson, true);
             if (is_array($payload) && ($payload['kind'] ?? '') === 'token') {
@@ -265,7 +305,9 @@ final class mail_worker {
             $job->status = 'sent';
             $job->timesent = $now;
             $DB->update_record(self::TABLE, $job);
-            self::notify_deferred_sent($payload, $now);
+            // From here the mail is out. A failure while telling the owning component about it must
+            // never lead to a second delivery, so the acknowledgement retries on its own state.
+            self::acknowledge($job, $payload, $now);
             return true;
         } catch (\Throwable $e) {
             $job->attempts = (int) $job->attempts + 1;

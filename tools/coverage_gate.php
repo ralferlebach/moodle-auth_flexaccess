@@ -86,9 +86,10 @@ $covered = 0;
 $total = 0;
 foreach ($xml->xpath('//file') as $file) {
     $name = (string) $file['name'];
-    // Only THIS plugin. Matching '/flexaccess/' would also count the three sibling plugins that are
-    // installed alongside it, whose tests do not run in this job - that produced a meaningless
-    // fraction (their statements in the denominator, none of them covered).
+    // Restricted to this plugin: the three sibling plugins are installed alongside it, but their
+    // tests do not run in this job. Counting their statements would put uncovered code in the
+    // denominator and make the figure meaningless. Test files are excluded as well - they are the
+    // instrument, not the subject.
     if (strpos($name, $needle) === false || strpos($name, '/tests/') !== false) {
         continue;
     }

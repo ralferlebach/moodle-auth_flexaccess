@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.9.59 — 2026-08-27 — Kontolöschung defensiv, Passwortrichtlinie durchgängig
+- **`delete_account()` wertet das Ergebnis von `delete_user()` aus.** Bisher wurden die FlexAccess-Metadaten auch dann entfernt, wenn Moodle den Nutzer gar nicht löschen konnte — zurück blieb ein bestehendes Konto, das nicht mehr als FlexAccess-verwaltet erkennbar war und damit weder ablaufen noch bereinigt werden konnte. Die Methode liefert jetzt `bool`; bei Misserfolg bleiben die Metadaten erhalten.
+- **`purge_expired()` zählt nur tatsächlich entfernte Konten.** Ein nicht löschbares Konto verbleibt in der Liste und wird beim nächsten Lauf erneut versucht, statt als bereinigt gemeldet zu werden.
+- **`rollback_temporary_user()` und `rollback_batch_account()`** geben den echten Ausgang zurück, statt unbesehen Erfolg zu melden.
+- Versions-Gleichschritt `2026082436`.
+
+## 0.9.58 — 2026-08-27 — Zustellung und Quittung getrennt, atomare Job-Deduplizierung
+- **Eine zugestellte Mail wird nie erneut versendet.** Schlug bisher der Rückmeldeaufruf an die auslösende Komponente fehl, geriet der bereits versandte Job zurück in die Warteschlange. Zustellung und Quittung sind jetzt getrennte Zustände (`ackpending`, `ackfailed`): Nach erfolgreichem Versand wird ausschließlich die Quittung wiederholt, der Versand selbst nicht mehr.
+- **Neue `api::queue_deferred_mail_once()`**: Prüfung und Einfügen laufen unter einem Lock. Zwei parallele Anfragen konnten zuvor beide einen Job einreihen — was nicht nur doppelt versendet, sondern über die jeweils erzeugten Token den Link der ersten Mail entwertet hätte.
+- **Playwright-Testharness bereinigt** (siehe enrol-CHANGELOG).
+- Versions-Gleichschritt `2026082435`.
+
 ## 0.9.57 — 2026-08-27 — Kompensations- und Dedup-API für die Deferred-Queue
 - **Neu `api::rollback_batch_account()`**: entfernt ein Batch-Konto, dessen Bereitstellung nach der Kontoanlage fehlschlug, damit kein verwaistes Konto zurückbleibt (P0-1). Gleiche Schutzgrenze wie `set_account_password()`: nur FlexAccess-Konten mit Platzhalter-Adresse, ein personalisiertes Konto ist ausgeschlossen.
 - **Neu `api::deferred_mail_queued()`**: meldet, ob ein identischer Deferred-Job noch in der Queue wartet, damit Komponenten keine doppelten Versandjobs stapeln.

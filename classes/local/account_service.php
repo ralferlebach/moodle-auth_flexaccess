@@ -308,8 +308,11 @@ final class account_service {
         $records = $DB->get_records_select(self::TABLE, $select, $params, 'timeexpires ASC', '*', 0, max(0, $limit));
         $count = 0;
         foreach ($records as $account) {
-            self::delete_account((int) $account->userid);
-            $count++;
+            // Only count what was really removed; an account that could not be deleted stays in
+            // the list and is retried on the next run rather than being reported as purged.
+            if (self::delete_account((int) $account->userid)) {
+                $count++;
+            }
         }
         return $count;
     }
@@ -322,19 +325,23 @@ final class account_service {
      * core delete can never leave a Moodle user stripped of its FlexAccess record.
      *
      * @param int $userid Moodle user id.
-     * @return void
+     * @return bool Whether the account and its metadata were removed.
      */
-    public static function delete_account(int $userid): void {
+    public static function delete_account(int $userid): bool {
         global $CFG, $DB;
         require_once($CFG->dirroot . '/user/lib.php');
         $user = $DB->get_record('user', ['id' => $userid, 'deleted' => 0]);
-        if ($user) {
-            delete_user($user);
+        if ($user && !delete_user($user)) {
+            // The user survived, so the FlexAccess metadata must survive with it. Removing the
+            // metadata anyway would leave an account that still exists but is no longer recognised
+            // as FlexAccess-managed - it could then neither expire nor be cleaned up.
+            return false;
         }
         $transaction = $DB->start_delegated_transaction();
         $DB->delete_records('auth_flexaccess_token', ['userid' => $userid]);
         $DB->delete_records('auth_flexaccess_mailqueue', ['userid' => $userid]);
         $DB->delete_records(self::TABLE, ['userid' => $userid]);
         $transaction->allow_commit();
+        return true;
     }
 }

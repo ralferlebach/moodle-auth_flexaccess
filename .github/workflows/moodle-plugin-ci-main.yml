@@ -307,7 +307,7 @@ jobs:
           echo "Report: $report"
           # The gate measures THIS plugin only. Counting every path containing 'flexaccess' would
           # also include the three sibling plugins that are installed alongside but whose tests do
-          # not run here - that produced a meaningless 0.5% and made the gate useless.
+          # not run here, so their uncovered statements must not enter the denominator.
           php plugin/tools/coverage_gate.php "$report" "$COVERAGE_FLOOR"
         env:
           COVERAGE_FLOOR: '45'

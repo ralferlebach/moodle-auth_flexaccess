@@ -323,6 +323,48 @@ final class api {
     }
 
     /**
+     * Queue a deferred mail unless an identical one is already waiting, atomically.
+     *
+     * Checking and inserting separately leaves a window in which two parallel requests both pass
+     * the check and both insert. Two jobs would not only send twice, they would each mint a token,
+     * so the first delivery's link would be killed by the second. The lock closes that window.
+     *
+     * @param int|null $userid Optional related user id.
+     * @param string $recipient Recipient e-mail address.
+     * @param string $mailtype Mail type tag for reporting.
+     * @param string $renderer Class implementing render_deferred_mail().
+     * @param array $context Non-secret context passed back to the renderer.
+     * @param int|null $nextrun Earliest delivery time.
+     * @param int|null $now Current time.
+     * @return int Queue row id, or 0 when an identical job was already queued.
+     */
+    public static function queue_deferred_mail_once(
+        ?int $userid,
+        string $recipient,
+        string $mailtype,
+        string $renderer,
+        array $context,
+        ?int $nextrun = null,
+        ?int $now = null
+    ): int {
+        $factory = \core\lock\lock_config::get_lock_factory('auth_flexaccess_mailqueue');
+        $key = 'deferred_' . sha1($renderer . '|' . json_encode($context));
+        $lock = $factory->get_lock($key, 10);
+        if (!$lock) {
+            // Another request holds the lock, so it is queueing this very mail right now.
+            return 0;
+        }
+        try {
+            if (self::deferred_mail_queued($renderer, $context)) {
+                return 0;
+            }
+            return self::queue_deferred_mail($userid, $recipient, $mailtype, $renderer, $context, $nextrun, $now);
+        } finally {
+            $lock->release();
+        }
+    }
+
+    /**
      * Queue a mail whose body is rendered by the owning component at delivery time.
      *
      * For mails that carry a one-time secret (invitation links, ...): the queue row holds only a
@@ -506,8 +548,8 @@ final class api {
         if (!str_ends_with((string) $user->email, '@flexaccess.invalid')) {
             return false;
         }
-        account_service::delete_account($userid);
-        return true;
+        // Report the real outcome: if the user could not be deleted, nothing was rolled back.
+        return account_service::delete_account($userid);
     }
 
     /**
@@ -523,8 +565,8 @@ final class api {
         if (!account_service::is_temporary($userid)) {
             return false;
         }
-        account_service::delete_account($userid);
-        return true;
+        // Report the real outcome: if the user could not be deleted, nothing was rolled back.
+        return account_service::delete_account($userid);
     }
 
     /**
@@ -731,7 +773,7 @@ final class api {
         if (!$user) {
             return false;
         }
-        // Hard safety boundary (P0-1): this must never be a general password reset. It only applies
+        // Hard safety boundary: this must never be a general password reset. It only applies
         // to FlexAccess-managed batch placeholder accounts that have NOT been personalised. Once an
         // account is converted/personalised, finalise_identity() has replaced the placeholder email
         // with the real one, so we refuse - the batch may no longer touch that permanent account.
