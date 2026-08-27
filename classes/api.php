@@ -302,6 +302,27 @@ final class api {
     }
 
     /**
+     * Whether an identical deferred mail is already queued and still waiting to be sent.
+     *
+     * Lets a component avoid stacking duplicate jobs: two queued invitation mails would not only
+     * send twice, they would each mint a token, so the first delivery's link would be invalidated
+     * by the second.
+     *
+     * @param string $renderer Renderer class the job names.
+     * @param array $context Non-secret context the job carries.
+     * @return bool
+     */
+    public static function deferred_mail_queued(string $renderer, array $context): bool {
+        global $DB;
+        $payload = json_encode(['kind' => 'deferred', 'renderer' => $renderer, 'context' => $context]);
+        return $DB->record_exists_select(
+            self::QUEUE_TABLE,
+            'status = :status AND ' . $DB->sql_compare_text('payloadjson') . ' = ' . $DB->sql_compare_text(':payload'),
+            ['status' => 'queued', 'payload' => $payload]
+        );
+    }
+
+    /**
      * Queue a mail whose body is rendered by the owning component at delivery time.
      *
      * For mails that carry a one-time secret (invitation links, ...): the queue row holds only a
@@ -461,6 +482,33 @@ final class api {
         return local\magic_service::consume_magic_login($token, $now);
     }
 
+
+    /**
+     * Remove a batch account that was created but could not be fully provisioned.
+     *
+     * Provisioning a member takes three steps (create account, enrol, record membership). If a later
+     * step fails, the account already exists but nothing references it: the resumable batch does not
+     * see it, and a retry would create yet another one. This compensating delete keeps each member
+     * atomic - either fully recorded or fully gone.
+     *
+     * Same safety boundary as set_account_password(): it only ever touches a FlexAccess account that
+     * still carries the placeholder address, so a personalised account can never be deleted here.
+     *
+     * @param int $userid Moodle user id.
+     * @return bool Whether the account was removed.
+     */
+    public static function rollback_batch_account(int $userid): bool {
+        global $DB;
+        $user = $DB->get_record('user', ['id' => $userid], '*', IGNORE_MISSING);
+        if (!$user || $user->auth !== 'flexaccess') {
+            return false;
+        }
+        if (!str_ends_with((string) $user->email, '@flexaccess.invalid')) {
+            return false;
+        }
+        account_service::delete_account($userid);
+        return true;
+    }
 
     /**
      * Roll back a just-created temporary account (compensation for a failed provisioning flow).
