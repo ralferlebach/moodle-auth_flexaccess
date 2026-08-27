@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.0-RC1 — 2026-08-27 — Release Candidate 1
+- Version `2026082700`, Release `1.0.0-RC1`, Reifegrad `MATURITY_STABLE`.
+- Die Abhängigkeiten der vier Plugins verlangen ebenfalls `2026082700`: Sie sind nur in diesem gemeinsamen Stand lauffähig.
+- **Neue `README.md`** nach dem Muster von Moodle an Hochschulen, mit den tatsächlichen Angaben dieses Plugins: Voraussetzungen, Motivation, Installation, Einstellungen, Capabilities, geplante Aufgaben, Funktionsweise samt Stolperfallen sowie Hinweise zu Support, Übersetzung und Pflege.
+
 ## 0.9.63 — 2026-08-27 — P0: SMTP-Stundenlimit war unterlaufbar
 - **Das Stundenlimit zählt jetzt nach `timesent`, nicht nach Status.** Eine Mail wird an SMTP übergeben, *bevor* die auslösende Komponente benachrichtigt wird. Schlug diese Rückmeldung fehl, wanderte die Zeile nach `ackpending`/`ackfailed` — und verschwand damit aus der Stundenbilanz, obwohl die Mail längst draußen war. Bei 100 fehlgeschlagenen Rückmeldungen hätte FlexAccess erneut 100 Mails versenden dürfen.
 - **Zustellung und Rückmeldung sind jetzt getrennte Arbeitsmengen.** Eine ausstehende Rückmeldung benötigt keine SMTP-Kapazität: Sie verbraucht kein Sendebudget mehr und wird auch dann abgearbeitet, wenn das Kontingent erschöpft ist — vorher blieb ein Einladungslink allein deshalb unbrauchbar, weil die Stunde voll war.
