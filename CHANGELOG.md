@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.63 — 2026-08-27 — P0: SMTP-Stundenlimit war unterlaufbar
+- **Das Stundenlimit zählt jetzt nach `timesent`, nicht nach Status.** Eine Mail wird an SMTP übergeben, *bevor* die auslösende Komponente benachrichtigt wird. Schlug diese Rückmeldung fehl, wanderte die Zeile nach `ackpending`/`ackfailed` — und verschwand damit aus der Stundenbilanz, obwohl die Mail längst draußen war. Bei 100 fehlgeschlagenen Rückmeldungen hätte FlexAccess erneut 100 Mails versenden dürfen.
+- **Zustellung und Rückmeldung sind jetzt getrennte Arbeitsmengen.** Eine ausstehende Rückmeldung benötigt keine SMTP-Kapazität: Sie verbraucht kein Sendebudget mehr und wird auch dann abgearbeitet, wenn das Kontingent erschöpft ist — vorher blieb ein Einladungslink allein deshalb unbrauchbar, weil die Stunde voll war.
+- **Eigenes Wiederholungsbudget für die Rückmeldung:** Nach erfolgreicher Zustellung wird der Versuchszähler zurückgesetzt; er bezeichnet damit immer die aktuelle Phase.
+- **`api::send_mail_now()` und `mail_worker::send_now()` entfernt.** Die Methoden umgingen Queue, Stundenlimit, Wiederholung und Überwachung und hatten keinen produktiven Aufrufer mehr.
+- Test `mail_throttle_test`: zugestellte, aber unquittierte Mails zählen gegen das Limit; Rückmeldungen laufen auch bei erschöpftem Sendebudget.
+- Versions-Gleichschritt `2026082440`.
+
 ## 0.9.62 — 2026-08-27 — Versions-Gleichschritt
 - Keine Codeänderung. Versions-Gleichschritt auf `2026082439`.
 

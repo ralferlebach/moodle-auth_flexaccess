@@ -410,26 +410,6 @@ final class api {
         ]);
     }
 
-    /**
-     * Send a FlexAccess mail immediately (no persistent queue row), for bodies that carry a
-     * single-use secret such as an invitation link. The secret is therefore never stored at rest.
-     *
-     * @param int|null $userid Optional related user id (from-name resolution only).
-     * @param string $email Recipient email address.
-     * @param string $subject Subject.
-     * @param string $body Plain-text body.
-     * @param string $bodyhtml HTML body.
-     * @return bool Whether the mail was accepted for delivery.
-     */
-    public static function send_mail_now(
-        ?int $userid,
-        string $email,
-        string $subject,
-        string $body,
-        string $bodyhtml
-    ): bool {
-        return \auth_flexaccess\local\mail_worker::send_now($userid, $email, $subject, $body, $bodyhtml);
-    }
 
     /**
      * Queue a token-bearing mail without persisting the secret.

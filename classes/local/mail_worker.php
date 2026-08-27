@@ -107,10 +107,14 @@ final class mail_worker {
      */
     public static function count_sent_last_hour(int $now): int {
         global $DB;
+        // Counted by timesent, not by status: a mail is handed to SMTP before the owning component
+        // is told about it. If that acknowledgement fails the row moves to ackpending/ackfailed
+        // while the mail is already out - counting only 'sent' would drop it from the hourly
+        // balance and allow the external limit to be exceeded.
         return (int) $DB->count_records_select(
             self::TABLE,
-            "status = :status AND timesent > :since",
-            ['status' => 'sent', 'since' => $now - HOURSECS]
+            "timesent IS NOT NULL AND timesent > :since",
+            ['since' => $now - HOURSECS]
         );
     }
 
@@ -140,9 +144,27 @@ final class mail_worker {
             }
         }
         $usermap = $userids ? $DB->get_records_list('user', 'id', $userids) : [];
-        $budget = mail_planner::sendable($remaining, count($due));
-        $sent = 0;
+
+        // Two separate workloads. Acknowledging a mail that is already out needs no SMTP capacity,
+        // so it must neither consume the send budget nor be blocked when the budget is exhausted -
+        // otherwise an invitation link stays unusable purely because the hour is full.
+        $acks = [];
+        $sendable = [];
         foreach ($due as $job) {
+            if ($job->status === self::STATUS_ACKPENDING) {
+                $acks[] = $job;
+            } else {
+                $sendable[] = $job;
+            }
+        }
+
+        foreach ($acks as $job) {
+            self::deliver($job, $now, $usermap);
+        }
+
+        $budget = mail_planner::sendable($remaining, count($sendable));
+        $sent = 0;
+        foreach ($sendable as $job) {
             if ($sent >= $budget) {
                 break;
             }
@@ -304,6 +326,10 @@ final class mail_worker {
             }
             $job->status = 'sent';
             $job->timesent = $now;
+            // Delivery is done; the counter now belongs to the acknowledgement phase. Without this
+            // reset a mail that needed several delivery attempts would give its acknowledgement
+            // almost no attempts of its own.
+            $job->attempts = 0;
             $DB->update_record(self::TABLE, $job);
             // From here the mail is out. A failure while telling the owning component about it must
             // never lead to a second delivery, so the acknowledgement retries on its own state.
@@ -321,23 +347,6 @@ final class mail_worker {
         }
     }
 
-    /**
-     * Send a mail immediately to an email address, bypassing the persistent queue.
-     *
-     * Used for mails whose body carries a single-use secret (e.g. invitation links): rendering and
-     * delivery happen in one step so the plaintext secret is never written to the queue at rest.
-     *
-     * @param int|null $userid Optional related user id (for from-name resolution only).
-     * @param string $email Recipient email address.
-     * @param string $subject Subject.
-     * @param string $body Plain-text body.
-     * @param string $bodyhtml HTML body.
-     * @return bool Whether the mail was accepted for delivery.
-     */
-    public static function send_now(?int $userid, string $email, string $subject, string $body, string $bodyhtml): bool {
-        $job = (object) ['userid' => $userid, 'recipient' => $email];
-        return (bool) email_to_user(self::recipient_user($job), self::from_user(), $subject, $body, $bodyhtml);
-    }
 
     /**
      * Build the recipient user object for a queued job (a real user, addressed at job->recipient).
