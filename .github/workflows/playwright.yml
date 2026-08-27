@@ -31,7 +31,7 @@ jobs:
     env:
       MOODLE_BRANCH: MOODLE_405_STABLE
       DB: pgsql
-      MOODLE_WWWROOT: http://localhost:8000
+      MOODLE_WWWROOT: http://127.0.0.1:8000
 
     steps:
       - name: Check out plugin
@@ -159,12 +159,12 @@ jobs:
           # The web server runs inside THIS step. A server started in an earlier step does not
           # reliably survive into the next one, which surfaced as a browser run against a target
           # that had already gone away.
-          PHP_CLI_SERVER_WORKERS=8 php -S localhost:8000 -t "$GITHUB_WORKSPACE/moodle" \
+          PHP_CLI_SERVER_WORKERS=8 php -S 127.0.0.1:8000 -t "$GITHUB_WORKSPACE/moodle" \
             >/tmp/moodle-server.log 2>&1 &
           ready=0
           for i in $(seq 1 40); do
             code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 \
-              http://localhost:8000/login/index.php || true)
+              http://127.0.0.1:8000/login/index.php || true)
             if [ "$code" = "200" ]; then ready=1; break; fi
             sleep 3
           done

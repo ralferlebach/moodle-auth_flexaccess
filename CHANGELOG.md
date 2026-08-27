@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.60 — 2026-08-27 — Testserver auf 127.0.0.1
+- Der Testserver wird an `127.0.0.1` gebunden und unter derselben Adresse angesprochen; `localhost` konnte je nach Client nach `::1` aufgelöst werden, wohin der Server nicht lauscht.
+- Versions-Gleichschritt `2026082437`.
+
 ## 0.9.59 — 2026-08-27 — Kontolöschung defensiv, Passwortrichtlinie durchgängig
 - **`delete_account()` wertet das Ergebnis von `delete_user()` aus.** Bisher wurden die FlexAccess-Metadaten auch dann entfernt, wenn Moodle den Nutzer gar nicht löschen konnte — zurück blieb ein bestehendes Konto, das nicht mehr als FlexAccess-verwaltet erkennbar war und damit weder ablaufen noch bereinigt werden konnte. Die Methode liefert jetzt `bool`; bei Misserfolg bleiben die Metadaten erhalten.
 - **`purge_expired()` zählt nur tatsächlich entfernte Konten.** Ein nicht löschbares Konto verbleibt in der Liste und wird beim nächsten Lauf erneut versucht, statt als bereinigt gemeldet zu werden.
