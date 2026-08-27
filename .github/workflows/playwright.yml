@@ -95,7 +95,10 @@ jobs:
       - name: Start Moodle web server
         run: |
           cd moodle
-          PHP_CLI_SERVER_WORKERS=8 php -S localhost:8000 -t . >/tmp/moodle-server.log 2>&1 &
+          # setsid detaches the server from this step's process group, so it survives until the
+          # job ends instead of being torn down when the step's shell exits.
+          setsid nohup env PHP_CLI_SERVER_WORKERS=8 \
+            php -S localhost:8000 -t . >/tmp/moodle-server.log 2>&1 < /dev/null &
           for i in $(seq 1 40); do
             code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 \
               http://localhost:8000/login/index.php || true)

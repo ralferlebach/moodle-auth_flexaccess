@@ -54,12 +54,42 @@ if ($xml === false) {
     exit(1);
 }
 
+// Map the component to the directory fragment it is installed under, so the report can be
+// restricted to this plugin alone.
+$component = null;
+$versionfile = dirname(__DIR__) . '/version.php';
+if (is_readable($versionfile)) {
+    // Read it as text: a Moodle version.php starts with defined('MOODLE_INTERNAL') || die(), so
+    // including it outside Moodle terminates the script silently.
+    if (preg_match('/\$plugin->component\s*=\s*\'([^\']+)\'/', file_get_contents($versionfile), $m)) {
+        $component = $m[1];
+    }
+}
+if ($component === null) {
+    fwrite(STDERR, "Komponente konnte nicht aus version.php gelesen werden.\n");
+    exit(1);
+}
+$map = [
+    'auth_flexaccess' => '/auth/flexaccess/',
+    'enrol_flexaccess' => '/enrol/flexaccess/',
+    'mod_flexaccess' => '/mod/flexaccess/',
+    'tool_flexaccess' => '/admin/tool/flexaccess/',
+];
+if (!isset($map[$component])) {
+    fwrite(STDERR, "Unbekannte Komponente: $component\n");
+    exit(1);
+}
+$needle = $map[$component];
+echo "Komponente: $component (Pfadfilter: $needle)\n";
+
 $covered = 0;
 $total = 0;
 foreach ($xml->xpath('//file') as $file) {
     $name = (string) $file['name'];
-    // Only this plugin, and only the code that ships: the tests themselves are not the subject.
-    if (strpos($name, '/flexaccess/') === false || strpos($name, '/tests/') !== false) {
+    // Only THIS plugin. Matching '/flexaccess/' would also count the three sibling plugins that are
+    // installed alongside it, whose tests do not run in this job - that produced a meaningless
+    // fraction (their statements in the denominator, none of them covered).
+    if (strpos($name, $needle) === false || strpos($name, '/tests/') !== false) {
         continue;
     }
     $metrics = $file->metrics;

@@ -24,7 +24,7 @@ namespace auth_flexaccess;
  * @package    auth_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
- * @covers \xmldb_auth_flexaccess_upgrade
+ * @coversNothing
  */
 final class ratehit_upgrade_test extends \advanced_testcase {
     /**
