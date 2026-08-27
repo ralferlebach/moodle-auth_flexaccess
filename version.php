@@ -28,7 +28,7 @@ $plugin->component = 'auth_flexaccess';
 $plugin->version = 2026082700;
 $plugin->requires = 2024100700; // Moodle 4.5.
 $plugin->supported = [405, 502];
-$plugin->maturity = MATURITY_STABLE;
+$plugin->maturity = MATURITY_RC;
 $plugin->release = '1.0.0-RC1';
 $plugin->dependencies = [
     // Hard dependency: the access-method policy lives entirely in enrol_flexaccess.

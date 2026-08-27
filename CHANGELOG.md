@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.0.0-RC1 — 2026-08-27 — Freigabe-Gate: verlangte ein Dokument, das es nur einmal gibt
+- **Der Gate scheiterte an einer Bedingung, die nur ein Plugin erfüllen konnte.** Er verlangte bei `MATURITY_STABLE` die Datei `docs/scope-decisions-1.0.md`; die liegt aber ausschließlich in `tool_flexaccess`. In den drei anderen Repositories blieb er deshalb rot, obwohl sämtliche Tests grün waren. Die Bedingung ist entfernt — die Scope-Entscheidungen bleiben dokumentiert, sind aber keine Freigabevoraussetzung je Plugin.
+- **Der Gate ist jetzt die einzige Bewertungsstelle der Release-Gates.** Er prüft Matrix, Lockstep, Artefakt und Coverage bei *jedem* Reifegrad, nennt jedes Ergebnis einzeln und gibt den deklarierten Reifegrad aus. Der Job heißt entsprechend „Release gate".
+- **Doppelte Verdrahtung entfernt.** `ci-complete` hing bisher sowohl direkt an den vier Gates als auch am Gate selbst — dieselbe Bedingung an zwei Stellen. Es hängt jetzt nur noch am Gate-Pfad (`maturity-gate` und `stale-files`).
+- Keine Änderung an Version, Release oder Reifegrad.
+
+## 1.0.0-RC1 — 2026-08-27 — CI: Freigabe-Gate blieb nach einem Re-run dauerhaft rot
+- **`maturity-gate` läuft jetzt immer** (`if: always()`). Ohne diese Angabe wurde der Job übersprungen, sobald einer seiner Vorgänger fehlschlug — und ein übersprungener Job wird von „Re-run failed jobs" **nicht** erneut ausgeführt. Er blieb damit dauerhaft auf `skipped`, weshalb `ci-complete` selbst dann rot blieb, wenn alle eigentlichen Fehler längst behoben und alle Tests grün waren.
+- **`ci-complete` benennt jedes Gate einzeln.** Die bisherige Meldung nannte nur zwei der sechs Ergebnisse; ein Fehlschlag in einem der übrigen sah nach einem unerklärlichen roten Lauf aus. Zusätzlich wird `stale-files` jetzt tatsächlich mitgeprüft — der Job stand zwar in `needs`, wurde in der Bedingung aber übergangen.
+- **`maturity-gate` gibt die Ergebnisse seiner Vorgänger aus**, damit direkt an der Stelle sichtbar ist, woran es lag.
+- Keine Änderung an Version, Release oder Reifegrad.
+
+## 1.0.0-RC1 — 2026-08-27 — Reifegrad Release Candidate
+- **Reifegrad auf `MATURITY_RC`** gesetzt (Version unverändert `2026082700`). Das entspricht dem Release-Namen `1.0.0-RC1`: Alle CI-Strecken laufen grün — Dev, Main, Playwright, jMeter und k6 einschließlich Capacity Race — die endgültige Stable-Freigabe steht aber noch aus.
+- **`README.md` erweitert:** Unter „Requirements" sind jetzt die Geschwister-Plugins samt GitHub-Adresse aufgeführt, getrennt nach harter Abhängigkeit (in `version.php` deklariert) und ergänzendem Bestandteil des Verbunds. Ein einleitender Abschnitt erklärt, wie die vier Plugins zusammenwirken und warum eine Teilinstallation nicht funktioniert.
+
 ## 1.0.0-RC1 — 2026-08-27 — Release Candidate 1
 - Version `2026082700`, Release `1.0.0-RC1`, Reifegrad `MATURITY_STABLE`.
 - Die Abhängigkeiten der vier Plugins verlangen ebenfalls `2026082700`: Sie sind nur in diesem gemeinsamen Stand lauffähig.

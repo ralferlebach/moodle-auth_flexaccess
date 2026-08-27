@@ -5,15 +5,37 @@ moodle-auth_flexaccess
 
 FlexAccess authentication provides the identity layer of the FlexAccess plugin set: temporary course visitors, their conversion into permanent accounts, e-mail link login and the central, rate-limited mail queue used by all four plugins.
 
-FlexAccess consists of four plugins which are released together and depend on each other:
-auth_flexaccess, enrol_flexaccess, mod_flexaccess and tool_flexaccess. They have to be installed
-in the same version.
+FlexAccess is not a single plugin but a set of four that work as one system. They are released
+together, carry the same version number and declare each other as dependencies, so they can only be
+installed and updated as a set.
+
+* **auth_flexaccess** provides the identity layer: it creates the temporary accounts, converts them into permanent ones, issues one-time login links and runs the central, rate-limited mail queue that all four plugins send through.
+* **enrol_flexaccess** decides who may enter a course and how: it owns the access policy across site, category and course, enforces capacity, access windows, access keys and role or cohort restrictions.
+* **mod_flexaccess** is the in-course entry point for keeping an account: it lets a temporary visitor convert their own account into a permanent one at the point in the course the teacher chooses.
+* **tool_flexaccess** is the operator's view: account overview, mail queue, site and category policies, invitations, campaigns and printable anonymous access lists.
+
+This README documents **auth_flexaccess** - the first bullet point above. The other three plugins are
+documented in their own repositories.
+
+Because the responsibilities are split this way, no rule exists twice: access is decided in one
+place, identity is handled in another, and every mail leaves through one queue. That is also why a
+partial installation does not work - a missing sibling means a missing part of the mechanism.
 
 
 Requirements
 ------------
 
 This plugin requires Moodle 4.5+
+
+It also requires the other FlexAccess plugins. All four are released together and must be installed
+in the same version (currently 1.0.0-RC1 / 2026082700):
+
+* **enrol_flexaccess (FlexAccess enrolment)** - required dependency, declared in version.php\
+  https://github.com/ralferlebach/moodle-enrol_flexaccess
+* **mod_flexaccess (FlexAccess activity)** - part of the same set; install it as well to use the complete feature range\
+  https://github.com/ralferlebach/moodle-mod_flexaccess
+* **tool_flexaccess (FlexAccess administration)** - part of the same set; install it as well to use the complete feature range\
+  https://github.com/ralferlebach/moodle-tool_flexaccess
 
 
 Motivation for this plugin
