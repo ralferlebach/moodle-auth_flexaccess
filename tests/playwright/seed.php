@@ -20,7 +20,7 @@
  * Creates a course with an anonymous-temporary FlexAccess instance and prints the base URL, course
  * id and course name as shell "export" lines so the CI runner can source them.
  *
- * @package    enrol_flexaccess
+ * @package    auth_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */

@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.0.0-RC1 — 2026-08-27 — Falscher @package-Tag in der kopierten Fixture-Datei
+- **`@package` in `tests/playwright/seed.php` korrigiert.** Die Datei stammt aus `enrol_flexaccess` und trug beim Kopieren dessen Tag weiter; `moodle-cs` weist das als Fehler zurück (`moodle.Commenting.Package.Incorrect`). Alle PHP-Dateien der vier Plugins wurden gegengeprüft — keine weitere Abweichung.
+
 ## 1.0.0-RC1 — 2026-08-27 — Eigene Browser-Testsuite je Plugin
 - **Jedes Plugin bringt jetzt seine eigene Playwright-Suite mit** (`tests/playwright/`), statt dass alle vier dieselbe Suite aus `enrol_flexaccess` ausführen. Jede Suite prüft die Handlungen, für die *ihr* Plugin zuständig ist, und jedes Repository steht damit für sich.
 - Gemeinsame Helfer liegen als `helpers.js` in jedem Plugin — bewusst als Kopie: Ein geteiltes Paket würde die vier Repositories auch auf Testebene aneinanderbinden.
