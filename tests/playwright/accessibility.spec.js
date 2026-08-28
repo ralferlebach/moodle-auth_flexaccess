@@ -86,14 +86,4 @@ test.describe('FlexAccess anonymous pages accessibility', () => {
     });
 });
 
-/**
- * Log in through the standard Moodle login form so the administrative pages can be reached.
- *
- * @param {import('@playwright/test').Page} page The page under test.
- * @returns {Promise<void>}
- */
-async function loginAsManager(page) {
-  await loginAs(page, MANAGER_USER, MANAGER_PASS);
-  await page.waitForLoadState('domcontentloaded');
-}
 

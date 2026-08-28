@@ -25,6 +25,9 @@
 # developer/CI tool, but they have no place on a production Moodle server.
 /tests/load         export-ignore
 /tests/playwright   export-ignore
+# Only relevant when a repository is updated in place. Moodle's ZIP installation replaces
+# the plugin directory as a whole, so a stale file cannot survive it.
+/db/removed_files.txt export-ignore
 
 # The Moodle-native tests (tests/*.php, tests/behat/) DO ship: they are useful
 # to maintainers, plugin review and distribution QA.

@@ -175,27 +175,68 @@ jobs:
           fi
           npm test
 
-      - name: Show server log on failure
+      - name: Show the tail of the server log on failure
         if: failure()
         run: tail -100 /tmp/moodle-server.log || true
 
-      # Two artefacts from the same run. Videos are by far the largest part and are not wanted when
-      # the report is only skimmed or its screenshots are reused as illustrations, so the light
-      # variant leaves them out while the full one keeps everything.
-      - name: Upload report without videos
-        if: always()
+      # Two mutually exclusive artefacts, chosen by outcome.
+      #
+      # Green: the full report including videos - it documents the intended journey and its
+      # screenshots are reused as illustrations.
+      #
+      # Red: only the directories of the tests that actually failed, and without videos. Playwright
+      # keeps a directory per test, so a failed run's evidence is a small subset of a report that
+      # otherwise runs to tens of megabytes.
+      - name: Collect the failed tests only
+        if: failure()
+        run: |
+          src="moodle/auth/flexaccess/tests/playwright/test-results"
+          dest="$RUNNER_TEMP/playwright-failures"
+          rm -rf "$dest"
+          mkdir -p "$dest"
+          found=0
+          # error-context.md is written for failures only, so its presence marks the directory.
+          while IFS= read -r ctx; do
+            dir=$(dirname "$ctx")
+            cp -a "$dir" "$dest/"
+            found=1
+          done < <(find "$src" -name error-context.md 2>/dev/null)
+          if [ "$found" = "1" ]; then
+            find "$dest" -name '*.webm' -delete
+            echo "Fehlerhafte Tests eingesammelt:"
+            ls -1 "$dest"
+          else
+            echo "Keine Fehlerverzeichnisse gefunden."
+          fi
+
+      # The complete log goes into the failure bundle rather than the job output: a request log of
+      # a full browser run is long, and only its end is readable inline. It is compressed because
+      # such logs grow quickly - on a larger project far beyond what is comfortable to download.
+      #
+      # Placed AFTER the collecting step, which clears the directory first.
+      - name: Add the server log to the failure bundle
+        if: failure()
+        run: |
+          dest="$RUNNER_TEMP/playwright-failures"
+          mkdir -p "$dest"
+          if [ -s /tmp/moodle-server.log ]; then
+            gzip -c /tmp/moodle-server.log > "$dest/moodle-server.log.gz"
+            echo "Serverlog beigelegt ($(du -h /tmp/moodle-server.log | cut -f1) unkomprimiert)."
+          else
+            echo "Kein Serverlog vorhanden."
+          fi
+
+      - name: Upload failures only
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
-          path: |
-            moodle/auth/flexaccess/tests/playwright/playwright-report
-            moodle/auth/flexaccess/tests/playwright/test-results
-            !moodle/auth/flexaccess/tests/playwright/**/*.webm
+          name: playwright-failures
+          path: ${{ runner.temp }}/playwright-failures
           retention-days: 7
           if-no-files-found: ignore
 
-      - name: Upload report with videos
-        if: always()
+      - name: Upload full report with videos
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report-with-videos
