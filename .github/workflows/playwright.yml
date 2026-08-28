@@ -139,7 +139,7 @@ jobs:
       - name: Seed collaboration fixture
         run: |
           cd moodle
-          php enrol/flexaccess/tests/playwright/seed.php > /tmp/flexaccess-seed.env
+          php auth/flexaccess/tests/playwright/seed.php > /tmp/flexaccess-seed.env
           echo "Seeded variables:"
           sed -n "s/^export \([A-Z_][A-Z_]*\)=.*/  \1/p" /tmp/flexaccess-seed.env
           sed -n "s/^export \([A-Z_][A-Z_]*\)='\(.*\)'$/\1=\2/p" \
@@ -147,7 +147,7 @@ jobs:
 
       - name: Install Playwright and browsers
         run: |
-          cd moodle/enrol/flexaccess/tests/playwright
+          cd moodle/auth/flexaccess/tests/playwright
           npm ci
           npx playwright install --with-deps chromium
 
@@ -155,7 +155,7 @@ jobs:
         env:
           FLEXACCESS_BASE_URL: ${{ env.MOODLE_WWWROOT }}
         run: |
-          cd moodle/enrol/flexaccess/tests/playwright
+          cd moodle/auth/flexaccess/tests/playwright
           # The web server runs inside THIS step. A server started in an earlier step does not
           # reliably survive into the next one, which surfaced as a browser run against a target
           # that had already gone away.
@@ -179,11 +179,26 @@ jobs:
         if: failure()
         run: tail -100 /tmp/moodle-server.log || true
 
-      - name: Upload report
+      # Two artefacts from the same run. Videos are by far the largest part and are not wanted when
+      # the report is only skimmed or its screenshots are reused as illustrations, so the light
+      # variant leaves them out while the full one keeps everything.
+      - name: Upload report without videos
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-report
+          path: |
+            moodle/auth/flexaccess/tests/playwright/playwright-report
+            moodle/auth/flexaccess/tests/playwright/test-results
+            !moodle/auth/flexaccess/tests/playwright/**/*.webm
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Upload report with videos
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-with-videos
           path: |
             moodle/auth/flexaccess/tests/playwright/playwright-report
             moodle/auth/flexaccess/tests/playwright/test-results

@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.0.0-RC1 — 2026-08-27 — Eigene Browser-Testsuite je Plugin
+- **Jedes Plugin bringt jetzt seine eigene Playwright-Suite mit** (`tests/playwright/`), statt dass alle vier dieselbe Suite aus `enrol_flexaccess` ausführen. Jede Suite prüft die Handlungen, für die *ihr* Plugin zuständig ist, und jedes Repository steht damit für sich.
+- Gemeinsame Helfer liegen als `helpers.js` in jedem Plugin — bewusst als Kopie: Ein geteiltes Paket würde die vier Repositories auch auf Testebene aneinanderbinden.
+- Jedes Plugin hat ein eigenes `seed.php`, das genau das Fixture erzeugt, das seine Suite braucht.
+- **Zwei Fehler dabei gefunden und behoben:** Das Kurskürzel im Fixture nutzte `time()` — zwei Läufe innerhalb derselben Sekunde kollidierten und der Kurs konnte nicht angelegt werden. Und der Pfad zur `config.php` stimmt bei `tool`-Plugins nicht, weil sie eine Ebene tiefer liegen (`admin/tool/<name>`).
+- Die Testsuiten bleiben wie bisher aus dem Installationspaket ausgeschlossen.
+
+- Inhalt: Einstiegsseite, temporärer Zugang, Anforderung des Anmeldelinks, Schnellregistrierung mit erneuter Anmeldung, Persistierung mit erneuter Anmeldung sowie die Barrierefreiheitsprüfung der anonymen Seiten (7 Tests).
+
+## 1.0.0-RC1 — 2026-08-27 — Playwright-Artefakte
+- **Artefaktpfad korrigiert:** Der Upload zeigte auf das eigene Plugin-Verzeichnis, in dem keine Testsuite liegt — aus diesem Repository gab es deshalb nie Artefakte. Er verweist jetzt auf `enrol_flexaccess/tests/playwright`, wo die gemeinsame Suite ausgeführt wird.
+- **Zwei Artefakte je Lauf:** einmal ohne Videos (Screenshots, Traces, Bericht) und einmal mit allem.
+
+## 1.0.0-RC1 — 2026-08-27 — Berechtigungsprüfung
+- Alle Einstiegspunkte dieses Plugins wurden auf ihren Zugangsschutz geprüft; öffentlich erreichbar sind ausschließlich die dafür vorgesehenen Seiten für anonyme Besucher und die token-basierten Einstiegsseiten.
+
 ## 1.0.0-RC1 — 2026-08-27 — Freigabe-Gate: verlangte ein Dokument, das es nur einmal gibt
 - **Der Gate scheiterte an einer Bedingung, die nur ein Plugin erfüllen konnte.** Er verlangte bei `MATURITY_STABLE` die Datei `docs/scope-decisions-1.0.md`; die liegt aber ausschließlich in `tool_flexaccess`. In den drei anderen Repositories blieb er deshalb rot, obwohl sämtliche Tests grün waren. Die Bedingung ist entfernt — die Scope-Entscheidungen bleiben dokumentiert, sind aber keine Freigabevoraussetzung je Plugin.
 - **Der Gate ist jetzt die einzige Bewertungsstelle der Release-Gates.** Er prüft Matrix, Lockstep, Artefakt und Coverage bei *jedem* Reifegrad, nennt jedes Ergebnis einzeln und gibt den deklarierten Reifegrad aus. Der Job heißt entsprechend „Release gate".

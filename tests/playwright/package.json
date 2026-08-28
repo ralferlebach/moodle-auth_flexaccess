@@ -1,0 +1,14 @@
+{
+  "name": "auth_flexaccess-playwright",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Browser tests for auth_flexaccess",
+  "scripts": {
+    "test": "playwright test",
+    "install-browsers": "playwright install --with-deps chromium"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.47.0",
+    "@axe-core/playwright": "^4.10.0"
+  }
+}
