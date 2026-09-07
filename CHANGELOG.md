@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.0-RC2 — 2026-08-28 — Temporärer Zugang wurde angeboten, obwohl er nicht erlaubt war
+- **Die Einstiegsseite bot den temporären Zugang unabhängig von der Kursrichtlinie an.** Der Zweig war an `offers_anonymous_entry()` gebunden, und diese Prüfung ist bereits wahr, sobald **irgendeine** kontofreie Methode aktiv ist. Ein Kurs, der ausschließlich die Schnellregistrierung erlaubt, zeigte deshalb zusätzlich die Schaltfläche „Weiter" für ein temporäres Konto. Sie ist jetzt an `allowtemporary` der Kursrichtlinie gebunden.
+- **Keine Sicherheitslücke:** `grant_temporary_access()` hat den Versuch serverseitig immer mit `notallowed` abgewiesen — real nachgestellt. Die Schaltfläche führte in eine Sackgasse, nicht an der Richtlinie vorbei.
+- **Überschrift passt sich an:** Ohne temporären Zugang heißt die Spalte „Zugang ohne eigenes Konto" statt „Temporärer Kurszugang" — sie trägt dann die Registrierungs- und Gastwege.
+- **Seitentitel ebenfalls an die Richtlinie gebunden:** Ohne temporären Zugang heißt die Seite „Kurszugang" statt „Temporärer Kurszugang". Alle drei Kombinationen wurden an der gerenderten Seite geprüft — nur temporär, nur Schnellregistrierung, beides.
+- Versions-Gleichschritt `2026082701`.
+
 ## 1.0.0-RC1 — 2026-08-27 — `db/removed_files.txt` nicht mehr im Auslieferungspaket
 - **Die Liste entfernter Dateien wird nicht mehr mit ausgeliefert** (`export-ignore`). Sie ist ausschließlich repo-seitig von Bedeutung: Moodles ZIP-Installation ersetzt das Plugin-Verzeichnis vollständig, eine Altdatei kann sie also gar nicht überleben. Nur beim Aktualisieren eines Repositories an Ort und Stelle bleibt eine entfernte Datei liegen — genau dafür liest der CI-Job `stale-files` die Liste weiterhin aus dem Repository.
 

@@ -73,7 +73,11 @@ $returnurl = $target !== null ? $target->redirect_url() : $courseurl;
 $PAGE->set_context(context_course::instance($courseid));
 $PAGE->set_url(new moodle_url('/auth/flexaccess/access.php', ['courseid' => $courseid]));
 $PAGE->set_pagelayout('standard');
-$PAGE->set_title(get_string('accesstitle', 'auth_flexaccess'));
+// Evaluated before the title is set: a course that does not allow temporary access must not be
+// announced as "temporary course access" - that is what the page offers, not what it is called.
+$offerstemporary = (bool) \enrol_flexaccess\api::get_effective_policy($courseid)->allowtemporary;
+$accesstitle = get_string($offerstemporary ? 'accesstitle' : 'accesstitlenotemp', 'auth_flexaccess');
+$PAGE->set_title($accesstitle);
 $PAGE->set_heading(format_string($course->fullname));
 
 // A real authenticated user has nothing to do here.
@@ -132,8 +136,15 @@ if ($confirm && $ispost && confirm_sesskey()) {
 }
 
 // Build the temporary-access entry (key challenge or plain confirmation) shown in the left column.
+//
+// Only when the course policy actually allows it: offers_anonymous_entry() is true as soon as ANY
+// no-account method is on, so a course offering nothing but quick registration used to display the
+// temporary-account button as well. grant_temporary_access() then refused it with 'notallowed' -
+// the button worked as an invitation to a dead end.
 $temporaryentry = '';
-if ($keyrequired) {
+if (!$offerstemporary) {
+    $temporaryentry = '';
+} else if ($keyrequired) {
     // Render a challenge form: the key is submitted by POST and verified server-side before any
     // account is created.
     if ($failure === 'badkey') {
@@ -181,7 +192,7 @@ if ($keyrequired) {
 }
 
 echo $OUTPUT->header();
-echo $OUTPUT->heading(get_string('accesstitle', 'auth_flexaccess'));
+echo $OUTPUT->heading($accesstitle);
 
 if ($failure !== null && $failure !== 'badkey') {
     // Hard failure (e.g. rate-limited): keep it simple and full width, no entry options.
@@ -215,7 +226,12 @@ if ($failure !== null && $failure !== 'badkey') {
     echo html_writer::start_div('row');
 
     echo html_writer::start_div(($hasaccountoption ? 'col-md-6' : 'col-md-12') . ' flexaccess-entry-temporary');
-    echo $OUTPUT->heading(get_string('accesscoltemporary', 'auth_flexaccess'), 3);
+    // The heading names what is on offer: without temporary access this column carries the
+    // registration and guest routes, and calling it "temporary access" would be misleading.
+    echo $OUTPUT->heading(
+        get_string($offerstemporary ? 'accesscoltemporary' : 'accesscolnoaccount', 'auth_flexaccess'),
+        3
+    );
     echo html_writer::tag('p', get_string('accessintro', 'auth_flexaccess', format_string($course->fullname)));
     echo $temporaryentry;
 
