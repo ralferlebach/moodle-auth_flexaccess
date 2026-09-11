@@ -1,7 +1,7 @@
 moodle-auth_flexaccess
 ======================
 
-[![Moodle Plugin CI](https://github.com/ralferlebach/moodle-auth_flexaccess/actions/workflows/moodle-plugin-ci-main.yml/badge.svg?branch=main)](https://github.com/ralferlebach/moodle-auth_flexaccess/actions?query=workflow%3A%22Moodle+Plugin+CI+Main%22+branch%3Amain)
+[![Moodle Plugin CI](https://github.com/ralferlebach/moodle-auth_flexaccess/actions/workflows/moodle-plugin-ci-main.yml/badge.svg?branch=main)](https://github.com/ralferlebach/moodle-auth_flexaccess/actions?query=workflow%3A%22Moodle+Plugin+CI+Main%22+branch%3Amain) [![FlexAccess: Authentication](https://img.shields.io/badge/FlexAccess-Authentication-0f6cbf)](https://github.com/ralferlebach/moodle-enrol_flexaccess)
 
 FlexAccess authentication provides the identity layer of the FlexAccess plugin set: temporary course visitors, their conversion into permanent accounts, e-mail link login and the central, rate-limited mail queue used by all four plugins.
 
@@ -28,7 +28,7 @@ Requirements
 This plugin requires Moodle 4.5+
 
 It also requires the other FlexAccess plugins. All four are released together and must be installed
-in the same version (currently 1.0.0-RC1 / 2026082700):
+in the same version (currently 1.0.0 / 2026091100):
 
 * **enrol_flexaccess (FlexAccess enrolment)** - required dependency, declared in version.php\
   https://github.com/ralferlebach/moodle-enrol_flexaccess

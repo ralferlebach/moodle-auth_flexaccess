@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.0 — 2026-09-11 — Erste stabile Freigabe
+- **Beschriftung der Registrierung korrigiert.** „Oder für ein dauerhaftes Konto registrieren" war irreführend, wenn die Registrierung die einzige Option ist — das „Oder" klingt, als wäre zuvor etwas anderes angeboten worden. Die Schaltfläche heißt jetzt „Für ein dauerhaftes Konto registrieren"; die Alternative wird durch eine Zeile darüber eingeleitet, und zwar nur dann, wenn tatsächlich ein weiterer Zugangsweg offensteht.
+- Der ungenutzte String `accessorregister` wurde entfernt.
+- Reifegrad `MATURITY_STABLE`, Version `2026091100`, Release `1.0.0`.
+- **README:** FlexAccess-Badge neben dem CI-Badge; Verbundversion nachgezogen.
+
 ## 1.0.0-RC2 — 2026-08-28 — Temporärer Zugang wurde angeboten, obwohl er nicht erlaubt war
 - **Die Einstiegsseite bot den temporären Zugang unabhängig von der Kursrichtlinie an.** Der Zweig war an `offers_anonymous_entry()` gebunden, und diese Prüfung ist bereits wahr, sobald **irgendeine** kontofreie Methode aktiv ist. Ein Kurs, der ausschließlich die Schnellregistrierung erlaubt, zeigte deshalb zusätzlich die Schaltfläche „Weiter" für ein temporäres Konto. Sie ist jetzt an `allowtemporary` der Kursrichtlinie gebunden.
 - **Keine Sicherheitslücke:** `grant_temporary_access()` hat den Versuch serverseitig immer mit `notallowed` abgewiesen — real nachgestellt. Die Schaltfläche führte in eine Sackgasse, nicht an der Richtlinie vorbei.

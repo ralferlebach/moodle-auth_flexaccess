@@ -254,10 +254,20 @@ if ($failure !== null && $failure !== 'badkey') {
         echo html_writer::end_tag('form');
     }
     if ($offersquick) {
+        // The button says what it does, without an "or": as the only option on the page, a label
+        // starting with "Or" reads as if something else had been offered first. The alternative is
+        // introduced by a line above instead - and only when there really is one.
+        if ($offerstemporary || $offersguest) {
+            echo html_writer::tag(
+                'p',
+                get_string('accessorregisterintro', 'auth_flexaccess'),
+                ['class' => 'mt-3 mb-1']
+            );
+        }
         echo html_writer::div(html_writer::link(
             new moodle_url('/auth/flexaccess/register.php', ['courseid' => $courseid, 'wantsurl' => $wantsurl]),
-            get_string('accessorregister', 'auth_flexaccess'),
-            ['class' => 'btn btn-secondary mt-3']
+            get_string('accessregister', 'auth_flexaccess'),
+            ['class' => 'btn btn-secondary' . ($offerstemporary || $offersguest ? '' : ' mt-3')]
         ));
     }
     echo html_writer::end_div();
