@@ -41,9 +41,8 @@ $loginurl = new moodle_url('/login/index.php');
 // Token mode: the link authorises the login on its own.
 if ($token !== '') {
     $userid = \auth_flexaccess\api::consume_magic_login($token);
-    if ($userid !== null) {
-        $user = get_complete_user_data('id', $userid);
-        complete_user_login($user);
+    // The guard re-validates the account immediately before the session is created.
+    if ($userid !== null && \auth_flexaccess\api::complete_login($userid, \auth_flexaccess\local\login_guard::CHANNEL_MAGIC)) {
         redirect(new moodle_url('/my/'), get_string('magicsuccess', 'auth_flexaccess'));
     }
     echo $OUTPUT->header();

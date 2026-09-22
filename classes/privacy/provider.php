@@ -53,6 +53,9 @@ final class provider implements
     /** User preference recording that a persistence follow-up reminder has been sent. */
     private const FOLLOWUP_PREF = 'auth_flexaccess_followupsent';
 
+    /** User preference marking an administrative conversion that waits for the user's password. */
+    private const PENDINGCREDENTIAL_PREF = 'auth_flexaccess_pendingcredential';
+
     /**
      * Describe the personal data stored by this plugin.
      *
@@ -69,6 +72,7 @@ final class provider implements
             'sourcecmid' => 'privacy:metadata:account:sourcecmid',
             'timecreated' => 'privacy:metadata:account:timecreated',
             'timeexpires' => 'privacy:metadata:account:timeexpires',
+            'batchcredential' => 'privacy:metadata:account:batchcredential',
         ], 'privacy:metadata:account');
         $collection->add_database_table('auth_flexaccess_token', [
             'userid' => 'privacy:metadata:token:userid',
@@ -98,6 +102,7 @@ final class provider implements
 
         $collection->add_user_preference(self::PENDING_PREF, 'privacy:metadata:preference:pendingemail');
         $collection->add_user_preference(self::FOLLOWUP_PREF, 'privacy:metadata:preference:followupsent');
+        $collection->add_user_preference(self::PENDINGCREDENTIAL_PREF, 'privacy:metadata:preference:pendingcredential');
         return $collection;
     }
 
@@ -196,6 +201,15 @@ final class provider implements
                 get_string('privacy:metadata:preference:followupsent', 'auth_flexaccess')
             );
         }
+        $pendingcredential = get_user_preferences(self::PENDINGCREDENTIAL_PREF, null, $userid);
+        if ($pendingcredential !== null && $pendingcredential !== '') {
+            writer::export_user_preference(
+                'auth_flexaccess',
+                self::PENDINGCREDENTIAL_PREF,
+                $pendingcredential,
+                get_string('privacy:metadata:preference:pendingcredential', 'auth_flexaccess')
+            );
+        }
     }
 
     /**
@@ -214,6 +228,7 @@ final class provider implements
         }
         unset_user_preference(self::PENDING_PREF, $context->instanceid);
         unset_user_preference(self::FOLLOWUP_PREF, $context->instanceid);
+        unset_user_preference(self::PENDINGCREDENTIAL_PREF, $context->instanceid);
     }
 
     /**
@@ -233,6 +248,7 @@ final class provider implements
             }
             unset_user_preference(self::PENDING_PREF, $context->instanceid);
             unset_user_preference(self::FOLLOWUP_PREF, $context->instanceid);
+            unset_user_preference(self::PENDINGCREDENTIAL_PREF, $context->instanceid);
         }
     }
 
@@ -254,6 +270,7 @@ final class provider implements
             }
             unset_user_preference(self::PENDING_PREF, $context->instanceid);
             unset_user_preference(self::FOLLOWUP_PREF, $context->instanceid);
+            unset_user_preference(self::PENDINGCREDENTIAL_PREF, $context->instanceid);
         }
     }
 }

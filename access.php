@@ -95,15 +95,12 @@ $SESSION->wantsurl = $returnurl->out_as_local_url(false);
 
 // Guest access: log in as the Moodle guest user and continue to the course. Whether the guest can
 // then view content depends on the course's own guest enrolment, which FlexAccess does not manage.
-if (
-    optional_param('guest', 0, PARAM_BOOL) && $ispost && confirm_sesskey()
-        && \enrol_flexaccess\api::offers_guest_access($courseid)
-) {
-    $guestuser = get_complete_user_data('username', 'guest');
-    if ($guestuser) {
-        complete_user_login($guestuser);
+// This is the only way into a guest session: its own button, its own POST, sesskey and an explicit
+// offers_guest_access() check. No failed account login ever falls through to here.
+if (optional_param('guest', 0, PARAM_BOOL) && $ispost && confirm_sesskey()) {
+    if (\auth_flexaccess\api::complete_explicit_guest_login($courseid)) {
+        redirect($returnurl);
     }
-    redirect($returnurl);
 }
 
 $keyrequired = \enrol_flexaccess\api::requires_temporary_access_key($courseid);
@@ -124,9 +121,11 @@ if ($confirm && $ispost && confirm_sesskey()) {
         );
         if ($result->status === 'granted') {
             \enrol_flexaccess\local\access_key_rate::reset($rateid);
-            $user = $DB->get_record('user', ['id' => $result->userid], '*', MUST_EXIST);
-            complete_user_login($user);
-            redirect($returnurl, get_string('accessgranted', 'auth_flexaccess'));
+            $channel = \auth_flexaccess\local\login_guard::CHANNEL_ENTRY;
+            if (\auth_flexaccess\api::complete_login((int) $result->userid, $channel)) {
+                redirect($returnurl, get_string('accessgranted', 'auth_flexaccess'));
+            }
+            $result->status = 'loginrefused';
         }
         if ($result->status === 'badkey') {
             \enrol_flexaccess\local\access_key_rate::record_failure($rateid);

@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.1.0 — 2026-09-22 — Login-Guard, Lebenszyklus-Invarianten, Passwort-Vorgang, Identitäts-Merge, Zugangslisten-Login
+- **Zentraler Login-Guard (Issue #3).** `local\login_guard` entscheidet für jeden FlexAccess-Anmeldeweg, ob ein Konto eine Sitzung erhalten darf: Passwort, Magic Link, Abschluss des Passwortsetzens und die Einstiegsflüsse (temporärer Zugang, Schnellregistrierung, Einladung, Kampagne). Abgewiesen werden gelöschte, gesperrte, unbestätigte, abgelaufene, noch auf ein Passwort wartende und widersprüchliche Konten. `user_login()` prüft das selbst, unabhängig von Moodles eigener Sperrprüfung.
+- **Keine direkte Sitzung mehr am Guard vorbei.** Alle sieben `complete_user_login()`-Aufrufe in auth und tool laufen jetzt über `login_guard::complete_login()`, das den Zustand unmittelbar vor der Sitzung erneut prüft. Ein statischer Test hält das für alle vier Plugins fest; die Gegenprobe mit einer eingeschleusten Direktanmeldung schlägt an.
+- **Kein Gast-Fallback.** Eine abgewiesene Anmeldung führt nie in eine Gastsitzung. Gastzugang entsteht nur über die eigene Schaltfläche (`complete_explicit_guest_login()`).
+- **Magic Link:** Ein gesperrtes oder abgelaufenes Konto erhält keinen nutzbaren Link – weder bei der Anfrage noch bei der Zustellung, falls es zwischenzeitlich gesperrt wurde.
+- **Interne Protokollierung.** Das Event `login_refused` hält Kanal und genauen Grund fest; die Anmeldeseite zeigt weiterhin nur Moodles allgemeine Meldung.
+- **Lebenszyklus-Invarianten (Issue #5).** `local\lifecycle` ist die einzige Stelle, die Übergänge schreibt, und schreibt jeweils den vollständigen Zielzustand (FlexAccess-Zustand, `user.suspended`, `confirmed`, Restriktionsrolle). Die bisherigen Nachbesserungen in den Aufrufern entfallen. Dabei behoben: Im Pfad `persist_temporary_user()` wurde `suspended = 0` nie gespeichert.
+- **Ablauf beendet Sitzungen.** Läuft ein temporäres Konto ab, werden laufende Sitzungen des nun gesperrten Nutzers beendet.
+- **Diagnose statt Massenänderung.** `find_state_mismatches()` findet widersprüchliche Bestandsdaten lesend; neuer Status-Check unter *Website-Administration → Berichte → Systemstatus*. Reparaturen sind nur für eindeutige Fälle vorgesehen und werden ausdrücklich ausgelöst; das Entsperren eines aktiven Kontos gehört nie dazu.
+- **Neuer Zustand `PENDING_CREDENTIAL` (Issue #6).** Eine administrative Konvertierung meldet das Konto nicht mehr vorzeitig als aktiv. Es ist sofort eine dauerhafte Identität, wird aber erst aktiv, wenn die Person über den zugesandten Link ein Passwort gesetzt hat. Bis dahin sind Passwort- und Magic-Login gesperrt, und der Moodle-Nutzer bleibt entsperrt, damit die Mail zugestellt werden kann.
+- **Atomarer Abschluss.** Token, Passwort und Übergang zu ACTIVE laufen in einer Transaktion; die Willkommensmail folgt dem Abschluss. Wird das Passwort über Moodles „Passwort vergessen“ gesetzt, finalisiert ein Observer das Konto ebenso.
+- **Erneut senden.** `resend_set_password()` ist pro Konto begrenzt; beim Versand werden ältere Links ungültig. `credential_status()` meldet queued, sent, failed, expired oder completed.
+- **Identitäts-Merge (Issue #4).** `reconcile_external_identity_merge()` überträgt die FlexAccess-Einschreibungen auf die überlebende Identität oder führt sie zusammen (aktiv gewinnt, spätere Endzeit gewinnt, „kein Ende“ gewinnt). Die Restriktion der Zielidentität wird aufgehoben, die Quelle bereinigt, der Vorgang ist idempotent.
+- **Konto- und Kursdauer bleiben getrennt.** Ein dauerhafter Kurszugang entsteht nur, wenn der Aufrufer ihn ausdrücklich verlangt; dann schneidet die FlexAccess-Frist ihn nicht mehr ab.
+- **tool_mergeusers.** Ist das Plugin installiert, wird jeder Merge über dessen Erfolgs-Event nachgezogen.
+- **Temporäre Zugangslisten-Konten melden sich mit ihren Kartendaten an (neues Issue BATCH-LOGIN).** Bisher wurden sie immer abgewiesen. Das neue Feld `batchcredential` kennzeichnet ausdrücklich Konten mit ausgegebenem, wiederverwendbarem Credential. Anonyme temporäre Konten und nicht verifizierte Schnellregistrierungen bleiben ausgeschlossen, Ablauf und Restriktion wirken unverändert. Das Upgrade kennzeichnet vorhandene, nicht konvertierte Zugangslisten-Mitglieder; eine Konvertierung entfernt die Kennzeichnung.
+- **Neue Einstellung** `recoverylifetime` (Gültigkeit eines reaktivierten Kontos, Vorgabe 7 Tage).
+- Datenschutz-Provider um `batchcredential` und die neue Präferenz `auth_flexaccess_pendingcredential` ergänzt.
+- Reifegrad `MATURITY_STABLE`, Version `2026092201`, Release `1.1.0`. Abhängigkeit `enrol_flexaccess` ≥ `2026092201`.
+
 ## 1.0.0 — 2026-09-11 — Erste stabile Freigabe
 - **Beschriftung der Registrierung korrigiert.** „Oder für ein dauerhaftes Konto registrieren" war irreführend, wenn die Registrierung die einzige Option ist — das „Oder" klingt, als wäre zuvor etwas anderes angeboten worden. Die Schaltfläche heißt jetzt „Für ein dauerhaftes Konto registrieren"; die Alternative wird durch eine Zeile darüber eingeleitet, und zwar nur dann, wenn tatsächlich ein weiterer Zugangsweg offensteht.
 - Der ungenutzte String `accessorregister` wurde entfernt.

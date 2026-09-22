@@ -78,6 +78,13 @@ if ($ADMIN->fulltree) {
         DAYSECS
     ));
 
+    $settings->add(new admin_setting_configduration(
+        'auth_flexaccess/recoverylifetime',
+        get_string('settingrecoverylifetime', 'auth_flexaccess'),
+        get_string('settingrecoverylifetime_desc', 'auth_flexaccess'),
+        WEEKSECS
+    ));
+
     $settings->add(new admin_setting_heading(
         'auth_flexaccess/ratelimit',
         get_string('settingsratelimit', 'auth_flexaccess'),

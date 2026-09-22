@@ -94,6 +94,7 @@ final class account_service {
      * @param int|null $sourcecourseid Course the access originated from.
      * @param int|null $sourcecmid Course module the access originated from.
      * @param int|null $now Current time.
+     * @param bool $batchcredential Whether the account holds an issued, reusable credential (access list).
      * @return int New account row id.
      */
     public static function create_temporary(
@@ -102,7 +103,8 @@ final class account_service {
         ?int $timeexpires = null,
         ?int $sourcecourseid = null,
         ?int $sourcecmid = null,
-        ?int $now = null
+        ?int $now = null,
+        bool $batchcredential = false
     ): int {
         global $DB;
         $now = $now ?? time();
@@ -117,6 +119,7 @@ final class account_service {
             'timeexpires' => $timeexpires,
             'timeactivated' => null,
             'timemodified' => $now,
+            'batchcredential' => $batchcredential ? 1 : 0,
         ]);
     }
 
@@ -191,33 +194,37 @@ final class account_service {
     /**
      * Convert a temporary account to a persistent, authenticated account.
      *
+     * The complete target state (ACTIVE, no expiry, confirmed and unsuspended Moodle user, restriction
+     * role lifted) is written by {@see lifecycle::transition_to_active_authenticated()}, so no caller
+     * has to repair individual core fields afterwards. Enrolment and its duration stay untouched.
+     *
      * @param int $userid Moodle user id.
      * @param int|null $now Current time.
      * @return bool
      */
     public static function convert_to_authenticated(int $userid, ?int $now = null): bool {
         global $DB;
-        $now = $now ?? time();
         $account = $DB->get_record(self::TABLE, ['userid' => $userid]);
         if (!$account || $account->accounttype !== account_type::TEMPORARY_USER) {
             return false;
         }
-        $account->accounttype = account_type::AUTHENTICATED_USER;
-        $account->accountstate = account_state::ACTIVE;
-        $account->timeactivated = $now;
-        $account->timeexpires = null;
-        $account->timemodified = $now;
-        $DB->update_record(self::TABLE, $account);
+        return lifecycle::transition_to_active_authenticated($userid, $now);
+    }
 
-        // Confirm the Moodle user; enrolment and its duration are intentionally left untouched.
-        $DB->set_field('user', 'confirmed', 1, ['id' => $userid]);
-        // The account is now a full identity, so lift the anonymous-visitor site restrictions.
-        // enrol_flexaccess owns that role; guard the call so auth does not hard-depend on enrol
-        // (enrol depends on auth, not the reverse) and unit tests can run auth in isolation.
-        if (class_exists('\enrol_flexaccess\local\participant_role')) {
-            \enrol_flexaccess\local\participant_role::unrestrict($userid);
+    /**
+     * Convert a temporary account to a permanent identity that still needs its credential.
+     *
+     * @param int $userid Moodle user id.
+     * @param int|null $now Current time.
+     * @return bool
+     */
+    public static function convert_to_pending_credential(int $userid, ?int $now = null): bool {
+        global $DB;
+        $account = $DB->get_record(self::TABLE, ['userid' => $userid]);
+        if (!$account || $account->accounttype !== account_type::TEMPORARY_USER) {
+            return false;
         }
-        return true;
+        return lifecycle::transition_to_pending_credential($userid, $now);
     }
 
     /**
@@ -252,7 +259,8 @@ final class account_service {
      * Expire due temporary accounts and suspend their Moodle users.
      *
      * Idempotent and batched: only temporary accounts with a passed expiry that are not already
-     * expired are processed. Enrolment is not touched here (owned by enrol_flexaccess).
+     * expired are processed. The transition also ends running sessions of the now-locked user.
+     * Enrolment is not touched here (owned by enrol_flexaccess).
      *
      * @param int|null $now Current time.
      * @param int $limit Maximum number of accounts to process in one run.
@@ -270,11 +278,9 @@ final class account_service {
         $records = $DB->get_records_select(self::TABLE, $select, $params, 'timeexpires ASC', '*', 0, max(0, $limit));
         $count = 0;
         foreach ($records as $account) {
-            $account->accountstate = account_state::EXPIRED;
-            $account->timemodified = $now;
-            $DB->update_record(self::TABLE, $account);
-            $DB->set_field('user', 'suspended', 1, ['id' => $account->userid]);
-            $count++;
+            if (lifecycle::transition_to_expired((int) $account->userid, $now)) {
+                $count++;
+            }
         }
         return $count;
     }

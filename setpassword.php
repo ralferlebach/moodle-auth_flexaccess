@@ -49,9 +49,11 @@ if ($form->is_cancelled()) {
     echo $OUTPUT->header();
     echo $OUTPUT->heading(get_string('setpasswordtitle', 'auth_flexaccess'));
     if ($userid !== null) {
-        $user = $DB->get_record('user', ['id' => $userid], '*', MUST_EXIST);
-        complete_user_login($user);
-        redirect($homeurl, get_string('setpasswordsuccess', 'auth_flexaccess'));
+        // The account has just been finalised to ACTIVE; the guard re-checks that before the session.
+        if (\auth_flexaccess\api::complete_login($userid, \auth_flexaccess\local\login_guard::CHANNEL_PASSWORD)) {
+            redirect($homeurl, get_string('setpasswordsuccess', 'auth_flexaccess'));
+        }
+        redirect($loginurl, get_string('setpasswordsuccess', 'auth_flexaccess'));
     }
     echo $OUTPUT->notification(get_string('setpasswordinvalid', 'auth_flexaccess'), 'error');
     echo $OUTPUT->continue_button($loginurl);

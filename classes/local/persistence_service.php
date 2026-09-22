@@ -41,6 +41,8 @@ final class persistence_service {
      * @param string $lastname Optional replacement last name.
      * @param int $now Current time.
      * @param callable|null $inside Optional callback executed within the transaction after conversion.
+     * @param string $targetstate Lifecycle state to finalise into: ACTIVE (the person holds a credential)
+     *     or PENDING_CREDENTIAL (administrative conversion, the credential is still to be set).
      * @return string 'ok' on success, or 'notapplicable'|'invalidemail'|'emailtaken'.
      */
     public static function finalise_identity(
@@ -49,7 +51,8 @@ final class persistence_service {
         string $firstname,
         string $lastname,
         int $now,
-        ?callable $inside = null
+        ?callable $inside = null,
+        string $targetstate = account_state::ACTIVE
     ): string {
         global $CFG, $DB;
         require_once($CFG->dirroot . '/user/lib.php');
@@ -91,7 +94,11 @@ final class persistence_service {
                 } else {
                     user_update_user($user, false, true);
                 }
-                account_service::convert_to_authenticated($userid, $now);
+                if ($targetstate === account_state::PENDING_CREDENTIAL) {
+                    account_service::convert_to_pending_credential($userid, $now);
+                } else {
+                    account_service::convert_to_authenticated($userid, $now);
+                }
                 if ($inside !== null) {
                     $inside();
                 }
@@ -182,7 +189,6 @@ final class persistence_service {
             static function () use ($userid, $password): void {
                 global $DB;
                 $user = $DB->get_record('user', ['id' => $userid], '*', MUST_EXIST);
-                $user->suspended = 0;
                 update_internal_user_password($user, $password);
             }
         );
@@ -380,21 +386,13 @@ final class persistence_service {
                 '',
                 $now,
                 static function () use ($userid, $token, $now): void {
-                    global $DB;
                     // Consume the single-use token inside the transaction. If it was already consumed
                     // by a concurrent request, abort so the whole conversion rolls back.
                     if (token_service::consume($token, 'persistence', $now, $userid) === null) {
                         throw new \moodle_exception('error');
                     }
-                    $user = $DB->get_record('user', ['id' => $userid], '*', MUST_EXIST);
-                    if ((int) $user->suspended === 1) {
-                        $user->suspended = 0;
-                        if (method_exists(\core\user::class, 'update_user')) {
-                            \core\user::update_user($user, false, true);
-                        } else {
-                            user_update_user($user, false, true);
-                        }
-                    }
+                    // The unsuspended/unrestricted target state is written by the lifecycle
+                    // transition inside finalise_identity(); nothing to repair here.
                     unset_user_preference('auth_flexaccess_pendingemail', $userid);
                     unset_user_preference('auth_flexaccess_followupsent', $userid);
                 }

@@ -269,6 +269,12 @@ final class mail_worker {
             return ['', '', ''];
         }
 
+        // A login link is only minted for an account that may log in at delivery time: an account
+        // suspended or expired while the job waited never receives a usable link.
+        if ($purpose === 'magiclogin' && !login_guard::is_eligible($userid, login_guard::CHANNEL_MAGIC, $now)) {
+            return ['', '', ''];
+        }
+
         // Re-cap the lifetime against the account's current remaining validity (SEC-03).
         $account = \auth_flexaccess\api::get_account($userid);
         if ($account && $account->timeexpires !== null) {

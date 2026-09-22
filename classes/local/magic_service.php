@@ -92,12 +92,10 @@ final class magic_service {
             IGNORE_MULTIPLE
         );
         if ($user) {
+            // Same decision as the password login: a suspended, expired or credential-less account
+            // never receives a usable link. The response stays identical, so nothing is enumerable.
             $account = \auth_flexaccess\api::get_account((int) $user->id);
-            if (
-                $account
-                    && $account->accounttype === account_type::AUTHENTICATED_USER
-                    && $account->accountstate === account_state::ACTIVE
-            ) {
+            if ($account && login_guard::is_eligible((int) $user->id, login_guard::CHANNEL_MAGIC, $now)) {
                 $ttl = self::MAGIC_LOGIN_TTL;
                 if ($account->timeexpires !== null) {
                     $ttl = min($ttl, max(0, (int) $account->timeexpires - $now));
@@ -121,7 +119,7 @@ final class magic_service {
     /**
      * Consume a magic-login token and return the user id to log in, or null if invalid.
      *
-     * Re-checks the account is still a valid, active authenticated account at consume time.
+     * Re-checks the central login guard at consume time.
      *
      * @param string $token Clear-text magic-login token.
      * @param int|null $now Current time.
@@ -133,12 +131,10 @@ final class magic_service {
         if ($userid === null) {
             return null;
         }
-        $account = \auth_flexaccess\api::get_account($userid);
-        if (
-            !$account
-                || $account->accounttype !== account_type::AUTHENTICATED_USER
-                || $account->accountstate !== account_state::ACTIVE
-        ) {
+        // The token is spent either way: an ineligible account can never be revived by a link.
+        $reason = login_guard::evaluate($userid, login_guard::CHANNEL_MAGIC, $now);
+        if ($reason !== login_guard::OK) {
+            login_guard::log_refusal($userid, login_guard::CHANNEL_MAGIC, $reason);
             return null;
         }
         return $userid;

@@ -22,6 +22,10 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
+defined('MOODLE_INTERNAL') || die();
+
+require_once(__DIR__ . '/upgradelib.php');
+
 /**
  * Upgrade auth_flexaccess.
  *
@@ -86,6 +90,20 @@ function xmldb_auth_flexaccess_upgrade($oldversion) {
             $dbman->add_index($table, $index);
         }
         upgrade_plugin_savepoint(true, 2026081913, 'auth', 'flexaccess');
+    }
+
+    if ($oldversion < 2026092201) {
+        // Temporary access-list accounts hold an issued, reusable credential (their card). Model that
+        // explicitly, so the login guard can allow their password login without opening it to any other
+        // temporary or provisional account.
+        $table = new xmldb_table('auth_flexaccess_account');
+        $field = new xmldb_field('batchcredential', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '0', 'timemodified');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+        // Existing temporary members of access lists are marked from tool_flexaccess' member table.
+        auth_flexaccess_backfill_batchcredential();
+        upgrade_plugin_savepoint(true, 2026092201, 'auth', 'flexaccess');
     }
 
     return true;

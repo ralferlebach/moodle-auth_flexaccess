@@ -87,15 +87,17 @@ if ($form->is_cancelled()) {
         'password' => $data->password,
         'accesspassword' => $data->accesspassword ?? '',
     ], getremoteaddr());
-    if ($result->status === 'granted' || $result->status === 'verificationsent') {
-        $user = $DB->get_record('user', ['id' => $result->userid], '*', MUST_EXIST);
-        complete_user_login($user);
+    $channel = \auth_flexaccess\local\login_guard::CHANNEL_ENTRY;
+    if (
+        ($result->status === 'granted' || $result->status === 'verificationsent')
+            && \auth_flexaccess\api::complete_login((int) $result->userid, $channel)
+    ) {
         $message = $result->status === 'verificationsent'
             ? get_string('registerverificationsent', 'auth_flexaccess')
             : get_string('registersuccess', 'auth_flexaccess');
         redirect($returnurl, $message);
     }
-    $failure = $result->status;
+    $failure = ($result->status === 'granted' || $result->status === 'verificationsent') ? 'loginrefused' : $result->status;
 }
 
 echo $OUTPUT->header();

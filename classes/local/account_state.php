@@ -40,6 +40,11 @@ final class account_state {
     public const EXPIRED = 'expired';
     /** Suspended: an account blocked from access. */
     public const SUSPENDED = 'suspended';
+    /**
+     * Pending credential: a permanent identity (administratively converted) that has no usable
+     * credential yet. It becomes ACTIVE only once the user has set their password.
+     */
+    public const PENDING_CREDENTIAL = 'pendingcredential';
 
     /**
      * All account states.
@@ -47,6 +52,6 @@ final class account_state {
      * @return array<string>
      */
     public static function values(): array {
-        return [self::EPHEMERAL, self::PROVISIONAL, self::ACTIVE, self::EXPIRED, self::SUSPENDED];
+        return [self::EPHEMERAL, self::PROVISIONAL, self::ACTIVE, self::EXPIRED, self::SUSPENDED, self::PENDING_CREDENTIAL];
     }
 }

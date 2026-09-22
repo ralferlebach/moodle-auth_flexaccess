@@ -45,23 +45,36 @@ class auth_plugin_flexaccess extends auth_plugin_base {
     }
 
     /**
-     * Validate a password for a FlexAccess user which has been activated.
+     * Validate a password for a FlexAccess user.
+     *
+     * Whether the account may log in at all is decided by the central login guard - the same
+     * decision every other FlexAccess login path uses. An ineligible account (suspended, expired,
+     * pending credential, temporary, ...) is refused even with a correct password; the precise reason
+     * is logged internally, while the login page shows only Moodle's generic failure message.
      *
      * @param string $username Username.
      * @param string $password Password.
      * @return bool
      */
     public function user_login($username, $password): bool {
-        global $DB;
-        $user = $DB->get_record('user', ['username' => $username, 'auth' => 'flexaccess', 'deleted' => 0]);
+        global $CFG, $DB;
+        $user = $DB->get_record('user', [
+            'username' => $username,
+            'auth' => 'flexaccess',
+            'deleted' => 0,
+            'mnethostid' => $CFG->mnet_localhost_id,
+        ]);
         if (!$user || empty($password)) {
             return false;
         }
-        $account = $DB->get_record('auth_flexaccess_account', ['userid' => $user->id]);
-        if (
-            !$account || $account->accounttype !== \auth_flexaccess\local\account_type::AUTHENTICATED_USER
-                || $account->accountstate !== \auth_flexaccess\local\account_state::ACTIVE
-        ) {
+        $channel = \auth_flexaccess\local\login_guard::CHANNEL_PASSWORD;
+        $reason = \auth_flexaccess\local\login_guard::evaluate((int) $user->id, $channel);
+        if ($reason !== \auth_flexaccess\local\login_guard::OK) {
+            // Only a correct password makes the refusal meaningful to log; a wrong one is an ordinary
+            // failed attempt that core already records.
+            if (validate_internal_user_password($user, $password)) {
+                \auth_flexaccess\local\login_guard::log_refusal((int) $user->id, $channel, $reason);
+            }
             return false;
         }
         return validate_internal_user_password($user, $password);

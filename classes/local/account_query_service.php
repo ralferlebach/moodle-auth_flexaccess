@@ -130,6 +130,7 @@ final class account_query_service {
      * @param int $page Zero-based page index.
      * @param int $perpage Page size.
      * @param string|null $reference Optional exact reference-number match.
+     * @param string|null $condition Optional recovery filter: usersuspended, enrolsuspended, verificationpending.
      * @return array<\stdClass>
      */
     public static function search_accounts(
@@ -138,12 +139,13 @@ final class account_query_service {
         ?string $state = null,
         int $page = 0,
         int $perpage = 50,
-        ?string $reference = null
+        ?string $reference = null,
+        ?string $condition = null
     ): array {
         global $DB;
-        [$where, $params] = self::build_account_filter($query, $type, $state, $reference);
+        [$where, $params] = self::build_account_filter($query, $type, $state, $reference, $condition);
         $sql = "SELECT a.id, a.userid, a.accounttype, a.accountstate, a.timecreated, a.timeexpires,
-                       u.firstname, u.lastname, u.email
+                       a.referencecode, a.sourcecourseid, u.firstname, u.lastname, u.email, u.suspended
                   FROM {auth_flexaccess_account} a
                   JOIN {user} u ON u.id = a.userid
                  WHERE $where
@@ -158,16 +160,18 @@ final class account_query_service {
      * @param string|null $type Optional account-type filter.
      * @param string|null $state Optional account-state filter.
      * @param string|null $reference Optional exact reference-number match.
+     * @param string|null $condition Optional recovery filter (see search_accounts()).
      * @return int
      */
     public static function count_accounts(
         string $query = '',
         ?string $type = null,
         ?string $state = null,
-        ?string $reference = null
+        ?string $reference = null,
+        ?string $condition = null
     ): int {
         global $DB;
-        [$where, $params] = self::build_account_filter($query, $type, $state, $reference);
+        [$where, $params] = self::build_account_filter($query, $type, $state, $reference, $condition);
         $sql = "SELECT COUNT(a.id)
                   FROM {auth_flexaccess_account} a
                   JOIN {user} u ON u.id = a.userid
@@ -182,13 +186,15 @@ final class account_query_service {
      * @param string|null $type Optional account-type filter.
      * @param string|null $state Optional account-state filter.
      * @param string|null $reference Optional exact reference-number match.
+     * @param string|null $condition Optional recovery filter (see search_accounts()).
      * @return array{0: string, 1: array}
      */
     private static function build_account_filter(
         string $query,
         ?string $type,
         ?string $state,
-        ?string $reference = null
+        ?string $reference = null,
+        ?string $condition = null
     ): array {
         global $DB;
         $where = ['u.deleted = 0'];
@@ -200,6 +206,19 @@ final class account_query_service {
         if ($state !== null && in_array($state, account_state::values(), true)) {
             $where[] = 'a.accountstate = :state';
             $params['state'] = $state;
+        }
+        if ($condition === 'usersuspended') {
+            $where[] = 'u.suspended = 1';
+        } else if ($condition === 'enrolsuspended') {
+            $where[] = "EXISTS (SELECT 1 FROM {user_enrolments} fue
+                                  JOIN {enrol} fe ON fe.id = fue.enrolid AND fe.enrol = 'flexaccess'
+                                 WHERE fue.userid = a.userid AND fue.status = :suspendedstatus)";
+            $params['suspendedstatus'] = ENROL_USER_SUSPENDED;
+        } else if ($condition === 'verificationpending') {
+            $where[] = "a.accounttype = :vtype AND EXISTS (SELECT 1 FROM {user_preferences} fp
+                                  WHERE fp.userid = a.userid AND fp.name = :vpref)";
+            $params['vtype'] = account_type::TEMPORARY_USER;
+            $params['vpref'] = 'auth_flexaccess_pendingemail';
         }
         $query = trim($query);
         $reference = $reference !== null ? trim($reference) : '';
@@ -222,5 +241,43 @@ final class account_query_service {
             $where[] = '(' . implode(' OR ', $clauses) . ')';
         }
         return [implode(' AND ', $where), $params];
+    }
+
+    /**
+     * Account rows (joined with the core user) for the given users.
+     *
+     * @param int[] $userids User ids.
+     * @return array<int, \stdClass> Keyed by user id.
+     */
+    public static function get_accounts(array $userids): array {
+        global $DB;
+        $userids = array_values(array_filter(array_map('intval', $userids)));
+        if (!$userids) {
+            return [];
+        }
+        [$insql, $params] = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED);
+        $sql = "SELECT a.userid, a.id, a.accounttype, a.accountstate, a.timecreated, a.timeexpires,
+                       a.referencecode, a.sourcecourseid, u.firstname, u.lastname, u.email, u.suspended
+                  FROM {auth_flexaccess_account} a
+                  JOIN {user} u ON u.id = a.userid AND u.deleted = 0
+                 WHERE a.userid $insql";
+        return $DB->get_records_sql($sql, $params);
+    }
+
+    /**
+     * Temporary accounts that originated in a course (for re-enrolment after an unenrol).
+     *
+     * @param int $courseid Course id.
+     * @return int[] User ids.
+     */
+    public static function get_source_course_userids(int $courseid): array {
+        global $DB;
+        return array_map('intval', $DB->get_fieldset_sql(
+            "SELECT a.userid
+               FROM {auth_flexaccess_account} a
+               JOIN {user} u ON u.id = a.userid AND u.deleted = 0
+              WHERE a.sourcecourseid = :courseid",
+            ['courseid' => $courseid]
+        ));
     }
 }

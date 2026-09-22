@@ -58,6 +58,12 @@ final class api {
      */
     private const SET_PASSWORD_TTL = 259200;
 
+    /** Maximum administrative set-password resends per account and hour. */
+    private const SET_PASSWORD_RESEND_MAX = 3;
+
+    /** Default lifetime of a recovered temporary account, in seconds (7 days). */
+    private const RECOVERY_LIFETIME = 604800;
+
     /**
      * Sliding window for magic-login request rate limiting, in seconds.
      */
@@ -682,7 +688,8 @@ final class api {
         if ($permanent) {
             account_service::create_authenticated($userid, $reference, $now);
         } else {
-            account_service::create_temporary($userid, $reference, $timeexpires, null, null, $now);
+            // The card credential of a temporary access list is meant to be reused for login.
+            account_service::create_temporary($userid, $reference, $timeexpires, null, null, $now, true);
         }
         return $userid;
     }
@@ -812,6 +819,7 @@ final class api {
      * @param int $page Zero-based page index.
      * @param int $perpage Page size.
      * @param string|null $reference Optional exact reference-number match.
+     * @param string|null $condition Optional recovery filter: usersuspended, enrolsuspended, verificationpending.
      * @return array<\stdClass>
      */
     public static function search_accounts(
@@ -820,9 +828,30 @@ final class api {
         ?string $state = null,
         int $page = 0,
         int $perpage = 50,
-        ?string $reference = null
+        ?string $reference = null,
+        ?string $condition = null
     ): array {
-        return local\account_query_service::search_accounts($query, $type, $state, $page, $perpage, $reference);
+        return local\account_query_service::search_accounts($query, $type, $state, $page, $perpage, $reference, $condition);
+    }
+
+    /**
+     * Account rows (joined with the core user) for the given users, keyed by user id.
+     *
+     * @param int[] $userids User ids.
+     * @return array<int, \stdClass>
+     */
+    public static function get_accounts(array $userids): array {
+        return local\account_query_service::get_accounts($userids);
+    }
+
+    /**
+     * FlexAccess accounts that originated in a course.
+     *
+     * @param int $courseid Course id.
+     * @return int[] User ids.
+     */
+    public static function get_source_course_userids(int $courseid): array {
+        return local\account_query_service::get_source_course_userids($courseid);
     }
 
     /**
@@ -832,20 +861,27 @@ final class api {
      * @param string|null $type Optional account-type filter.
      * @param string|null $state Optional account-state filter.
      * @param string|null $reference Optional exact reference-number match.
+     * @param string|null $condition Optional recovery filter (see search_accounts()).
      * @return int
      */
     public static function count_accounts(
         string $query = '',
         ?string $type = null,
         ?string $state = null,
-        ?string $reference = null
+        ?string $reference = null,
+        ?string $condition = null
     ): int {
-        return local\account_query_service::count_accounts($query, $type, $state, $reference);
+        return local\account_query_service::count_accounts($query, $type, $state, $reference, $condition);
     }
 
 
     /**
      * Convert a temporary account administratively and mail the user a set-password link.
+     *
+     * The identity becomes permanent right away (real e-mail, no expiry), but the account is NOT
+     * reported as ACTIVE: it stays in PENDING_CREDENTIAL until the user has actually set a password
+     * through the mailed link. Until then no password or magic-link session is possible, and the
+     * account view shows where the set-password funnel stands (queued, sent, failed, expired).
      *
      * Capability checks belong to the caller. Requires a real email because the temporary identity
      * carries only a non-deliverable placeholder address.
@@ -865,25 +901,119 @@ final class api {
         ?int $now = null
     ): string {
         $now = $now ?? time();
-        $status = self::finalise_identity($userid, $email, $firstname, $lastname, $now);
+        $status = local\persistence_service::finalise_identity(
+            $userid,
+            $email,
+            $firstname,
+            $lastname,
+            $now,
+            null,
+            account_state::PENDING_CREDENTIAL
+        );
         if ($status !== 'ok') {
             return $status;
         }
         // Queue a set-password invitation through the FlexAccess mail queue so it is subject to the
         // same rate limit as every other FlexAccess mail (the token is issued at delivery, never
-        // persisted). The account is now permanent, so the link is not capped by an expiry.
+        // persisted). The welcome mail with the username follows once the credential is set.
         self::queue_token_mail(
             $userid,
-            $email,
+            \core_text::strtolower(trim($email)),
             mail_kind::SET_PASSWORD,
             'setpassword',
             self::SET_PASSWORD_TTL,
             null,
             $now
         );
-        // The user has never seen the generated username; tell them how to log in from now on.
-        local\persistence_service::send_welcome($userid, $now);
         return 'converted';
+    }
+
+    /**
+     * Send a fresh set-password link to an account that is still waiting for its credential.
+     *
+     * Rate limited per account. The new link is minted at delivery time, and the worker revokes every
+     * older unused set-password token of the user at that moment, so only the newest link works.
+     * A link that is already queued and not yet sent is reused instead of stacking a second one.
+     *
+     * @param int $userid User id.
+     * @param int|null $now Current time.
+     * @return string 'queued', 'alreadyqueued', 'ratelimited' or 'notapplicable'.
+     */
+    public static function resend_set_password(int $userid, ?int $now = null): string {
+        global $DB;
+        $now = $now ?? time();
+        $account = self::get_account($userid);
+        if (!$account || $account->accountstate !== account_state::PENDING_CREDENTIAL) {
+            return 'notapplicable';
+        }
+        $user = $DB->get_record('user', ['id' => $userid, 'deleted' => 0], 'id, email');
+        if (!$user || !validate_email((string) $user->email) || str_ends_with((string) $user->email, '@flexaccess.invalid')) {
+            return 'notapplicable';
+        }
+        $queued = $DB->record_exists_select(
+            self::QUEUE_TABLE,
+            'userid = :userid AND mailtype = :mailtype AND status = :status',
+            ['userid' => $userid, 'mailtype' => mail_kind::SET_PASSWORD, 'status' => 'queued']
+        );
+        if ($queued) {
+            return 'alreadyqueued';
+        }
+        if (local\rate_limiter::hit('setpw_resend', (string) $userid, self::SET_PASSWORD_RESEND_MAX, HOURSECS, $now)) {
+            return 'ratelimited';
+        }
+        // A pending account must stay deliverable: Moodle silently skips mail to suspended users.
+        local\lifecycle::normalise($userid);
+        self::queue_token_mail(
+            $userid,
+            (string) $user->email,
+            mail_kind::SET_PASSWORD,
+            'setpassword',
+            self::SET_PASSWORD_TTL,
+            null,
+            $now
+        );
+        return 'queued';
+    }
+
+    /**
+     * Where the set-password funnel of an account stands.
+     *
+     * @param int $userid User id.
+     * @param int|null $now Current time.
+     * @return string 'none' (not an administratively converted account), 'queued', 'sent', 'failed',
+     *     'expired' (link lapsed or never delivered and gone) or 'completed'.
+     */
+    public static function credential_status(int $userid, ?int $now = null): string {
+        global $DB;
+        $now = $now ?? time();
+        $account = self::get_account($userid);
+        if (!$account) {
+            return 'none';
+        }
+        $jobs = $DB->get_records(
+            self::QUEUE_TABLE,
+            ['userid' => $userid, 'mailtype' => mail_kind::SET_PASSWORD],
+            'timecreated DESC, id DESC',
+            'id, status',
+            0,
+            1
+        );
+        $job = $jobs ? reset($jobs) : null;
+        if ($account->accountstate !== account_state::PENDING_CREDENTIAL) {
+            return $job ? 'completed' : 'none';
+        }
+        if ($job && in_array($job->status, ['queued', 'ackpending'], true)) {
+            return 'queued';
+        }
+        if ($job && in_array($job->status, ['failed', 'ackfailed'], true)) {
+            return 'failed';
+        }
+        $live = $DB->record_exists_select(
+            'auth_flexaccess_token',
+            'userid = :userid AND purpose = :purpose AND timeused IS NULL AND timeexpires > :now',
+            ['userid' => $userid, 'purpose' => 'setpassword', 'now' => $now]
+        );
+        return $live ? 'sent' : 'expired';
     }
 
     /**
@@ -899,7 +1029,12 @@ final class api {
     }
 
     /**
-     * Consume a set-password token and store the chosen password.
+     * Consume a set-password token, store the chosen password and finalise the account atomically.
+     *
+     * Token consumption, password storage and the transition PENDING_CREDENTIAL -> ACTIVE (Moodle user
+     * unsuspended, restriction role lifted, pending marker cleared) happen in one transaction, so a
+     * failure leaves the token unconsumed and the account pending. The welcome mail naming the
+     * username follows the successful completion.
      *
      * @param string $token Set-password token.
      * @param string $password Clear-text password chosen by the user.
@@ -909,12 +1044,287 @@ final class api {
     public static function complete_set_password(string $token, string $password, ?int $now = null): ?int {
         global $CFG, $DB;
         require_once($CFG->dirroot . '/user/lib.php');
-        $userid = token_service::consume($token, 'setpassword', $now, null);
-        if ($userid === null) {
+        $now = $now ?? time();
+        $record = token_service::verify($token, 'setpassword', $now);
+        if ($record === null) {
             return null;
         }
-        $user = $DB->get_record('user', ['id' => $userid], '*', MUST_EXIST);
-        update_internal_user_password($user, $password);
-        return (int) $userid;
+        $userid = (int) $record->userid;
+        $lock = \core\lock\lock_config::get_lock_factory('auth_flexaccess_conversion')->get_lock('user_' . $userid, 10);
+        if (!$lock) {
+            return null;
+        }
+        try {
+            $waspending = false;
+            $transaction = $DB->start_delegated_transaction();
+            try {
+                if (token_service::consume($token, 'setpassword', $now, $userid) === null) {
+                    $transaction->allow_commit();
+                    return null;
+                }
+                // Read the state before storing the password: storing it fires user_password_updated,
+                // whose observer may already finalise the account.
+                $account = self::get_account($userid);
+                $waspending = $account && $account->accountstate === account_state::PENDING_CREDENTIAL;
+                $user = $DB->get_record('user', ['id' => $userid, 'deleted' => 0], '*', MUST_EXIST);
+                update_internal_user_password($user, $password);
+                if ($waspending) {
+                    local\lifecycle::transition_to_active_authenticated($userid, $now);
+                }
+                $transaction->allow_commit();
+            } catch (\Throwable $e) {
+                $transaction->rollback($e);
+            }
+        } finally {
+            $lock->release();
+        }
+        if ($waspending) {
+            local\persistence_service::send_welcome($userid, $now);
+        }
+        return $userid;
+    }
+
+    /**
+     * Finalise an account that was waiting for its credential once a password was set elsewhere.
+     *
+     * Called from the password-updated observer: Moodle's own "forgotten password" flow proves control
+     * of the (real) address and sets a credential, so the account must not stay pending - otherwise
+     * core would log the user in while FlexAccess still considers the account unusable.
+     *
+     * @param int $userid User id.
+     * @param int|null $now Current time.
+     * @return bool Whether a pending account was finalised.
+     */
+    public static function finalise_pending_credential(int $userid, ?int $now = null): bool {
+        global $DB;
+        $account = self::get_account($userid);
+        if (!$account || $account->accountstate !== account_state::PENDING_CREDENTIAL) {
+            return false;
+        }
+        $hash = (string) $DB->get_field('user', 'password', ['id' => $userid]);
+        if ($hash === '' || $hash === AUTH_PASSWORD_NOT_CACHED) {
+            return false;
+        }
+        return local\lifecycle::transition_to_active_authenticated($userid, $now);
+    }
+
+    /**
+     * Decide whether a user may obtain a FlexAccess session through a channel.
+     *
+     * @param int $userid User id.
+     * @param string $channel One of the login_guard CHANNEL_* constants.
+     * @param int|null $now Current time.
+     * @return string Empty string when eligible, otherwise the internal refusal reason.
+     */
+    public static function login_eligibility(
+        int $userid,
+        string $channel = local\login_guard::CHANNEL_PASSWORD,
+        ?int $now = null
+    ): string {
+        return local\login_guard::evaluate($userid, $channel, $now);
+    }
+
+    /**
+     * Create a session for a FlexAccess account through the central login guard.
+     *
+     * The only sanctioned way for FlexAccess pages (in any sibling plugin) to log an account in.
+     *
+     * @param int $userid User id.
+     * @param string $channel One of the login_guard CHANNEL_* constants.
+     * @return bool Whether the session was created.
+     */
+    public static function complete_login(int $userid, string $channel): bool {
+        return local\login_guard::complete_login($userid, $channel);
+    }
+
+    /**
+     * Start a guest session as the explicit, separate alternative a course offers.
+     *
+     * @param int $courseid Course id.
+     * @return bool Whether the guest session was created.
+     */
+    public static function complete_explicit_guest_login(int $courseid): bool {
+        return local\login_guard::complete_explicit_guest_login($courseid);
+    }
+
+    /**
+     * Read-only lifecycle diagnosis across account metadata, core user and restriction role.
+     *
+     * @param int|null $now Current time.
+     * @param int $limit Maximum number of mismatches.
+     * @param int[]|null $userids Optional restriction to these users.
+     * @return \stdClass[] Mismatch records (userid, code, accounttype, accountstate, suspended, restricted).
+     */
+    public static function find_state_mismatches(?int $now = null, int $limit = 500, ?array $userids = null): array {
+        return local\lifecycle::find_state_mismatches($now, $limit, $userids);
+    }
+
+    /**
+     * Explicitly repair one deterministic lifecycle mismatch.
+     *
+     * @param int $userid User id.
+     * @param string $code Mismatch code.
+     * @return bool Whether the mismatch was repaired.
+     */
+    public static function repair_state_mismatch(int $userid, string $code): bool {
+        return local\lifecycle::repair($userid, $code);
+    }
+
+    /**
+     * Whether a user still has an open e-mail verification (persistence requested, not confirmed).
+     *
+     * @param int $userid User id.
+     * @return bool
+     */
+    public static function verification_pending(int $userid): bool {
+        $pending = get_user_preferences('auth_flexaccess_pendingemail', null, $userid);
+        return $pending !== null && $pending !== '' && account_service::is_temporary($userid);
+    }
+
+    /**
+     * Resend the e-mail verification link of a still-live provisional account.
+     *
+     * @param int $userid User id.
+     * @param int|null $now Current time.
+     * @return string 'queued' or 'notapplicable'.
+     */
+    public static function resend_verification(int $userid, ?int $now = null): string {
+        $now = $now ?? time();
+        if (!self::verification_pending($userid) || !account_service::is_convertible($userid, $now)) {
+            return 'notapplicable';
+        }
+        $pending = (string) get_user_preferences('auth_flexaccess_pendingemail', '', $userid);
+        $account = self::get_account($userid);
+        $ttl = token_service::DEFAULT_TTL;
+        if ($account && $account->timeexpires !== null) {
+            $ttl = min($ttl, max(1, (int) $account->timeexpires - $now));
+        }
+        self::queue_token_mail($userid, $pending, mail_kind::VERIFICATION, 'persistence', $ttl, null, $now);
+        return 'queued';
+    }
+
+    /**
+     * Recover a frozen FlexAccess account according to the lifecycle rules.
+     *
+     * - Expired temporary account: back to a time-limited live state (PROVISIONAL when a verification
+     *   was pending, then with a new verification link; EPHEMERAL otherwise). It never becomes ACTIVE
+     *   here - only a completed verification does that.
+     * - Authenticated ACTIVE account with a contradicting suspension/restriction: normalised.
+     * - PENDING_CREDENTIAL account: normalised and a fresh set-password link is sent.
+     * Anything else is reported as not eligible or as already consistent (skipped).
+     *
+     * @param int $userid User id.
+     * @param int|null $lifetime Lifetime of a recovered temporary account; null reads the setting.
+     * @param int|null $now Current time.
+     * @return \stdClass ->outcome (recovered|skipped|noteligible), ->oldstate, ->newstate, ->action.
+     */
+    public static function recover_account(int $userid, ?int $lifetime = null, ?int $now = null): \stdClass {
+        $now = $now ?? time();
+        $account = self::get_account($userid);
+        if (!$account) {
+            return (object) ['outcome' => 'noteligible', 'oldstate' => '', 'newstate' => '', 'action' => 'noaccount'];
+        }
+        $old = (string) $account->accountstate;
+        $result = (object) ['outcome' => 'skipped', 'oldstate' => $old, 'newstate' => $old, 'action' => ''];
+        $lifetime = $lifetime ?? self::recovery_lifetime();
+
+        if ($account->accounttype === account_type::TEMPORARY_USER) {
+            $lapsed = $old === account_state::EXPIRED
+                || (!empty($account->timeexpires) && (int) $account->timeexpires <= $now);
+            if ($old === account_state::SUSPENDED) {
+                $result->outcome = 'noteligible';
+                $result->action = 'suspendedbyadmin';
+                return $result;
+            }
+            if ($lapsed) {
+                $result->newstate = (string) local\lifecycle::transition_to_recovered_temporary($userid, $lifetime, $now);
+                $result->outcome = 'recovered';
+                $result->action = 'temporaryrevived';
+                if ($result->newstate === account_state::PROVISIONAL) {
+                    self::resend_verification($userid, $now);
+                    $result->action = 'verificationresent';
+                }
+                return $result;
+            }
+            if (local\lifecycle::find_state_mismatches($now, 10, [$userid])) {
+                local\lifecycle::normalise($userid);
+                $result->outcome = 'recovered';
+                $result->action = 'normalised';
+            }
+            return $result;
+        }
+        if ($old === account_state::PENDING_CREDENTIAL) {
+            local\lifecycle::normalise($userid);
+            $sent = self::resend_set_password($userid, $now);
+            $result->outcome = in_array($sent, ['queued', 'alreadyqueued'], true) ? 'recovered' : 'skipped';
+            $result->action = 'setpassword' . $sent;
+            return $result;
+        }
+        if ($old === account_state::ACTIVE) {
+            if (local\lifecycle::find_state_mismatches($now, 10, [$userid])) {
+                local\lifecycle::normalise($userid);
+                $result->outcome = 'recovered';
+                $result->action = 'normalised';
+            }
+            return $result;
+        }
+        $result->outcome = 'noteligible';
+        $result->action = 'locked';
+        return $result;
+    }
+
+    /**
+     * Lifetime granted to a recovered temporary account, in seconds.
+     *
+     * @return int
+     */
+    public static function recovery_lifetime(): int {
+        return self::config_int('recoverylifetime', self::RECOVERY_LIFETIME);
+    }
+
+    /**
+     * Mail-funnel figures for the health view.
+     *
+     * @param int|null $now Current time.
+     * @return array ->queued, ->failed, ->oldestqueuedage (seconds, 0 when none), ->failedfunnel
+     *     (failed verification or set-password mails, i.e. users stuck in an unfinishable journey).
+     */
+    public static function mail_funnel_stats(?int $now = null): array {
+        global $DB;
+        $now = $now ?? time();
+        $queued = $DB->count_records_select(self::QUEUE_TABLE, "status IN ('queued', 'ackpending')");
+        $failed = $DB->count_records_select(self::QUEUE_TABLE, "status IN ('failed', 'ackfailed')");
+        $oldest = (int) $DB->get_field_sql(
+            "SELECT MIN(timecreated) FROM {" . self::QUEUE_TABLE . "} WHERE status = :status",
+            ['status' => 'queued']
+        );
+        [$insql, $params] = $DB->get_in_or_equal([mail_kind::VERIFICATION, mail_kind::SET_PASSWORD], SQL_PARAMS_NAMED);
+        $funnel = $DB->count_records_select(self::QUEUE_TABLE, "status IN ('failed', 'ackfailed') AND mailtype $insql", $params);
+        return [
+            'queued' => (int) $queued,
+            'failed' => (int) $failed,
+            'oldestqueuedage' => $oldest > 0 ? max(0, $now - $oldest) : 0,
+            'failedfunnel' => (int) $funnel,
+        ];
+    }
+
+    /**
+     * Reconcile FlexAccess state after an external identity merge (e.g. LTI account linking).
+     *
+     * See {@see local\merge_service::reconcile()} for the contract.
+     *
+     * @param int $sourceuserid The (temporary) identity that is merged away.
+     * @param int $targetuserid The surviving, durable identity.
+     * @param bool $permanentcourseaccess Whether the merge explicitly establishes permanent course access.
+     * @param int|null $now Current time.
+     * @return \stdClass Result (status, transferred, merged, restrictionlifted, sourcecleaned).
+     */
+    public static function reconcile_external_identity_merge(
+        int $sourceuserid,
+        int $targetuserid,
+        bool $permanentcourseaccess = false,
+        ?int $now = null
+    ): \stdClass {
+        return local\merge_service::reconcile($sourceuserid, $targetuserid, $permanentcourseaccess, $now);
     }
 }

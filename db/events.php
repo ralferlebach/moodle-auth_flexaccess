@@ -15,7 +15,7 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Plugin version definition for auth_flexaccess.
+ * Event observers of auth_flexaccess.
  *
  * @package    auth_flexaccess
  * @copyright  2026 Ralf Erlebach
@@ -24,14 +24,16 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->component = 'auth_flexaccess';
-$plugin->version = 2026092201;
-$plugin->requires = 2024100700; // Moodle 4.5.
-$plugin->supported = [405, 502];
-$plugin->maturity = MATURITY_STABLE;
-$plugin->release = '1.1.0';
-$plugin->dependencies = [
-    // Hard dependency: the access-method policy lives entirely in enrol_flexaccess.
-    // Moodle supports the resulting auth <-> enrol cycle (presence+version check only).
-    'enrol_flexaccess' => 2026092201,
+$observers = [
+    [
+        // A credential set anywhere (e.g. Moodle's forgotten-password flow) finalises a pending account.
+        'eventname' => '\core\event\user_password_updated',
+        'callback' => '\auth_flexaccess\observer::user_password_updated',
+    ],
+    [
+        // Identity merges performed by tool_mergeusers are reconciled; the event only fires when that
+        // plugin is installed.
+        'eventname' => '\tool_mergeusers\event\user_merged_success',
+        'callback' => '\auth_flexaccess\observer::user_merged',
+    ],
 ];
