@@ -73,6 +73,7 @@ final class provider implements
             'timecreated' => 'privacy:metadata:account:timecreated',
             'timeexpires' => 'privacy:metadata:account:timeexpires',
             'batchcredential' => 'privacy:metadata:account:batchcredential',
+            'lockedby' => 'privacy:metadata:account:lockedby',
         ], 'privacy:metadata:account');
         $collection->add_database_table('auth_flexaccess_token', [
             'userid' => 'privacy:metadata:token:userid',

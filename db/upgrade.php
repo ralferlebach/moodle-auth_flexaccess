@@ -106,5 +106,17 @@ function xmldb_auth_flexaccess_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026092201, 'auth', 'flexaccess');
     }
 
+    if ($oldversion < 2026092202) {
+        // Record who suspended a user, so that a suspension FlexAccess set can later be lifted
+        // automatically without ever lifting an independent administrative Moodle suspension.
+        $table = new xmldb_table('auth_flexaccess_account');
+        $field = new xmldb_field('lockedby', XMLDB_TYPE_CHAR, '20', null, null, null, null, 'batchcredential');
+        if (!$dbman->field_exists($table, $field)) {
+            $dbman->add_field($table, $field);
+        }
+        auth_flexaccess_backfill_lockedby();
+        upgrade_plugin_savepoint(true, 2026092202, 'auth', 'flexaccess');
+    }
+
     return true;
 }

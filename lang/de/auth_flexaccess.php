@@ -91,6 +91,7 @@ $string['privacy:metadata:account'] = 'FlexAccess-Metadaten zum Account-Lebenszy
 $string['privacy:metadata:account:accountstate'] = 'FlexAccess-Lifecycle-Status.';
 $string['privacy:metadata:account:accounttype'] = 'Accounttyp temporary user oder authenticated user.';
 $string['privacy:metadata:account:batchcredential'] = 'Ob das Konto ein ausgegebenes, wiederverwendbares Credential besitzt (Zugangslisten-Karte).';
+$string['privacy:metadata:account:lockedby'] = 'Ob die Sperre des Moodle-Nutzers durch den FlexAccess-Lebenszyklus gesetzt wurde.';
 $string['privacy:metadata:account:referencecode'] = 'Administrative Referenznummer.';
 $string['privacy:metadata:account:sourcecmid'] = 'Die Aktivität, aus der ein temporäres Konto erstellt wurde.';
 $string['privacy:metadata:account:sourcecourseid'] = 'Der Kurs, aus dem ein temporäres Konto erstellt wurde.';

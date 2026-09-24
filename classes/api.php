@@ -1327,4 +1327,111 @@ final class api {
     ): \stdClass {
         return local\merge_service::reconcile($sourceuserid, $targetuserid, $permanentcourseaccess, $now);
     }
+
+    /**
+     * FlexAccess account user ids after a cursor, in id order (batch iteration for maintenance runs).
+     *
+     * @param int $afteruserid Return ids greater than this.
+     * @param int $limit Maximum number of ids.
+     * @return int[]
+     */
+    public static function list_account_userids(int $afteruserid, int $limit): array {
+        global $DB;
+        return array_map('intval', $DB->get_fieldset_sql(
+            "SELECT a.userid
+               FROM {auth_flexaccess_account} a
+               JOIN {user} u ON u.id = a.userid AND u.deleted = 0
+              WHERE a.userid > :after
+           ORDER BY a.userid ASC",
+            ['after' => $afteruserid],
+            0,
+            max(1, $limit)
+        ));
+    }
+
+    /**
+     * Number of FlexAccess accounts of existing users.
+     *
+     * @return int
+     */
+    public static function count_all_accounts(): int {
+        global $DB;
+        return $DB->count_records_sql(
+            "SELECT COUNT(1) FROM {auth_flexaccess_account} a JOIN {user} u ON u.id = a.userid AND u.deleted = 0"
+        );
+    }
+
+    /**
+     * Credential and pending-process facts for many users at once (for reconciliation snapshots).
+     *
+     * @param int[] $userids User ids.
+     * @return array<int, \stdClass> userid => usablepassword (bool), setpasswordissued (bool: a set-password
+     *     mail or token exists), setpasswordused (bool), verificationpending (bool), credentialpending (bool),
+     *     queuedmails (int), failedfunnel (int: failed verification/set-password mails).
+     */
+    public static function credential_facts(array $userids): array {
+        global $DB;
+        $userids = array_values(array_unique(array_filter(array_map('intval', $userids))));
+        $out = [];
+        foreach ($userids as $id) {
+            $out[$id] = (object) [
+                'usablepassword' => false,
+                'setpasswordissued' => false,
+                'setpasswordused' => false,
+                'verificationpending' => false,
+                'credentialpending' => false,
+                'queuedmails' => 0,
+                'failedfunnel' => 0,
+            ];
+        }
+        if (!$userids) {
+            return $out;
+        }
+        [$insql, $params] = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED);
+        foreach ($DB->get_records_sql("SELECT id, password FROM {user} WHERE id $insql", $params) as $row) {
+            $hash = (string) $row->password;
+            $out[(int) $row->id]->usablepassword = $hash !== '' && $hash !== AUTH_PASSWORD_NOT_CACHED;
+        }
+        $prefs = $DB->get_records_sql(
+            "SELECT id, userid, name FROM {user_preferences}
+              WHERE userid $insql AND name IN ('auth_flexaccess_pendingemail', 'auth_flexaccess_pendingcredential')",
+            $params
+        );
+        foreach ($prefs as $pref) {
+            $key = $pref->name === 'auth_flexaccess_pendingemail' ? 'verificationpending' : 'credentialpending';
+            $out[(int) $pref->userid]->$key = true;
+        }
+        $tokens = $DB->get_records_sql(
+            "SELECT userid, MAX(CASE WHEN timeused IS NULL THEN 0 ELSE 1 END) AS used
+               FROM {auth_flexaccess_token}
+              WHERE userid $insql AND purpose = 'setpassword'
+           GROUP BY userid",
+            $params
+        );
+        foreach ($tokens as $token) {
+            $out[(int) $token->userid]->setpasswordissued = true;
+            $out[(int) $token->userid]->setpasswordused = (int) $token->used === 1;
+        }
+        $params['vmail'] = mail_kind::VERIFICATION;
+        $params['smail'] = mail_kind::SET_PASSWORD;
+        $mails = $DB->get_records_sql(
+            "SELECT userid,
+                    SUM(CASE WHEN status IN ('queued', 'ackpending') THEN 1 ELSE 0 END) AS queued,
+                    SUM(CASE WHEN status IN ('failed', 'ackfailed') AND mailtype IN (:vmail, :smail) THEN 1 ELSE 0 END) AS failed,
+                    SUM(CASE WHEN mailtype = :smail2 THEN 1 ELSE 0 END) AS setpw
+               FROM {" . self::QUEUE_TABLE . "}
+              WHERE userid $insql
+           GROUP BY userid",
+            $params + ['smail2' => mail_kind::SET_PASSWORD]
+        );
+        foreach ($mails as $mail) {
+            $facts = $out[(int) $mail->userid];
+            $facts->queuedmails = (int) $mail->queued;
+            $facts->failedfunnel = (int) $mail->failed;
+            if ((int) $mail->setpw > 0) {
+                $facts->setpasswordissued = true;
+            }
+        }
+        return $out;
+    }
 }

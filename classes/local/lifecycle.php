@@ -66,7 +66,16 @@ final class lifecycle {
         self::MISMATCH_TEMPORARY_UNRESTRICTED,
         self::MISMATCH_LOCKED_UNSUSPENDED,
         self::MISMATCH_ORPHAN_RESTRICTION,
+        self::MISMATCH_ACTIVE_SUSPENDED,
+        self::MISMATCH_LIVE_SUSPENDED,
+        self::MISMATCH_OVERDUE,
     ];
+
+    /** Mismatches that are only repairable when FlexAccess itself set the suspension. */
+    private const NEEDS_FLEXACCESS_LOCK = [self::MISMATCH_ACTIVE_SUSPENDED, self::MISMATCH_LIVE_SUSPENDED];
+
+    /** Value of auth_flexaccess_account.lockedby for a suspension set by the FlexAccess lifecycle. */
+    public const LOCKED_BY_FLEXACCESS = 'flexaccess';
 
     /**
      * Expected core/role state for an account type and state.
@@ -116,6 +125,7 @@ final class lifecycle {
         $account->accountstate = account_state::ACTIVE;
         // A permanent identity is governed by the authenticated lifecycle only.
         $account->batchcredential = 0;
+        $account->lockedby = null;
         $account->timeexpires = null;
         if (empty($account->timeactivated)) {
             $account->timeactivated = $now;
@@ -149,6 +159,7 @@ final class lifecycle {
         $account->accounttype = account_type::AUTHENTICATED_USER;
         $account->accountstate = account_state::PENDING_CREDENTIAL;
         $account->batchcredential = 0;
+        $account->lockedby = null;
         $account->timeexpires = null;
         $account->timemodified = $now;
         $DB->update_record(self::TABLE, $account);
@@ -173,6 +184,7 @@ final class lifecycle {
             return false;
         }
         $account->accountstate = account_state::EXPIRED;
+        $account->lockedby = self::LOCKED_BY_FLEXACCESS;
         $account->timemodified = $now;
         $DB->update_record(self::TABLE, $account);
         self::set_core_flags($userid, 1, null);
@@ -203,6 +215,7 @@ final class lifecycle {
         $pending = get_user_preferences('auth_flexaccess_pendingemail', null, $userid);
         $state = ($pending !== null && $pending !== '') ? account_state::PROVISIONAL : account_state::EPHEMERAL;
         $account->accountstate = $state;
+        $account->lockedby = null;
         $account->timeexpires = $now + max(1, $lifetime);
         $account->timemodified = $now;
         $DB->update_record(self::TABLE, $account);
@@ -233,6 +246,10 @@ final class lifecycle {
             return false;
         }
         self::set_core_flags($userid, (int) $expect->suspended, null);
+        $lockedby = $expect->suspended === 1 ? self::LOCKED_BY_FLEXACCESS : null;
+        if (($account->lockedby ?? null) !== $lockedby) {
+            $DB->set_field(self::TABLE, 'lockedby', $lockedby, ['userid' => $userid]);
+        }
         if ($expect->restricted !== null) {
             self::set_restricted($userid, (bool) $expect->restricted);
         }
@@ -266,7 +283,7 @@ final class lifecycle {
             $where .= " AND a.userid $insql";
             $params += $inparams;
         }
-        $sql = "SELECT a.userid, a.accounttype, a.accountstate, a.timeexpires, u.suspended,
+        $sql = "SELECT a.userid, a.accounttype, a.accountstate, a.timeexpires, a.lockedby, u.suspended,
                        CASE WHEN ra.id IS NULL THEN 0 ELSE 1 END AS restricted
                   FROM {" . self::TABLE . "} a
                   JOIN {user} u ON u.id = a.userid
@@ -302,6 +319,7 @@ final class lifecycle {
                     'accountstate' => '',
                     'suspended' => null,
                     'restricted' => 1,
+                    'lockedby' => null,
                 ];
                 if (count($found) >= $limit) {
                     break;
@@ -335,6 +353,14 @@ final class lifecycle {
         );
         if (!$still) {
             return false;
+        }
+        // Lifting a suspension grants access again: only when FlexAccess itself set it. An
+        // unattributed suspension may be an independent administrative decision and stays.
+        if (in_array($code, self::NEEDS_FLEXACCESS_LOCK, true) && reset($still)->lockedby !== self::LOCKED_BY_FLEXACCESS) {
+            return false;
+        }
+        if ($code === self::MISMATCH_OVERDUE) {
+            return self::transition_to_expired($userid);
         }
         return self::normalise($userid);
     }
@@ -394,6 +420,7 @@ final class lifecycle {
             'accountstate' => (string) $row->accountstate,
             'suspended' => (int) $row->suspended,
             'restricted' => (int) $row->restricted,
+            'lockedby' => $row->lockedby ?? null,
         ];
     }
 

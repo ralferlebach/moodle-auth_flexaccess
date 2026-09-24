@@ -227,4 +227,49 @@ final class lifecycle_test extends \advanced_testcase {
         account_service::expire_due();
         $this->assertFalse($DB->record_exists('sessions', ['userid' => $userid]));
     }
+
+    /**
+     * The lifecycle records when FlexAccess itself suspended a user, and only then may lift it.
+     *
+     * @return void
+     */
+    public function test_lock_origin(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $temp = $this->combo(account_type::TEMPORARY_USER, account_state::EPHEMERAL, 0, false, time() - 1);
+        account_service::expire_due();
+        $this->assertSame(lifecycle::LOCKED_BY_FLEXACCESS, api::get_account($temp)->lockedby);
+        lifecycle::transition_to_recovered_temporary($temp, 600);
+        $this->assertNull(api::get_account($temp)->lockedby);
+
+        // Active + suspended with a FlexAccess lock: repairable. Without: never.
+        $flex = $this->combo(account_type::AUTHENTICATED_USER, account_state::ACTIVE, 1, false);
+        $DB->set_field('auth_flexaccess_account', 'lockedby', lifecycle::LOCKED_BY_FLEXACCESS, ['userid' => $flex]);
+        $this->assertTrue(lifecycle::repair($flex, lifecycle::MISMATCH_ACTIVE_SUSPENDED));
+        $this->assertEquals(0, $DB->get_field('user', 'suspended', ['id' => $flex]));
+        $this->assertNull(api::get_account($flex)->lockedby);
+        $admin = $this->combo(account_type::AUTHENTICATED_USER, account_state::ACTIVE, 1, false);
+        $this->assertFalse(lifecycle::repair($admin, lifecycle::MISMATCH_ACTIVE_SUSPENDED));
+        $this->assertEquals(1, $DB->get_field('user', 'suspended', ['id' => $admin]));
+    }
+
+    /**
+     * The upgrade attributes only suspensions of expired temporary accounts to FlexAccess.
+     *
+     * @return void
+     */
+    public function test_lockedby_backfill(): void {
+        global $CFG, $DB;
+        require_once($CFG->dirroot . '/auth/flexaccess/db/upgradelib.php');
+        $this->resetAfterTest();
+        $expired = $this->combo(account_type::TEMPORARY_USER, account_state::EXPIRED, 1, false, time() - 10);
+        $active = $this->combo(account_type::AUTHENTICATED_USER, account_state::ACTIVE, 1, false);
+        $live = $this->combo(account_type::TEMPORARY_USER, account_state::EPHEMERAL, 1, false, time() + 600);
+        $DB->set_field('auth_flexaccess_account', 'lockedby', null, []);
+        $this->assertSame(1, auth_flexaccess_backfill_lockedby());
+        $this->assertSame(lifecycle::LOCKED_BY_FLEXACCESS, api::get_account($expired)->lockedby);
+        $this->assertNull(api::get_account($active)->lockedby);
+        $this->assertNull(api::get_account($live)->lockedby);
+        $this->assertSame(0, auth_flexaccess_backfill_lockedby());
+    }
 }

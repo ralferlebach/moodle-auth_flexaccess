@@ -259,20 +259,16 @@ final class login_guard_test extends \advanced_testcase {
     }
 
     /**
-     * No FlexAccess page may create a session except through the guard (LOGIN-004).
+     * No page of this plugin may create a session except through the guard (LOGIN-004).
      *
-     * Scans the sibling plugins that are installed for direct complete_user_login() calls.
+     * Deliberately scans only this plugin: each sibling plugin that creates sessions carries its own
+     * scan. Scanning the siblings here coupled this plugin's CI to whichever sibling version happened to
+     * be installed alongside it.
      *
      * @return void
      */
     public function test_no_direct_session_creation_outside_the_guard(): void {
-        global $CFG;
-        $roots = array_filter([
-            $CFG->dirroot . '/auth/flexaccess',
-            $CFG->dirroot . '/enrol/flexaccess',
-            $CFG->dirroot . '/mod/flexaccess',
-            $CFG->dirroot . '/admin/tool/flexaccess',
-        ], 'is_dir');
+        $roots = [\core_component::get_component_directory('auth_flexaccess')];
         $offenders = [];
         foreach ($roots as $root) {
             $files = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($root, \FilesystemIterator::SKIP_DOTS));
@@ -293,7 +289,7 @@ final class login_guard_test extends \advanced_testcase {
                     $code .= is_array($token) ? $token[1] : $token;
                 }
                 if (preg_match('/\bcomplete_user_login\s*\(/', $code)) {
-                    $offenders[] = substr($path, strlen($CFG->dirroot));
+                    $offenders[] = substr($path, strlen($root));
                 }
             }
         }

@@ -48,3 +48,30 @@ function auth_flexaccess_backfill_batchcredential(): int {
     }
     return count($userids);
 }
+
+/**
+ * Attribute existing suspensions that FlexAccess itself set.
+ *
+ * Up to 1.1.0 the only place FlexAccess suspended a Moodle user was the expiry of a temporary account,
+ * which always also set the state EXPIRED. A temporary EXPIRED account with a suspended user therefore
+ * carries a FlexAccess suspension. Every other suspension stays unattributed (NULL): its origin cannot
+ * be told apart from an administrative Moodle suspension and must never be lifted automatically.
+ * Idempotent.
+ *
+ * @return int Number of accounts attributed.
+ */
+function auth_flexaccess_backfill_lockedby(): int {
+    global $DB;
+    $userids = $DB->get_fieldset_sql(
+        "SELECT a.userid
+           FROM {auth_flexaccess_account} a
+           JOIN {user} u ON u.id = a.userid AND u.suspended = 1
+          WHERE a.accounttype = :type AND a.accountstate = :state AND a.lockedby IS NULL",
+        ['type' => 'temporary user', 'state' => 'expired']
+    );
+    foreach (array_chunk(array_map('intval', $userids), 500) as $chunk) {
+        [$insql, $params] = $DB->get_in_or_equal($chunk);
+        $DB->set_field_select('auth_flexaccess_account', 'lockedby', 'flexaccess', "userid $insql", $params);
+    }
+    return count($userids);
+}

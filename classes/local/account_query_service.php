@@ -257,7 +257,8 @@ final class account_query_service {
         }
         [$insql, $params] = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED);
         $sql = "SELECT a.userid, a.id, a.accounttype, a.accountstate, a.timecreated, a.timeexpires,
-                       a.referencecode, a.sourcecourseid, u.firstname, u.lastname, u.email, u.suspended
+                       a.referencecode, a.sourcecourseid, a.timeactivated, a.batchcredential, a.lockedby,
+                       u.firstname, u.lastname, u.email, u.suspended, u.confirmed, u.auth
                   FROM {auth_flexaccess_account} a
                   JOIN {user} u ON u.id = a.userid AND u.deleted = 0
                  WHERE a.userid $insql";

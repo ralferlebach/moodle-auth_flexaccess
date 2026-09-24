@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.1 — 2026-09-22 — Herkunft einer Sperre wird festgehalten; `lib.php` nicht mehr als entfernt geführt
+- **CI war rot: `stale-files` meldete `lib.php`.** Die Datei wurde in 0.9.35 entfernt und in 1.1.0 mit neuem Inhalt wieder eingeführt — sie registriert den Status-Check. Moodle findet Status-Checks ausschließlich über den Callback `auth_flexaccess_status_checks()` in `lib.php` (in 4.5 bis `main` im Core geprüft), die Datei gehört also ins Paket. Der veraltete Eintrag in `db/removed_files.txt` ist entfernt; ein ZIP-Update überschreibt die alte Fassung ohnehin.
+- **Neues Feld `lockedby`.** Es hält fest, ob eine Sperre des Moodle-Nutzers von FlexAccess selbst stammt. Damit ist der letzte unmodellierte Fall aus dem Lebenszyklus geschlossen: Eine unabhängige administrative Sperre ist jetzt von einer FlexAccess-Sperre unterscheidbar.
+- **Reparaturen heben nur eigene Sperren auf.** `lifecycle::repair()` entsperrt ein Konto nur, wenn `lockedby = flexaccess` gesetzt ist. Ohne diesen Vermerk bleibt die Sperre bestehen; der Fall wird zur Prüfung gemeldet. Zusätzlich reparierbar sind jetzt überfällige temporäre Konten (Übergang auf abgelaufen).
+- **Bestandsdaten:** Das Upgrade schreibt den Vermerk für abgelaufene temporäre Konten mit gesperrtem Nutzer — der einzige Fall, in dem FlexAccess bis 1.1.0 selbst gesperrt hat. Jede andere Sperre bleibt bewusst ohne Vermerk und wird nie automatisch aufgehoben.
+- **Neue Lese-APIs für den Abgleich:** `list_account_userids()` (stapelweise Iteration), `count_all_accounts()` und `credential_facts()` (Passwort-, Verifikations- und Mail-Stand vieler Nutzer auf einmal).
+- Reifegrad `MATURITY_STABLE`, Version `2026092202`, Release `1.1.1`. Abhängigkeit `enrol_flexaccess` ≥ `2026092202`.
+
 ## 1.1.0 — 2026-09-22 — Login-Guard, Lebenszyklus-Invarianten, Passwort-Vorgang, Identitäts-Merge, Zugangslisten-Login
 - **Zentraler Login-Guard (Issue #3).** `local\login_guard` entscheidet für jeden FlexAccess-Anmeldeweg, ob ein Konto eine Sitzung erhalten darf: Passwort, Magic Link, Abschluss des Passwortsetzens und die Einstiegsflüsse (temporärer Zugang, Schnellregistrierung, Einladung, Kampagne). Abgewiesen werden gelöschte, gesperrte, unbestätigte, abgelaufene, noch auf ein Passwort wartende und widersprüchliche Konten. `user_login()` prüft das selbst, unabhängig von Moodles eigener Sperrprüfung.
 - **Keine direkte Sitzung mehr am Guard vorbei.** Alle sieben `complete_user_login()`-Aufrufe in auth und tool laufen jetzt über `login_guard::complete_login()`, das den Zustand unmittelbar vor der Sitzung erneut prüft. Ein statischer Test hält das für alle vier Plugins fest; die Gegenprobe mit einer eingeschleusten Direktanmeldung schlägt an.
