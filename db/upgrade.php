@@ -114,8 +114,15 @@ function xmldb_auth_flexaccess_upgrade($oldversion) {
         if (!$dbman->field_exists($table, $field)) {
             $dbman->add_field($table, $field);
         }
-        auth_flexaccess_backfill_lockedby();
+        // No origin is inferred for existing suspensions: it cannot be reconstructed from legacy data.
+        // They stay unattributed, are never lifted automatically and surface as review cases.
         upgrade_plugin_savepoint(true, 2026092202, 'auth', 'flexaccess');
+    }
+
+    if ($oldversion < 2026092801) {
+        // Sites that already ran the 2026092202 step got inferred origins; withdraw exactly those.
+        auth_flexaccess_withdraw_inferred_lockedby();
+        upgrade_plugin_savepoint(true, 2026092801, 'auth', 'flexaccess');
     }
 
     return true;

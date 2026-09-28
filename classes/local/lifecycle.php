@@ -125,7 +125,6 @@ final class lifecycle {
         $account->accountstate = account_state::ACTIVE;
         // A permanent identity is governed by the authenticated lifecycle only.
         $account->batchcredential = 0;
-        $account->lockedby = null;
         $account->timeexpires = null;
         if (empty($account->timeactivated)) {
             $account->timeactivated = $now;
@@ -159,7 +158,6 @@ final class lifecycle {
         $account->accounttype = account_type::AUTHENTICATED_USER;
         $account->accountstate = account_state::PENDING_CREDENTIAL;
         $account->batchcredential = 0;
-        $account->lockedby = null;
         $account->timeexpires = null;
         $account->timemodified = $now;
         $DB->update_record(self::TABLE, $account);
@@ -184,7 +182,6 @@ final class lifecycle {
             return false;
         }
         $account->accountstate = account_state::EXPIRED;
-        $account->lockedby = self::LOCKED_BY_FLEXACCESS;
         $account->timemodified = $now;
         $DB->update_record(self::TABLE, $account);
         self::set_core_flags($userid, 1, null);
@@ -215,7 +212,6 @@ final class lifecycle {
         $pending = get_user_preferences('auth_flexaccess_pendingemail', null, $userid);
         $state = ($pending !== null && $pending !== '') ? account_state::PROVISIONAL : account_state::EPHEMERAL;
         $account->accountstate = $state;
-        $account->lockedby = null;
         $account->timeexpires = $now + max(1, $lifetime);
         $account->timemodified = $now;
         $DB->update_record(self::TABLE, $account);
@@ -246,10 +242,6 @@ final class lifecycle {
             return false;
         }
         self::set_core_flags($userid, (int) $expect->suspended, null);
-        $lockedby = $expect->suspended === 1 ? self::LOCKED_BY_FLEXACCESS : null;
-        if (($account->lockedby ?? null) !== $lockedby) {
-            $DB->set_field(self::TABLE, 'lockedby', $lockedby, ['userid' => $userid]);
-        }
         if ($expect->restricted !== null) {
             self::set_restricted($userid, (bool) $expect->restricted);
         }
@@ -263,7 +255,7 @@ final class lifecycle {
      * Read-only diagnosis: find accounts whose stores contradict the lifecycle invariants.
      *
      * @param int|null $now Current time.
-     * @param int $limit Maximum number of mismatches to return.
+     * @param int $limit Maximum number of mismatches to return; 0 returns all (complete scan).
      * @param int[]|null $userids Optional restriction to these users.
      * @return \stdClass[] Each with ->userid, ->code, ->accounttype, ->accountstate, ->suspended, ->restricted.
      */
@@ -295,7 +287,7 @@ final class lifecycle {
         foreach ($rs as $row) {
             foreach (self::classify($row, $now, $restrictionid > 0) as $code) {
                 $found[] = self::mismatch($row, $code);
-                if (count($found) >= $limit) {
+                if ($limit > 0 && count($found) >= $limit) {
                     break 2;
                 }
             }
@@ -304,14 +296,8 @@ final class lifecycle {
 
         // Users carrying the restriction role although no FlexAccess account needs it (for example
         // after an external identity merge that moved role assignments by direct table updates).
-        if ($restrictionid > 0 && count($found) < $limit && $userids === null) {
-            $sql = "SELECT ra.userid
-                      FROM {role_assignments} ra
-                      JOIN {user} u ON u.id = ra.userid AND u.deleted = 0
-                 LEFT JOIN {" . self::TABLE . "} a ON a.userid = ra.userid
-                     WHERE ra.roleid = :rid AND ra.contextid = :ctx AND a.id IS NULL";
-            $orphans = $DB->get_fieldset_sql($sql, ['rid' => $restrictionid, 'ctx' => $systemid]);
-            foreach ($orphans as $userid) {
+        if ($restrictionid > 0 && ($limit <= 0 || count($found) < $limit) && $userids === null) {
+            foreach (self::find_orphan_restriction_userids() as $userid) {
                 $found[] = (object) [
                     'userid' => (int) $userid,
                     'code' => self::MISMATCH_ORPHAN_RESTRICTION,
@@ -321,12 +307,65 @@ final class lifecycle {
                     'restricted' => 1,
                     'lockedby' => null,
                 ];
-                if (count($found) >= $limit) {
+                if ($limit > 0 && count($found) >= $limit) {
                     break;
                 }
             }
         }
         return $found;
+    }
+
+    /**
+     * Every user holding the restriction role without a FlexAccess account - complete, never truncated.
+     *
+     * @return int[]
+     */
+    public static function find_orphan_restriction_userids(): array {
+        global $DB;
+        $restrictionid = self::restriction_role_id();
+        if ($restrictionid <= 0) {
+            return [];
+        }
+        $sql = "SELECT DISTINCT ra.userid
+                  FROM {role_assignments} ra
+                  JOIN {user} u ON u.id = ra.userid AND u.deleted = 0
+             LEFT JOIN {" . self::TABLE . "} a ON a.userid = ra.userid
+                 WHERE ra.roleid = :rid AND ra.contextid = :ctx AND a.id IS NULL
+              ORDER BY ra.userid ASC";
+        return array_map('intval', $DB->get_fieldset_sql($sql, [
+            'rid' => $restrictionid,
+            'ctx' => \context_system::instance()->id,
+        ]));
+    }
+
+    /**
+     * Complete count of mismatches per code, over every account (for status reports; no limit).
+     *
+     * @param int|null $now Current time.
+     * @return array<string, int> code => number of accounts.
+     */
+    public static function count_state_mismatches(?int $now = null): array {
+        global $DB;
+        $now = $now ?? time();
+        $restrictionid = self::restriction_role_id();
+        $sql = "SELECT a.userid, a.accounttype, a.accountstate, a.timeexpires, a.lockedby, u.suspended,
+                       CASE WHEN ra.id IS NULL THEN 0 ELSE 1 END AS restricted
+                  FROM {" . self::TABLE . "} a
+                  JOIN {user} u ON u.id = a.userid AND u.deleted = 0
+             LEFT JOIN {role_assignments} ra ON ra.userid = a.userid AND ra.roleid = :rid AND ra.contextid = :ctx";
+        $counts = [];
+        $rs = $DB->get_recordset_sql($sql, ['rid' => $restrictionid, 'ctx' => \context_system::instance()->id]);
+        foreach ($rs as $row) {
+            foreach (self::classify($row, $now, $restrictionid > 0) as $code) {
+                $counts[$code] = ($counts[$code] ?? 0) + 1;
+            }
+        }
+        $rs->close();
+        $orphans = count(self::find_orphan_restriction_userids());
+        if ($orphans > 0) {
+            $counts[self::MISMATCH_ORPHAN_RESTRICTION] = $orphans;
+        }
+        return $counts;
     }
 
     /**
@@ -451,6 +490,10 @@ final class lifecycle {
         }
         if ($restricted) {
             \enrol_flexaccess\local\participant_role::restrict($userid);
+        } else if (method_exists('\enrol_flexaccess\local\participant_role', 'unrestrict_all')) {
+            // Lift every assignment, including historical ones without component: an identity that
+            // no longer needs the restriction must not keep a leftover of it.
+            \enrol_flexaccess\local\participant_role::unrestrict_all($userid);
         } else {
             \enrol_flexaccess\local\participant_role::unrestrict($userid);
         }
@@ -462,30 +505,62 @@ final class lifecycle {
      * @param int $userid User id.
      * @param int $suspended Target suspended flag.
      * @param int|null $confirmed Target confirmed flag, or null to leave it unchanged.
-     * @return void
+     * @return bool False when a suspension had to stay because FlexAccess did not set it.
      */
-    private static function set_core_flags(int $userid, int $suspended, ?int $confirmed): void {
+    private static function set_core_flags(int $userid, int $suspended, ?int $confirmed): bool {
         global $CFG, $DB;
         $user = $DB->get_record('user', ['id' => $userid, 'deleted' => 0], 'id, suspended, confirmed');
         if (!$user) {
-            return;
+            return false;
         }
+        $lockedby = $DB->get_field(self::TABLE, 'lockedby', ['userid' => $userid]);
+        $lockedby = ($lockedby === false || $lockedby === null) ? null : (string) $lockedby;
         $changes = ['id' => $userid];
-        if ((int) $user->suspended !== $suspended) {
-            $changes['suspended'] = $suspended;
+        $reached = true;
+        if ((int) $user->suspended === 1 && $suspended === 0) {
+            // Lifting a suspension grants access again. Only a suspension FlexAccess itself set may be
+            // lifted by a lifecycle transition; any other (administrative, unknown or legacy) suspension
+            // stays in place, whatever the transition, and the login guard keeps refusing the account.
+            if ($lockedby === self::LOCKED_BY_FLEXACCESS) {
+                $changes['suspended'] = 0;
+                $DB->set_field(self::TABLE, 'lockedby', null, ['userid' => $userid]);
+            } else {
+                $reached = false;
+            }
+        } else if ((int) $user->suspended === 0 && $suspended === 1) {
+            // FlexAccess sets this suspension now, so its origin is known.
+            $changes['suspended'] = 1;
+            $DB->set_field(self::TABLE, 'lockedby', self::LOCKED_BY_FLEXACCESS, ['userid' => $userid]);
         }
+        // An already suspended user keeps its recorded origin: FlexAccess does not claim a suspension
+        // someone else set before (e.g. an administrator suspending a live account that later expires).
         if ($confirmed !== null && (int) $user->confirmed !== $confirmed) {
             $changes['confirmed'] = $confirmed;
         }
-        if (count($changes) === 1) {
-            return;
+        if (count($changes) > 1) {
+            require_once($CFG->dirroot . '/user/lib.php');
+            if (method_exists(\core\user::class, 'update_user')) {
+                \core\user::update_user((object) $changes, false, true);
+            } else {
+                user_update_user((object) $changes, false, true);
+            }
         }
-        require_once($CFG->dirroot . '/user/lib.php');
-        if (method_exists(\core\user::class, 'update_user')) {
-            \core\user::update_user((object) $changes, false, true);
-        } else {
-            user_update_user((object) $changes, false, true);
+        return $reached;
+    }
+
+    /**
+     * Whether a suspension of this user may be lifted by a FlexAccess transition.
+     *
+     * @param int $userid User id.
+     * @return bool True when the user is not suspended or FlexAccess itself set the suspension.
+     */
+    public static function suspension_liftable(int $userid): bool {
+        global $DB;
+        $suspended = (int) $DB->get_field('user', 'suspended', ['id' => $userid]);
+        if ($suspended !== 1) {
+            return true;
         }
+        return $DB->get_field(self::TABLE, 'lockedby', ['userid' => $userid]) === self::LOCKED_BY_FLEXACCESS;
     }
 
     /**

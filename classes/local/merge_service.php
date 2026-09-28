@@ -49,7 +49,8 @@ final class merge_service {
      * @param bool $permanentcourseaccess Whether the merge explicitly establishes permanent course access.
      * @param int|null $now Current time.
      * @return \stdClass ->status (reconciled|nothingtodo|invalid|locked), ->transferred, ->merged,
-     *     ->restrictionlifted (bool), ->sourcecleaned (bool).
+     *     ->restrictionlifted (bool), ->sourcecleaned (bool), ->targetlocked (bool: the surviving identity
+     *     keeps a suspension FlexAccess did not set; it is left in place for an administrator).
      */
     public static function reconcile(
         int $sourceuserid,
@@ -65,6 +66,7 @@ final class merge_service {
             'merged' => 0,
             'restrictionlifted' => false,
             'sourcecleaned' => false,
+            'targetlocked' => false,
         ];
         if ($sourceuserid <= 0 || $targetuserid <= 0 || $sourceuserid === $targetuserid) {
             return $result;
@@ -96,16 +98,18 @@ final class merge_service {
                     $result->merged = (int) $moved->merged;
                 }
 
-                // 2. The surviving identity carries no temporary FlexAccess state.
+                // 2. The surviving identity carries no temporary FlexAccess state. The lifecycle lifts
+                // a suspension of the target only when FlexAccess itself set it; an administrative
+                // suspension of the surviving identity stays and is reported, never lifted here.
                 $target = $DB->get_record('auth_flexaccess_account', ['userid' => $targetuserid]);
+                $result->targetlocked = !lifecycle::suspension_liftable($targetuserid);
                 if ($target && $target->accounttype === account_type::TEMPORARY_USER) {
-                    // FlexAccess had suspended it only if it was expired; the transition unsuspends.
                     lifecycle::transition_to_active_authenticated($targetuserid, $now);
                 } else if ($target) {
                     lifecycle::normalise($targetuserid);
                 }
                 if (self::holds_restriction($targetuserid)) {
-                    \enrol_flexaccess\local\participant_role::unrestrict($targetuserid);
+                    self::unrestrict_completely($targetuserid);
                     $result->restrictionlifted = true;
                 }
 
@@ -133,7 +137,7 @@ final class merge_service {
         global $DB;
         $changed = false;
         if (self::holds_restriction($userid)) {
-            \enrol_flexaccess\local\participant_role::unrestrict($userid);
+            self::unrestrict_completely($userid);
             $changed = true;
         }
         foreach (['auth_flexaccess_account', 'auth_flexaccess_token'] as $table) {
@@ -150,6 +154,20 @@ final class merge_service {
             unset_user_preference($pref, $userid);
         }
         return $changed;
+    }
+
+    /**
+     * Remove every assignment of the restriction role, including historical ones without component.
+     *
+     * @param int $userid User id.
+     * @return void
+     */
+    private static function unrestrict_completely(int $userid): void {
+        if (method_exists('\enrol_flexaccess\local\participant_role', 'unrestrict_all')) {
+            \enrol_flexaccess\local\participant_role::unrestrict_all($userid);
+        } else {
+            \enrol_flexaccess\local\participant_role::unrestrict($userid);
+        }
     }
 
     /**

@@ -228,4 +228,55 @@ final class merge_service_test extends \advanced_testcase {
         observer::user_merged($event);
         $this->assertNotNull($this->ue($target));
     }
+
+    /**
+     * AUDIT-003: an administrative suspension of the surviving identity is not lifted by the merge.
+     *
+     * @return void
+     */
+    public function test_admin_locked_target_stays_locked(): void {
+        global $DB;
+        $source = $this->visitor(time() + 3600);
+        $target = (int) $this->getDataGenerator()->create_user(['auth' => 'flexaccess', 'suspended' => 1])->id;
+        local\account_service::create_authenticated($target, local\account_service::generate_unique_reference());
+        $result = api::reconcile_external_identity_merge($source, $target);
+        $this->assertTrue($result->targetlocked);
+        $this->assertEquals(1, $DB->get_field('user', 'suspended', ['id' => $target]));
+        // The course access still moved; only the suspension is left for an administrator.
+        $this->assertNotNull($this->ue($target));
+
+        // A suspension FlexAccess set on the target is lifted.
+        $other = $this->visitor(time() + 3600);
+        $flextarget = (int) $this->getDataGenerator()->create_user(['auth' => 'flexaccess', 'suspended' => 1])->id;
+        local\account_service::create_authenticated($flextarget, local\account_service::generate_unique_reference());
+        $DB->set_field('auth_flexaccess_account', 'lockedby', local\lifecycle::LOCKED_BY_FLEXACCESS, ['userid' => $flextarget]);
+        $this->assertFalse(api::reconcile_external_identity_merge($other, $flextarget)->targetlocked);
+        $this->assertEquals(0, $DB->get_field('user', 'suspended', ['id' => $flextarget]));
+    }
+
+    /**
+     * AUDIT-004: historical restriction assignments without component are removed completely.
+     *
+     * @return void
+     */
+    public function test_historical_restriction_removed_completely(): void {
+        global $DB;
+        $source = $this->visitor(time() + 3600);
+        $target = (int) $this->getDataGenerator()->create_user()->id;
+        $system = \context_system::instance()->id;
+        $roleid = participant_role::get_restriction_id();
+        // Legacy assignment: no component, as older releases or a manual assignment left it.
+        role_assign($roleid, $target, $system);
+        role_assign($roleid, $source, $system);
+        $this->assertTrue($this->restricted($target));
+        api::reconcile_external_identity_merge($source, $target);
+        $this->assertSame(0, $DB->count_records('role_assignments', ['roleid' => $roleid, 'userid' => $target]));
+        $this->assertSame(0, $DB->count_records('role_assignments', ['roleid' => $roleid, 'userid' => $source]));
+
+        // The lifecycle transition to a permanent identity removes it just as completely.
+        $temp = $this->visitor(time() + 3600);
+        role_assign($roleid, $temp, $system);
+        local\lifecycle::transition_to_active_authenticated($temp);
+        $this->assertSame(0, $DB->count_records('role_assignments', ['roleid' => $roleid, 'userid' => $temp]));
+    }
 }

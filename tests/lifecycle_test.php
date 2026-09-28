@@ -138,6 +138,8 @@ final class lifecycle_test extends \advanced_testcase {
         $this->resetAfterTest();
         $this->require_enrol();
         $userid = $this->combo(account_type::TEMPORARY_USER, account_state::EPHEMERAL, 1, false, time() + 3600);
+        // A suspension FlexAccess set: transitions may and must lift it.
+        $DB->set_field('auth_flexaccess_account', 'lockedby', lifecycle::LOCKED_BY_FLEXACCESS, ['userid' => $userid]);
         lifecycle::transition_to_pending_credential($userid);
         $this->assertSame([], $this->codes($userid));
         lifecycle::transition_to_active_authenticated($userid);
@@ -155,29 +157,46 @@ final class lifecycle_test extends \advanced_testcase {
     }
 
     /**
-     * Regression: an otherwise convertible but suspended user becomes ACTIVE, unsuspended, unrestricted.
+     * Regression (STATE-003 with AUDIT-001): a conversion lifts a suspension FlexAccess set itself,
+     * never an administrative one.
+     *
+     * The bug behind auth#5 was a FlexAccess suspension that survived the conversion. Since the origin
+     * of a suspension is recorded (lockedby), the same regression is tested with that origin, and the
+     * opposite case - an administrator's suspension - must survive every conversion path.
      *
      * @return void
      */
-    public function test_conversion_of_suspended_user_is_normalised(): void {
+    public function test_conversion_lifts_only_flexaccess_suspension(): void {
         global $DB;
         $this->resetAfterTest();
         $this->require_enrol();
         $userid = $this->combo(account_type::TEMPORARY_USER, account_state::EPHEMERAL, 1, true, time() + 3600);
+        $DB->set_field('auth_flexaccess_account', 'lockedby', lifecycle::LOCKED_BY_FLEXACCESS, ['userid' => $userid]);
         $this->assertSame('converted', api::persist_temporary_user($userid, 'normal@example.com', 'N', 'U', 'Str0ng-Pass!23'));
         $account = api::get_account($userid);
         $this->assertSame(account_state::ACTIVE, $account->accountstate);
         $this->assertEquals(0, $DB->get_field('user', 'suspended', ['id' => $userid]));
+        $this->assertNull($account->lockedby);
         $this->assertSame([], $this->codes($userid));
 
-        // The same holds for the administrative conversion once the credential is set.
+        // Same with the administrative conversion once the credential is set.
         $admin = $this->combo(account_type::TEMPORARY_USER, account_state::EPHEMERAL, 1, true, time() + 3600);
+        $DB->set_field('auth_flexaccess_account', 'lockedby', lifecycle::LOCKED_BY_FLEXACCESS, ['userid' => $admin]);
         $this->assertSame('converted', api::admin_convert($admin, 'admin.conv@example.com'));
         $this->assertEquals(0, $DB->get_field('user', 'suspended', ['id' => $admin]));
         $token = local\token_service::issue($admin, 'setpassword', 600);
         $this->assertSame($admin, api::complete_set_password($token, 'Str0ng-Pass!23'));
         $this->assertSame(account_state::ACTIVE, api::get_account($admin)->accountstate);
         $this->assertSame([], $this->codes($admin));
+
+        // An administrator's suspension survives the conversion; the account is refused at login and
+        // reported, instead of being silently unlocked.
+        $blocked = $this->combo(account_type::TEMPORARY_USER, account_state::EPHEMERAL, 1, true, time() + 3600);
+        $this->assertSame('converted', api::persist_temporary_user($blocked, 'blocked@example.com', 'B', 'L', 'Str0ng-Pass!23'));
+        $this->assertSame(account_state::ACTIVE, api::get_account($blocked)->accountstate);
+        $this->assertEquals(1, $DB->get_field('user', 'suspended', ['id' => $blocked]));
+        $this->assertSame(['active_suspended'], $this->codes($blocked));
+        $this->assertFalse(local\login_guard::is_eligible($blocked, local\login_guard::CHANNEL_PASSWORD));
     }
 
     /**
@@ -254,22 +273,57 @@ final class lifecycle_test extends \advanced_testcase {
     }
 
     /**
-     * The upgrade attributes only suspensions of expired temporary accounts to FlexAccess.
+     * A legacy suspension of unknown origin is never attributed to FlexAccess (AUDIT-006).
+     *
+     * Inferred marks from the 2026092202 step are withdrawn; marks a real expiry recorded later stay.
      *
      * @return void
      */
-    public function test_lockedby_backfill(): void {
+    public function test_inferred_lock_origin_is_withdrawn(): void {
         global $CFG, $DB;
         require_once($CFG->dirroot . '/auth/flexaccess/db/upgradelib.php');
         $this->resetAfterTest();
-        $expired = $this->combo(account_type::TEMPORARY_USER, account_state::EXPIRED, 1, false, time() - 10);
-        $active = $this->combo(account_type::AUTHENTICATED_USER, account_state::ACTIVE, 1, false);
-        $live = $this->combo(account_type::TEMPORARY_USER, account_state::EPHEMERAL, 1, false, time() + 600);
-        $DB->set_field('auth_flexaccess_account', 'lockedby', null, []);
-        $this->assertSame(1, auth_flexaccess_backfill_lockedby());
-        $this->assertSame(lifecycle::LOCKED_BY_FLEXACCESS, api::get_account($expired)->lockedby);
-        $this->assertNull(api::get_account($active)->lockedby);
-        $this->assertNull(api::get_account($live)->lockedby);
-        $this->assertSame(0, auth_flexaccess_backfill_lockedby());
+        $stepran = time() - 100;
+        // Legacy data: an expired temporary account whose suspension the old step inferred.
+        $legacy = $this->combo(account_type::TEMPORARY_USER, account_state::EXPIRED, 1, false, $stepran - 50);
+        $DB->set_field('auth_flexaccess_account', 'lockedby', lifecycle::LOCKED_BY_FLEXACCESS, ['userid' => $legacy]);
+        $DB->set_field('auth_flexaccess_account', 'timemodified', $stepran - 50, ['userid' => $legacy]);
+        // A real expiry after the step: recorded by the lifecycle, with a later timemodified.
+        $real = $this->combo(account_type::TEMPORARY_USER, account_state::EPHEMERAL, 0, false, time() - 1);
+        account_service::expire_due();
+        $this->assertSame(lifecycle::LOCKED_BY_FLEXACCESS, api::get_account($real)->lockedby);
+
+        // No step record (fresh install): nothing is withdrawn.
+        $this->assertSame(0, auth_flexaccess_withdraw_inferred_lockedby());
+        $DB->insert_record('upgrade_log', (object) [
+            'type' => 0, 'plugin' => 'auth_flexaccess', 'version' => '2026092202', 'targetversion' => '2026092202',
+            'info' => 'Upgrade savepoint reached', 'details' => null, 'backtrace' => null, 'userid' => 0,
+            'timemodified' => $stepran,
+        ]);
+        $this->assertSame(1, auth_flexaccess_withdraw_inferred_lockedby());
+        $this->assertNull(api::get_account($legacy)->lockedby);
+        $this->assertSame(lifecycle::LOCKED_BY_FLEXACCESS, api::get_account($real)->lockedby);
+        // The unattributed suspension can no longer be lifted by any transition.
+        $this->assertFalse(lifecycle::suspension_liftable($legacy));
+        lifecycle::transition_to_recovered_temporary($legacy, 600);
+        $this->assertEquals(1, $DB->get_field('user', 'suspended', ['id' => $legacy]));
+        // Idempotent.
+        $this->assertSame(0, auth_flexaccess_withdraw_inferred_lockedby());
+    }
+
+    /**
+     * FlexAccess does not claim a suspension that existed before it expired the account.
+     *
+     * @return void
+     */
+    public function test_expiry_does_not_claim_existing_suspension(): void {
+        global $DB;
+        $this->resetAfterTest();
+        // An administrator suspended the live temporary account; later it expires.
+        $userid = $this->combo(account_type::TEMPORARY_USER, account_state::EPHEMERAL, 1, false, time() - 1);
+        account_service::expire_due();
+        $this->assertSame(account_state::EXPIRED, api::get_account($userid)->accountstate);
+        $this->assertNull(api::get_account($userid)->lockedby);
+        $this->assertFalse(lifecycle::suspension_liftable($userid));
     }
 }

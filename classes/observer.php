@@ -55,4 +55,17 @@ final class observer {
             api::reconcile_external_identity_merge($from, $to, false);
         }
     }
+
+    /**
+     * Remove the FlexAccess metadata of a user Moodle has just deleted.
+     *
+     * @param \core\event\user_deleted $event Event.
+     * @return void
+     */
+    public static function user_deleted(\core\event\user_deleted $event): void {
+        $userid = (int) $event->objectid;
+        if ($userid > 0) {
+            api::purge_deleted_user_account($userid);
+        }
+    }
 }

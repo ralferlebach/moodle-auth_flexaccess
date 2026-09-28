@@ -31,6 +31,11 @@ $observers = [
         'callback' => '\auth_flexaccess\observer::user_password_updated',
     ],
     [
+        // A deleted user keeps no FlexAccess metadata (account row, tokens, queued mail).
+        'eventname' => '\core\event\user_deleted',
+        'callback' => '\auth_flexaccess\observer::user_deleted',
+    ],
+    [
         // Identity merges performed by tool_mergeusers are reconciled; the event only fires when that
         // plugin is installed.
         'eventname' => '\tool_mergeusers\event\user_merged_success',

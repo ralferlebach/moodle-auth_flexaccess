@@ -247,20 +247,23 @@ final class account_query_service {
      * Account rows (joined with the core user) for the given users.
      *
      * @param int[] $userids User ids.
+     * @param bool $includedeleted Also return accounts of deleted (or vanished) users, with deleted = 1.
      * @return array<int, \stdClass> Keyed by user id.
      */
-    public static function get_accounts(array $userids): array {
+    public static function get_accounts(array $userids, bool $includedeleted = false): array {
         global $DB;
         $userids = array_values(array_filter(array_map('intval', $userids)));
         if (!$userids) {
             return [];
         }
         [$insql, $params] = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED);
+        $join = $includedeleted ? 'LEFT JOIN {user} u ON u.id = a.userid' : 'JOIN {user} u ON u.id = a.userid AND u.deleted = 0';
         $sql = "SELECT a.userid, a.id, a.accounttype, a.accountstate, a.timecreated, a.timeexpires,
                        a.referencecode, a.sourcecourseid, a.timeactivated, a.batchcredential, a.lockedby,
-                       u.firstname, u.lastname, u.email, u.suspended, u.confirmed, u.auth
+                       u.firstname, u.lastname, u.email, u.suspended, u.confirmed, u.auth,
+                       CASE WHEN u.id IS NULL OR u.deleted = 1 THEN 1 ELSE 0 END AS deleted
                   FROM {auth_flexaccess_account} a
-                  JOIN {user} u ON u.id = a.userid AND u.deleted = 0
+                  $join
                  WHERE a.userid $insql";
         return $DB->get_records_sql($sql, $params);
     }

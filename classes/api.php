@@ -838,10 +838,11 @@ final class api {
      * Account rows (joined with the core user) for the given users, keyed by user id.
      *
      * @param int[] $userids User ids.
+     * @param bool $includedeleted Also return accounts of deleted (or vanished) users, with deleted = 1.
      * @return array<int, \stdClass>
      */
-    public static function get_accounts(array $userids): array {
-        return local\account_query_service::get_accounts($userids);
+    public static function get_accounts(array $userids, bool $includedeleted = false): array {
+        return local\account_query_service::get_accounts($userids, $includedeleted);
     }
 
     /**
@@ -1211,7 +1212,9 @@ final class api {
      *   here - only a completed verification does that.
      * - Authenticated ACTIVE account with a contradicting suspension/restriction: normalised.
      * - PENDING_CREDENTIAL account: normalised and a fresh set-password link is sent.
-     * Anything else is reported as not eligible or as already consistent (skipped).
+     * Anything else is reported as not eligible or as already consistent (skipped). A suspension that
+     * FlexAccess did not set itself (administrative, legacy, unknown origin) is never lifted: the
+     * account is then reported as not eligible ('foreignlock') and left completely unchanged.
      *
      * @param int $userid User id.
      * @param int|null $lifetime Lifetime of a recovered temporary account; null reads the setting.
@@ -1227,6 +1230,15 @@ final class api {
         $old = (string) $account->accountstate;
         $result = (object) ['outcome' => 'skipped', 'oldstate' => $old, 'newstate' => $old, 'action' => ''];
         $lifetime = $lifetime ?? self::recovery_lifetime();
+
+        // Recovery never lifts a suspension FlexAccess did not set: an administrative or legacy
+        // suspension of unknown origin stays, and nothing else is changed either (no half recovery).
+        // The explicit way out is an administrator lifting it in Moodle's user administration.
+        if (!local\lifecycle::suspension_liftable($userid)) {
+            $result->outcome = 'noteligible';
+            $result->action = 'foreignlock';
+            return $result;
+        }
 
         if ($account->accounttype === account_type::TEMPORARY_USER) {
             $lapsed = $old === account_state::EXPIRED
@@ -1331,6 +1343,9 @@ final class api {
     /**
      * FlexAccess account user ids after a cursor, in id order (batch iteration for maintenance runs).
      *
+     * Every account row is returned, including those of deleted or vanished Moodle users: a full
+     * reconciliation must classify them, not skip them.
+     *
      * @param int $afteruserid Return ids greater than this.
      * @param int $limit Maximum number of ids.
      * @return int[]
@@ -1340,7 +1355,6 @@ final class api {
         return array_map('intval', $DB->get_fieldset_sql(
             "SELECT a.userid
                FROM {auth_flexaccess_account} a
-               JOIN {user} u ON u.id = a.userid AND u.deleted = 0
               WHERE a.userid > :after
            ORDER BY a.userid ASC",
             ['after' => $afteruserid],
@@ -1350,15 +1364,68 @@ final class api {
     }
 
     /**
-     * Number of FlexAccess accounts of existing users.
+     * Number of FlexAccess account rows, including those of deleted users.
      *
      * @return int
      */
     public static function count_all_accounts(): int {
         global $DB;
-        return $DB->count_records_sql(
-            "SELECT COUNT(1) FROM {auth_flexaccess_account} a JOIN {user} u ON u.id = a.userid AND u.deleted = 0"
-        );
+        return $DB->count_records('auth_flexaccess_account');
+    }
+
+    /**
+     * Remove the FlexAccess metadata of a user that Moodle has deleted (terminal, nothing to restore).
+     *
+     * Refuses unless the user is deleted or no longer exists, so it can never touch a live account.
+     *
+     * @param int $userid User id.
+     * @return bool Whether metadata was removed.
+     */
+    public static function purge_deleted_user_account(int $userid): bool {
+        global $DB;
+        $deleted = $DB->get_field('user', 'deleted', ['id' => $userid]);
+        if ($deleted !== false && (int) $deleted !== 1) {
+            return false;
+        }
+        if (!$DB->record_exists('auth_flexaccess_account', ['userid' => $userid])) {
+            return false;
+        }
+        $DB->delete_records('auth_flexaccess_account', ['userid' => $userid]);
+        $DB->delete_records('auth_flexaccess_token', ['userid' => $userid]);
+        $DB->delete_records('auth_flexaccess_mailqueue', ['userid' => $userid, 'status' => 'queued']);
+        foreach (['auth_flexaccess_pendingemail', 'auth_flexaccess_followupsent', 'auth_flexaccess_pendingcredential'] as $pref) {
+            $DB->delete_records('user_preferences', ['userid' => $userid, 'name' => $pref]);
+        }
+        return true;
+    }
+
+    /**
+     * Every user holding the restriction role without a FlexAccess account (complete, no limit).
+     *
+     * @return int[]
+     */
+    public static function find_orphan_restriction_userids(): array {
+        return local\lifecycle::find_orphan_restriction_userids();
+    }
+
+    /**
+     * Complete count of lifecycle mismatches per code (no limit; for status reports).
+     *
+     * @param int|null $now Current time.
+     * @return array<string, int>
+     */
+    public static function count_state_mismatches(?int $now = null): array {
+        return local\lifecycle::count_state_mismatches($now);
+    }
+
+    /**
+     * Whether a FlexAccess transition may lift this user's suspension (none, or set by FlexAccess).
+     *
+     * @param int $userid User id.
+     * @return bool
+     */
+    public static function suspension_liftable(int $userid): bool {
+        return local\lifecycle::suspension_liftable($userid);
     }
 
     /**

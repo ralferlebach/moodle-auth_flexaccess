@@ -50,28 +50,45 @@ function auth_flexaccess_backfill_batchcredential(): int {
 }
 
 /**
- * Attribute existing suspensions that FlexAccess itself set.
+ * Withdraw suspension origins that the 2026092202 upgrade step had inferred instead of recorded.
  *
- * Up to 1.1.0 the only place FlexAccess suspended a Moodle user was the expiry of a temporary account,
- * which always also set the state EXPIRED. A temporary EXPIRED account with a suspended user therefore
- * carries a FlexAccess suspension. Every other suspension stays unattributed (NULL): its origin cannot
- * be told apart from an administrative Moodle suspension and must never be lifted automatically.
- * Idempotent.
+ * That step marked every temporary EXPIRED account with a suspended user as suspended by FlexAccess.
+ * The origin of such a legacy suspension cannot be reconstructed: an administrator may have suspended
+ * the live account before it expired, which leaves exactly the same data. An inferred mark would let a
+ * later repair or recovery lift an administrative suspension, so it is withdrawn; the suspension stays
+ * and becomes a review case instead.
  *
- * @return int Number of accounts attributed.
+ * Only marks the step inferred are withdrawn. It did not touch timemodified, while every real FlexAccess
+ * suspension since then went through the lifecycle, which does. So a mark on a row not modified after
+ * the step ran is an inferred one. Without a record of that step (fresh install, or the step never ran)
+ * there is nothing to withdraw. Idempotent.
+ *
+ * @return int Number of marks withdrawn.
  */
-function auth_flexaccess_backfill_lockedby(): int {
+function auth_flexaccess_withdraw_inferred_lockedby(): int {
     global $DB;
-    $userids = $DB->get_fieldset_sql(
-        "SELECT a.userid
-           FROM {auth_flexaccess_account} a
-           JOIN {user} u ON u.id = a.userid AND u.suspended = 1
-          WHERE a.accounttype = :type AND a.accountstate = :state AND a.lockedby IS NULL",
-        ['type' => 'temporary user', 'state' => 'expired']
+    $steps = $DB->get_records_select(
+        'upgrade_log',
+        'plugin = :plugin AND version = :version AND info = :info',
+        ['plugin' => 'auth_flexaccess', 'version' => '2026092202', 'info' => 'Upgrade savepoint reached'],
+        'timemodified DESC',
+        'id, timemodified',
+        0,
+        1
+    );
+    if (!$steps) {
+        return 0;
+    }
+    $stepran = (int) reset($steps)->timemodified;
+    $userids = $DB->get_fieldset_select(
+        'auth_flexaccess_account',
+        'userid',
+        'lockedby = :flexaccess AND timemodified <= :stepran',
+        ['flexaccess' => 'flexaccess', 'stepran' => $stepran]
     );
     foreach (array_chunk(array_map('intval', $userids), 500) as $chunk) {
         [$insql, $params] = $DB->get_in_or_equal($chunk);
-        $DB->set_field_select('auth_flexaccess_account', 'lockedby', 'flexaccess', "userid $insql", $params);
+        $DB->set_field_select('auth_flexaccess_account', 'lockedby', null, "userid $insql", $params);
     }
     return count($userids);
 }

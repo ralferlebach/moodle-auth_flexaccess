@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.0 (2026092801) — 2026-09-28 — Restarbeiten aus dem Gesamtaudit
+- **Keine Transition hebt mehr eine fremde Sperre auf (AUDIT-001, AUDIT-003).** Die einzige Stelle, die `user.suspended` schreibt, prüft jetzt die Herkunft. Aufgehoben wird eine Sperre nur, wenn sie `lockedby = flexaccess` trägt. Das gilt für Konvertierung, Recovery, Normalisierung und Identitäts-Merge gleichermaßen. Eine administrative oder unbekannte Sperre bleibt, und der Login-Guard weist das Konto weiter ab.
+- **Recovery ändert bei fremder Sperre gar nichts** (`foreignlock`), statt halb zu reaktivieren. Der Weg ist dann eine bewusste Entscheidung der Administration in der Moodle-Nutzerverwaltung.
+- **Merge:** Der Merge meldet eine bleibende Sperre der überlebenden Identität (`targetlocked`). Die Einschreibungen werden trotzdem übertragen.
+- **Sperrherkunft wird nicht mehr geraten (AUDIT-006).** FlexAccess vermerkt eine Sperre nur, wenn es sie selbst setzt, und beansprucht keine vorher bestehende. Das betrifft etwa ein Konto, das die Administration sperrt und das später abläuft.
+- **Geratene Markierungen werden zurückgenommen.** Der Upgrade-Schritt von `2026092202` markierte Altdaten, ohne es zu wissen. Schritt `2026092801` nimmt genau diese Markierungen wieder zurück. Erkennbar sind sie am Zeitpunkt des damaligen Schritts aus `upgrade_log`: Echte Abläufe danach haben ein späteres `timemodified`.
+- **Historische Restriktionsrollen verschwinden vollständig (AUDIT-004).** Das gilt auch für Zuweisungen ohne Komponente, sowohl beim Übergang zu einer dauerhaften Identität als auch beim Merge (Quelle und Ziel).
+- **Gelöschte Nutzer werden erfasst (AUDIT-005).** `list_account_userids()` und `count_all_accounts()` schließen gelöschte Nutzer nicht mehr aus. `get_accounts()` kann sie mit `deleted = 1` liefern. `purge_deleted_user_account()` entfernt die FlexAccess-Metadaten eines gelöschten Nutzers und verweigert das bei lebenden Konten. Ein Observer auf `user_deleted` räumt künftig sofort auf.
+- **Vollständige Abfragen ohne Kappung (AUDIT-007):** `count_state_mismatches()` und `find_orphan_restriction_userids()`. `find_state_mismatches()` akzeptiert `limit = 0` für einen vollständigen Lauf.
+- Version `2026092801`, Release `1.1.0`, `MATURITY_STABLE`. Abhängigkeit `enrol_flexaccess` ≥ `2026092801`.
+
 ## 1.1.0 (2026092800) — 2026-09-28 — Kurs-/Zugangskennwort vor der Schnellregistrierung (Issue #9)
 - **Gate zuerst.** Ist für die Schnellregistrierung ein Kurs-/Zugangskennwort gesetzt (`quickreggatemode = password`), fragt `register.php` dieses Kennwort jetzt in einem eigenen ersten Schritt ab (`form\access_gate_form`, genau ein Kennwortfeld). Das Registrierungsformular mit E-Mail, Namen und persönlichem Passwort erscheint erst nach bestandener Prüfung und enthält kein Kurskennwort-Feld mehr. Damit stehen die zwei Kennwörter nicht mehr wie „Passwort“ und „Passwort wiederholen“ untereinander.
 - **Kein Kennwort zwischen den Schritten.** Nach bestandener Prüfung folgt ein Redirect (Post/Redirect/Get). Das Kennwort erscheint weder in URL, Redirect-Ziel, Referrer noch in einem Hidden Field; der zweite Schritt stützt sich auf einen serverseitigen Nachweis aus enrol_flexaccess.
