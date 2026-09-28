@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.0 (2026092802) — 2026-09-28 — Sperrherkunft ausdrücklich zuordnen
+- **Neue Herkunft `lockedby = admin`.** Sie steht für eine Sperre, die die Administration ausdrücklich als ihre Entscheidung bestätigt hat. Die Herkunft einer Sperre ist damit dreiwertig: FlexAccess, Administration, unbekannt (`NULL`).
+- **Keine Inkonsistenz mehr.** Ein aktives oder gültiges Konto mit bestätigter Admin-Sperre ist ein bewusst modellierter Zustand (STATE-003). Es wird weder als Inkonsistenz gemeldet noch von FlexAccess aufgehoben.
+- **Neue API `attribute_suspension()`.** Sie hält die Entscheidung der Administration für ein aktuell gesperrtes Konto fest, entweder `flexaccess` oder `admin`. Das Sperr-Flag selbst ändert sie nicht.
+- Version `2026092802`, Release `1.1.0`, `MATURITY_STABLE`. Abhängigkeit `enrol_flexaccess` ≥ `2026092802`.
+
 ## 1.1.0 (2026092801) — 2026-09-28 — Restarbeiten aus dem Gesamtaudit
 - **Keine Transition hebt mehr eine fremde Sperre auf (AUDIT-001, AUDIT-003).** Die einzige Stelle, die `user.suspended` schreibt, prüft jetzt die Herkunft. Aufgehoben wird eine Sperre nur, wenn sie `lockedby = flexaccess` trägt. Das gilt für Konvertierung, Recovery, Normalisierung und Identitäts-Merge gleichermaßen. Eine administrative oder unbekannte Sperre bleibt, und der Login-Guard weist das Konto weiter ab.
 - **Recovery ändert bei fremder Sperre gar nichts** (`foreignlock`), statt halb zu reaktivieren. Der Weg ist dann eine bewusste Entscheidung der Administration in der Moodle-Nutzerverwaltung.

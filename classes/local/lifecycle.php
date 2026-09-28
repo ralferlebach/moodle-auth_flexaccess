@@ -76,6 +76,12 @@ final class lifecycle {
 
     /** Value of auth_flexaccess_account.lockedby for a suspension set by the FlexAccess lifecycle. */
     public const LOCKED_BY_FLEXACCESS = 'flexaccess';
+    /**
+     * Value of auth_flexaccess_account.lockedby for a suspension an administrator explicitly confirmed as
+     * an administrative decision. It is a legitimate, modelled state: never lifted by FlexAccess and not
+     * reported as an inconsistency. NULL means the origin is unknown.
+     */
+    public const LOCKED_BY_ADMIN = 'admin';
 
     /**
      * Expected core/role state for an account type and state.
@@ -422,7 +428,10 @@ final class lifecycle {
         $codes = [];
         $suspended = (int) $row->suspended;
         $restricted = (int) $row->restricted === 1;
-        if ($suspended !== (int) $expect->suspended) {
+        // An administrator's confirmed suspension of a live account is an explicitly modelled state, not
+        // a contradiction (STATE-003): it is neither reported nor ever lifted by FlexAccess.
+        $adminlock = $suspended === 1 && ($row->lockedby ?? null) === self::LOCKED_BY_ADMIN;
+        if ($suspended !== (int) $expect->suspended && !$adminlock) {
             if ($state === account_state::ACTIVE) {
                 $codes[] = self::MISMATCH_ACTIVE_SUSPENDED;
             } else if ($expect->suspended === 1) {
@@ -546,6 +555,30 @@ final class lifecycle {
             }
         }
         return $reached;
+    }
+
+    /**
+     * Record the origin of an existing suspension as decided by an administrator.
+     *
+     * Only for a user who is suspended right now. FLEXACCESS makes the suspension liftable by FlexAccess
+     * transitions (e.g. a subsequent recovery); ADMIN confirms it as an administrative decision that
+     * FlexAccess never lifts and no longer reports. The core suspended flag itself is not changed here.
+     *
+     * @param int $userid User id.
+     * @param string $origin LOCKED_BY_FLEXACCESS or LOCKED_BY_ADMIN.
+     * @return bool Whether the origin was recorded.
+     */
+    public static function attribute_suspension(int $userid, string $origin): bool {
+        global $DB;
+        if (!in_array($origin, [self::LOCKED_BY_FLEXACCESS, self::LOCKED_BY_ADMIN], true)) {
+            return false;
+        }
+        $suspended = $DB->get_field('user', 'suspended', ['id' => $userid, 'deleted' => 0]);
+        if ((int) $suspended !== 1 || !$DB->record_exists(self::TABLE, ['userid' => $userid])) {
+            return false;
+        }
+        $DB->set_field(self::TABLE, 'lockedby', $origin, ['userid' => $userid]);
+        return true;
     }
 
     /**

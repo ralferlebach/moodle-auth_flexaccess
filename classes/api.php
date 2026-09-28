@@ -1419,6 +1419,17 @@ final class api {
     }
 
     /**
+     * Record, as an administrator's decision, where an existing suspension comes from.
+     *
+     * @param int $userid User id.
+     * @param string $origin 'flexaccess' (liftable by FlexAccess) or 'admin' (administrative, kept).
+     * @return bool Whether the origin was recorded (false when the user is not suspended).
+     */
+    public static function attribute_suspension(int $userid, string $origin): bool {
+        return local\lifecycle::attribute_suspension($userid, $origin);
+    }
+
+    /**
      * Whether a FlexAccess transition may lift this user's suspension (none, or set by FlexAccess).
      *
      * @param int $userid User id.
