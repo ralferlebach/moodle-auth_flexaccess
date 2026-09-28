@@ -6,4 +6,4 @@
 # that no longer exist. Every path listed here must be deleted from the installation/repository.
 #
 # The stale-files CI job fails the build while any of these paths still exists.
-lib.php
+
