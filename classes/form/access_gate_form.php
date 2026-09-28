@@ -21,15 +21,16 @@ defined('MOODLE_INTERNAL') || die();
 require_once($GLOBALS['CFG']->libdir . '/formslib.php');
 
 /**
- * Quick registration form: collects the minimal detail needed for a persistent account.
+ * First step of a password-protected quick registration: the course access password, alone.
+ *
+ * Deliberately a form of its own with exactly one password field, so the course access password can
+ * never be mistaken for a "repeat password" field of the account that is only created afterwards.
  *
  * @package    auth_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class quick_registration_form extends \moodleform {
-    use identity_fields;
-
+class access_gate_form extends \moodleform {
     /**
      * Form definition.
      *
@@ -37,7 +38,11 @@ class quick_registration_form extends \moodleform {
      */
     protected function definition(): void {
         $mform = $this->_form;
-        $this->add_identity_fields();
+        $mform->addElement('static', 'gateintro', '', get_string('registergateintro', 'auth_flexaccess'));
+        $mform->addElement('passwordunmask', 'accesspassword', get_string('registeraccesspassword', 'auth_flexaccess'));
+        $mform->setType('accesspassword', PARAM_RAW);
+        $mform->addRule('accesspassword', get_string('required'), 'required', null, 'client');
+        $mform->addHelpButton('accesspassword', 'registeraccesspassword', 'auth_flexaccess');
 
         $mform->addElement('hidden', 'courseid');
         $mform->setType('courseid', PARAM_INT);
@@ -45,21 +50,9 @@ class quick_registration_form extends \moodleform {
         $mform->addElement('hidden', 'wantsurl');
         $mform->setType('wantsurl', PARAM_LOCALURL);
         $mform->setDefault('wantsurl', (string) ($this->_customdata['wantsurl'] ?? ''));
+        $mform->addElement('hidden', 'gatestep', 1);
+        $mform->setType('gatestep', PARAM_INT);
 
-        // No course access password here: a password gate is answered in its own, earlier step
-        // (access_gate_form), so this form only ever holds the account's own password.
-
-        $this->add_action_buttons(true, get_string('registersubmit', 'auth_flexaccess'));
-    }
-
-    /**
-     * Server-side validation: valid, unused email and a password meeting the site policy.
-     *
-     * @param array $data Submitted data.
-     * @param array $files Submitted files.
-     * @return array Field errors.
-     */
-    public function validation($data, $files): array {
-        return array_merge(parent::validation($data, $files), $this->validate_identity($data));
+        $this->add_action_buttons(true, get_string('registergatesubmit', 'auth_flexaccess'));
     }
 }

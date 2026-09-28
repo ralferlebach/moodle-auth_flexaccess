@@ -71,21 +71,53 @@ if (isloggedin() && !isguestuser()) {
 }
 
 $gatemode = \enrol_flexaccess\api::get_effective_policy($courseid)->quickreggatemode;
+$controller = \enrol_flexaccess\local\access_controller::class;
+$failure = null;
+
+// Gate first: with a course access password, the registration form only appears once that password
+// has been checked on its own. The pass the check leaves in the session carries no password.
+if ($gatemode === 'password' && !$controller::has_quickreg_gate_pass($courseid)) {
+    $gateform = new \auth_flexaccess\form\access_gate_form(
+        new moodle_url('/auth/flexaccess/register.php'),
+        ['courseid' => $courseid, 'wantsurl' => $wantsurl]
+    );
+    if ($gateform->is_cancelled()) {
+        redirect($courseurl);
+    } else if ($gatedata = $gateform->get_data()) {
+        $gate = $controller::check_quickreg_gate($courseid, (string) $gatedata->accesspassword, getremoteaddr());
+        if ($gate === 'passed' || $gate === 'notrequired') {
+            // Post/redirect/get: the password is not repeated in any URL, form or referrer.
+            redirect(new moodle_url('/auth/flexaccess/register.php', ['courseid' => $courseid, 'wantsurl' => $wantsurl]));
+        }
+        $failure = $gate;
+    } else if (optional_param('email', null, PARAM_RAW) !== null && confirm_sesskey()) {
+        // A registration was submitted without a (still) valid pass, e.g. after it expired while the
+        // form was being filled in: say so instead of silently starting over.
+        $failure = 'gateexpired';
+    }
+    echo $OUTPUT->header();
+    echo $OUTPUT->heading(get_string('registergatetitle', 'auth_flexaccess'));
+    if ($failure !== null) {
+        echo $OUTPUT->notification(get_string('access' . $failure, 'auth_flexaccess'), 'error');
+    }
+    $gateform->display();
+    echo $OUTPUT->footer();
+    exit;
+}
+
 $form = new \auth_flexaccess\form\quick_registration_form(
     new moodle_url('/auth/flexaccess/register.php'),
-    ['courseid' => $courseid, 'wantsurl' => $wantsurl, 'gatemode' => $gatemode]
+    ['courseid' => $courseid, 'wantsurl' => $wantsurl]
 );
 
-$failure = null;
 if ($form->is_cancelled()) {
     redirect($courseurl);
 } else if ($data = $form->get_data()) {
-    $result = \enrol_flexaccess\local\access_controller::grant_quick_registration($courseid, (object) [
+    $result = $controller::grant_quick_registration($courseid, (object) [
         'email' => $data->email,
         'firstname' => $data->firstname,
         'lastname' => $data->lastname,
         'password' => $data->password,
-        'accesspassword' => $data->accesspassword ?? '',
     ], getremoteaddr());
     $channel = \auth_flexaccess\local\login_guard::CHANNEL_ENTRY;
     if (
@@ -98,6 +130,10 @@ if ($form->is_cancelled()) {
         redirect($returnurl, $message);
     }
     $failure = ($result->status === 'granted' || $result->status === 'verificationsent') ? 'loginrefused' : $result->status;
+    if ($failure === 'badgate' && $gatemode === 'domain') {
+        // The domain gate judges the e-mail address; there is no course password to blame.
+        $failure = 'badgatedomain';
+    }
 }
 
 echo $OUTPUT->header();

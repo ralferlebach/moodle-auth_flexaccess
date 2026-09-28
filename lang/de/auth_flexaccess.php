@@ -24,7 +24,8 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-$string['accessbadgate'] = 'Die Registrierung ist eingeschränkt. Bitte prüfen Sie das Zugangspasswort oder verwenden Sie eine zulässige E-Mail-Adresse.';
+$string['accessbadgate'] = 'Das Kurs-/Zugangskennwort ist nicht korrekt.';
+$string['accessbadgatedomain'] = 'Die Registrierung für diesen Kurs ist auf bestimmte E-Mail-Domains beschränkt. Bitte verwenden Sie eine Adresse aus einer zugelassenen Domain.';
 $string['accessbadkey'] = 'Dieser Zugangsschlüssel ist nicht korrekt.';
 $string['accessclosed'] = 'Temporärer Zugang ist derzeit nicht verfügbar.';
 $string['accesscolaccount'] = 'Zugang mit Account';
@@ -32,6 +33,7 @@ $string['accesscolnoaccount'] = 'Zugang ohne eigenes Konto';
 $string['accesscoltemporary'] = 'Temporärer Gastaccount';
 $string['accessenterkey'] = 'Zugangsschlüssel';
 $string['accessfull'] = 'Die maximale Teilnehmerzahl ist erreicht. Bitte versuchen Sie es später erneut.';
+$string['accessgateexpired'] = 'Ihre Zugangsfreigabe ist abgelaufen. Bitte geben Sie das Kurs-/Zugangskennwort erneut ein.';
 $string['accessgranted'] = 'Temporärer Zugang gewährt. Willkommen!';
 $string['accessguestlimitations'] = 'Als Gast können Sie den Kurs nur ansehen. Sie können nichts abgeben, keine Tests bearbeiten, nicht in Foren schreiben und keinen Fortschritt speichern.';
 $string['accessintro'] = 'Sie erhalten gleich temporären Zugang zu „{$a}". Ihr Fortschritt kann später durch Aktivierung Ihres Kontos gesichert werden.';
@@ -119,8 +121,12 @@ $string['privacy:metadata:token:timeexpires'] = 'Wann das Token abläuft.';
 $string['privacy:metadata:token:timeused'] = 'Wann das Token eingelöst wurde.';
 $string['privacy:metadata:token:tokenhash'] = 'Ein Einweg-Hash eines Einmal-Tokens (niemals das Token selbst).';
 $string['privacy:metadata:token:userid'] = 'Zugehörige Moodle-Nutzer-ID.';
-$string['registeraccesspassword'] = 'Zugangspasswort';
+$string['registeraccesspassword'] = 'Kurs-/Zugangskennwort';
+$string['registeraccesspassword_help'] = 'Geben Sie hier das Kennwort ein, das Sie für den Zugang zu diesem Kurs erhalten haben. Dies ist nicht das Passwort Ihres Nutzerkontos; das legen Sie im nächsten Schritt fest.';
 $string['registeremailtaken'] = 'Für diese E-Mail-Adresse existiert bereits ein Konto. Bitte melden Sie sich stattdessen an.';
+$string['registergateintro'] = 'Dieser Kurs ist durch ein Kurs-/Zugangskennwort geschützt. Geben Sie es zuerst ein; danach legen Sie Ihr Konto an.';
+$string['registergatesubmit'] = 'Weiter';
+$string['registergatetitle'] = 'Kurs-/Zugangskennwort';
 $string['registerintro'] = 'Erstellen Sie ein Konto, um {$a} beizutreten. Sie können sich später mit der hier gewählten E-Mail und dem Passwort erneut anmelden.';
 $string['registersubmit'] = 'Konto erstellen und eintreten';
 $string['registersuccess'] = 'Ihr Konto wurde erstellt und Sie sind nun eingeschrieben.';

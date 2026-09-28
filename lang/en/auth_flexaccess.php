@@ -24,7 +24,8 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-$string['accessbadgate'] = 'Registration is restricted. Please check the access password or use an eligible email address.';
+$string['accessbadgate'] = 'The course access password is not correct.';
+$string['accessbadgatedomain'] = 'Registration for this course is restricted to certain e-mail domains. Please use an address from an allowed domain.';
 $string['accessbadkey'] = 'That access key is not correct.';
 $string['accessclosed'] = 'Temporary access is not available at this time.';
 $string['accesscolaccount'] = 'Access with an account';
@@ -32,6 +33,7 @@ $string['accesscolnoaccount'] = 'Access without an account';
 $string['accesscoltemporary'] = 'Temporary guest account';
 $string['accessenterkey'] = 'Access key';
 $string['accessfull'] = 'The maximum number of participants has been reached. Please try again later.';
+$string['accessgateexpired'] = 'Your course access confirmation has expired. Please enter the course access password again.';
 $string['accessgranted'] = 'Temporary access granted. Welcome!';
 $string['accessguestlimitations'] = 'As a guest you can only view the course. You cannot submit work, take tests, post in forums or save any progress.';
 $string['accessintro'] = 'You are about to get temporary access to "{$a}". Your progress can later be kept by activating your account.';
@@ -119,8 +121,12 @@ $string['privacy:metadata:token:timeexpires'] = 'When the token expires.';
 $string['privacy:metadata:token:timeused'] = 'When the token was consumed.';
 $string['privacy:metadata:token:tokenhash'] = 'A one-way hash of a one-time token (never the token itself).';
 $string['privacy:metadata:token:userid'] = 'The Moodle user ID associated with the token.';
-$string['registeraccesspassword'] = 'Access password';
+$string['registeraccesspassword'] = 'Course access password';
+$string['registeraccesspassword_help'] = 'Enter the password you received for access to this course. This is not the password of your user account; you choose that one in the next step.';
 $string['registeremailtaken'] = 'An account already exists for this email address. Please log in instead.';
+$string['registergateintro'] = 'This course is protected by an access password. Enter it first; you will then create your account.';
+$string['registergatesubmit'] = 'Continue';
+$string['registergatetitle'] = 'Course access password';
 $string['registerintro'] = 'Create an account to join {$a}. You can log in again later with the email and password you set here.';
 $string['registersubmit'] = 'Create account and enter';
 $string['registersuccess'] = 'Your account has been created and you are now enrolled.';
