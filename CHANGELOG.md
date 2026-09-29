@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.1.0 (2026092900) — 2026-09-29 — Versions-Gleichschritt
+- Keine Codeänderung. Version `2026092900`, Release `1.1.0`, `MATURITY_STABLE`. Abhängigkeit `enrol_flexaccess` ≥ `2026092900`.
+
 ## 1.1.0 (2026092805) — 2026-09-29 — Versions-Gleichschritt
 - Keine Codeänderung. Versions-Gleichschritt mit enrol und tool, deren Browser-Tests korrigiert und ergänzt wurden. Version `2026092805`, Release `1.1.0`, `MATURITY_STABLE`. Abhängigkeit `enrol_flexaccess` ≥ `2026092805`.
 
