@@ -168,7 +168,8 @@ class auth_plugin_flexaccess extends auth_plugin_base {
         if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'GET') {
             return;
         }
-        if (optional_param('username', '', PARAM_RAW) !== '' || optional_param('logintoken', '', PARAM_RAW) !== '') {
+        // Presence checks only; the values themselves are never used here.
+        if (optional_param('username', '', PARAM_NOTAGS) !== '' || optional_param('logintoken', '', PARAM_ALPHANUM) !== '') {
             return;
         }
         $wantsurl = optional_param('wantsurl', '', PARAM_LOCALURL);

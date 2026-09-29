@@ -39,7 +39,19 @@ $PAGE->set_heading(get_string('persisttitle', 'auth_flexaccess'));
 $myurl = new moodle_url('/my/');
 
 // Verification link: the token authorises the conversion on its own, so no login is required here.
+// Opening the link (GET) only asks for confirmation; mail scanners that prefetch links must not
+// convert the account or spend the single-use token.
 $token = optional_param('token', '', PARAM_ALPHANUM);
+if ($token !== '' && !\auth_flexaccess\local\link_confirmation::is_confirmed()) {
+    echo \auth_flexaccess\local\link_confirmation::render(
+        new moodle_url('/auth/flexaccess/persist.php'),
+        $token,
+        get_string('persisttitle', 'auth_flexaccess'),
+        get_string('persistconfirmintro', 'auth_flexaccess'),
+        get_string('persistconfirmbutton', 'auth_flexaccess')
+    );
+    exit;
+}
 if ($token !== '') {
     $status = \auth_flexaccess\api::confirm_persistence($token);
     echo $OUTPUT->header();

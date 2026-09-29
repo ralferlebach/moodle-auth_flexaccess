@@ -90,7 +90,7 @@ if ($gatemode === 'password' && !$controller::has_quickreg_gate_pass($courseid))
             redirect(new moodle_url('/auth/flexaccess/register.php', ['courseid' => $courseid, 'wantsurl' => $wantsurl]));
         }
         $failure = $gate;
-    } else if (optional_param('email', null, PARAM_RAW) !== null && confirm_sesskey()) {
+    } else if (optional_param('email', null, PARAM_NOTAGS) !== null && confirm_sesskey()) {
         // A registration was submitted without a (still) valid pass, e.g. after it expired while the
         // form was being filled in: say so instead of silently starting over.
         $failure = 'gateexpired';

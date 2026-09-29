@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1.0 (2026092803) — 2026-09-28 — Review gegen Checkliste und Lessons Learnt (Schritt 1 und 2)
+- **Links aus Mails lösen nichts mehr beim bloßen Öffnen aus (Lesson 5).** Bisher wurden `magic.php` und `persist.php` schon per GET ausgelöst: Das Token war verbraucht, der Magic-Link legte sofort eine Sitzung an, der Verifikationslink wandelte das Konto um. Mail-Scanner wie Outlook Safe Links öffnen Links vorab. So entstand eine Sitzung beim Scanner, und die Person sah danach „ungültiger Link“.
+- **Jetzt:** GET zeigt nur eine Bestätigungsseite (`local\link_confirmation`), erst der POST mit Sesskey löst aus. Über HTTP geprüft: GET und ein zweiter GET verbrauchen nichts und legen keine Sitzung an, ein POST ohne gültigen Sesskey bleibt folgenlos.
+- **Merge-Observer ohne Last im fremden Request (Lesson 40).** Der Observer auf `tool_mergeusers` stellt nur noch die Ad-hoc-Aufgabe `task\reconcile_merge` ein (dedupliziert, idempotent). Gemessen: 3 statt 184 Abfragen im auslösenden Request bei 5 Kursen. Direkte API-Aufrufe bleiben synchron.
+- **Sammelabfragen für Listen:** `credential_statuses()` und `verification_pending_userids()` beantworten die Fragen für viele Nutzer in fester Abfragezahl.
+- **Deinstallation (Lesson 27):** Neues `db/uninstall.php` entfernt die Präferenzen `auth_flexaccess_*`, die Moodle nicht selbst abräumt.
+- **`PARAM_RAW` verengt (Lesson 7):** Reine Anwesenheitsprüfungen nutzen `PARAM_NOTAGS` bzw. `PARAM_ALPHANUM`. `PARAM_RAW` bleibt nur für Passwörter.
+- **Präferenz-API:** `purge_deleted_user_account()` löscht Präferenzen über `unset_user_preference()` statt direkt, damit der Präferenz-Cache mit gelöscht wird.
+- Version `2026092803`, Release `1.1.0`, `MATURITY_STABLE`. Abhängigkeit `enrol_flexaccess` ≥ `2026092803`.
+
 ## 1.1.0 (2026092802) — 2026-09-28 — Sperrherkunft ausdrücklich zuordnen
 - **Neue Herkunft `lockedby = admin`.** Sie steht für eine Sperre, die die Administration ausdrücklich als ihre Entscheidung bestätigt hat. Die Herkunft einer Sperre ist damit dreiwertig: FlexAccess, Administration, unbekannt (`NULL`).
 - **Keine Inkonsistenz mehr.** Ein aktives oder gültiges Konto mit bestätigter Admin-Sperre ist ein bewusst modellierter Zustand (STATE-003). Es wird weder als Inkonsistenz gemeldet noch von FlexAccess aufgehoben.

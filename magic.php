@@ -17,7 +17,9 @@
 /**
  * Passwordless magic-login page.
  *
- * With a token: consumes it and logs the user in. Without a token: shows a form to request a
+ * With a token: opening the link (GET) only shows a confirmation button; the token is consumed and
+ * the user logged in by the POST of that button, so mail scanners that prefetch links neither burn
+ * the link nor obtain a session. Without a token: shows a form to request a
  * one-time login link, which is queued to the pending address. The request response never reveals
  * whether an account exists for the given address.
  *
@@ -38,8 +40,18 @@ $PAGE->set_heading(get_string('magictitle', 'auth_flexaccess'));
 
 $loginurl = new moodle_url('/login/index.php');
 
-// Token mode: the link authorises the login on its own.
+// Token mode: the link authorises the login - but only once the person confirms it.
 if ($token !== '') {
+    if (!\auth_flexaccess\local\link_confirmation::is_confirmed()) {
+        echo \auth_flexaccess\local\link_confirmation::render(
+            new moodle_url('/auth/flexaccess/magic.php'),
+            $token,
+            get_string('magictitle', 'auth_flexaccess'),
+            get_string('magicconfirmintro', 'auth_flexaccess'),
+            get_string('magicconfirmbutton', 'auth_flexaccess')
+        );
+        exit;
+    }
     $userid = \auth_flexaccess\api::consume_magic_login($token);
     // The guard re-validates the account immediately before the session is created.
     if ($userid !== null && \auth_flexaccess\api::complete_login($userid, \auth_flexaccess\local\login_guard::CHANNEL_MAGIC)) {

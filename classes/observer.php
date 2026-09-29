@@ -40,9 +40,10 @@ final class observer {
     /**
      * Reconcile FlexAccess state after tool_mergeusers merged two identities.
      *
-     * tool_mergeusers moves enrolments and role assignments by direct table updates; this pass lifts
-     * the restriction the surviving identity may have inherited and removes the merged-away
-     * FlexAccess metadata. Course access is not made permanent implicitly.
+     * tool_mergeusers moves enrolments and role assignments by direct table updates; the queued pass
+     * lifts the restriction the surviving identity may have inherited and removes the merged-away
+     * FlexAccess metadata. Course access is not made permanent implicitly. The work itself runs in
+     * {@see task\reconcile_merge}, not in this synchronous observer.
      *
      * @param \core\event\base $event Event carrying other['usersinvolved'] with toid/fromid.
      * @return void
@@ -52,7 +53,9 @@ final class observer {
         $to = (int) ($involved['toid'] ?? 0);
         $from = (int) ($involved['fromid'] ?? 0);
         if ($to > 0 && $from > 0) {
-            api::reconcile_external_identity_merge($from, $to, false);
+            // Latency budget: only the pair is recorded here; the reconciliation (about 35 queries per
+            // course) runs as an ad-hoc task instead of inside the merging plugin's request.
+            task\reconcile_merge::queue($from, $to);
         }
     }
 

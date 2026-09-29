@@ -1172,6 +1172,86 @@ final class api {
     }
 
     /**
+     * Set-password funnel status of many users at once (same semantics as credential_status()).
+     *
+     * A fixed number of queries regardless of the number of users (list pages).
+     *
+     * @param int[] $userids User ids.
+     * @param int|null $now Current time.
+     * @return array<int, string> userid => status.
+     */
+    public static function credential_statuses(array $userids, ?int $now = null): array {
+        global $DB;
+        $now = $now ?? time();
+        $userids = array_values(array_unique(array_filter(array_map('intval', $userids))));
+        if (!$userids) {
+            return [];
+        }
+        $states = [];
+        foreach (self::get_accounts($userids) as $account) {
+            $states[(int) $account->userid] = (string) $account->accountstate;
+        }
+        [$insql, $params] = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED);
+        // Latest set-password job per user.
+        $latest = [];
+        $rs = $DB->get_recordset_sql(
+            "SELECT id, userid, status FROM {" . self::QUEUE_TABLE . "}
+              WHERE mailtype = :mailtype AND userid $insql
+           ORDER BY userid ASC, timecreated DESC, id DESC",
+            ['mailtype' => mail_kind::SET_PASSWORD] + $params
+        );
+        foreach ($rs as $job) {
+            $latest[(int) $job->userid] = $latest[(int) $job->userid] ?? (string) $job->status;
+        }
+        $rs->close();
+        $live = array_flip(array_map('intval', $DB->get_fieldset_sql(
+            "SELECT DISTINCT userid FROM {auth_flexaccess_token}
+              WHERE purpose = :purpose AND timeused IS NULL AND timeexpires > :now AND userid $insql",
+            ['purpose' => 'setpassword', 'now' => $now] + $params
+        )));
+        $out = [];
+        foreach ($userids as $userid) {
+            if (!isset($states[$userid])) {
+                $out[$userid] = 'none';
+                continue;
+            }
+            $job = $latest[$userid] ?? null;
+            if ($states[$userid] !== account_state::PENDING_CREDENTIAL) {
+                $out[$userid] = $job !== null ? 'completed' : 'none';
+            } else if (in_array($job, ['queued', 'ackpending'], true)) {
+                $out[$userid] = 'queued';
+            } else if (in_array($job, ['failed', 'ackfailed'], true)) {
+                $out[$userid] = 'failed';
+            } else {
+                $out[$userid] = isset($live[$userid]) ? 'sent' : 'expired';
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Users (of the given ones) with an open e-mail verification, in one query.
+     *
+     * @param int[] $userids User ids.
+     * @return int[] Those with a pending verification.
+     */
+    public static function verification_pending_userids(array $userids): array {
+        global $DB;
+        $userids = array_values(array_unique(array_filter(array_map('intval', $userids))));
+        if (!$userids) {
+            return [];
+        }
+        [$insql, $params] = $DB->get_in_or_equal($userids, SQL_PARAMS_NAMED);
+        return array_map('intval', $DB->get_fieldset_sql(
+            "SELECT p.userid
+               FROM {user_preferences} p
+               JOIN {auth_flexaccess_account} a ON a.userid = p.userid AND a.accounttype = :type
+              WHERE p.name = :name AND p.value <> '' AND p.userid $insql",
+            ['type' => account_type::TEMPORARY_USER, 'name' => 'auth_flexaccess_pendingemail'] + $params
+        ));
+    }
+
+    /**
      * Whether a user still has an open e-mail verification (persistence requested, not confirmed).
      *
      * @param int $userid User id.
@@ -1393,8 +1473,9 @@ final class api {
         $DB->delete_records('auth_flexaccess_account', ['userid' => $userid]);
         $DB->delete_records('auth_flexaccess_token', ['userid' => $userid]);
         $DB->delete_records('auth_flexaccess_mailqueue', ['userid' => $userid, 'status' => 'queued']);
+        // Through the preference API, which also drops the cached copy (works for deleted users too).
         foreach (['auth_flexaccess_pendingemail', 'auth_flexaccess_followupsent', 'auth_flexaccess_pendingcredential'] as $pref) {
-            $DB->delete_records('user_preferences', ['userid' => $userid, 'name' => $pref]);
+            unset_user_preference($pref, $userid);
         }
         return true;
     }

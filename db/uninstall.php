@@ -15,23 +15,26 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Plugin version definition for auth_flexaccess.
+ * Uninstall hook of auth_flexaccess: remove the user preferences FlexAccess set.
+ *
+ * Core drops the plugin's tables and configuration but leaves user preferences alone.
  *
  * @package    auth_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-defined('MOODLE_INTERNAL') || die();
-
-$plugin->component = 'auth_flexaccess';
-$plugin->version = 2026092803;
-$plugin->requires = 2024100700; // Moodle 4.5.
-$plugin->supported = [405, 502];
-$plugin->maturity = MATURITY_STABLE;
-$plugin->release = '1.1.0';
-$plugin->dependencies = [
-    // Hard dependency: the access-method policy lives entirely in enrol_flexaccess.
-    // Moodle supports the resulting auth <-> enrol cycle (presence+version check only).
-    'enrol_flexaccess' => 2026092803,
-];
+/**
+ * Uninstall clean-up.
+ *
+ * @return bool
+ */
+function xmldb_auth_flexaccess_uninstall() {
+    global $DB;
+    $DB->delete_records_select(
+        'user_preferences',
+        $DB->sql_like('name', ':prefix'),
+        ['prefix' => $DB->sql_like_escape('auth_flexaccess_') . '%']
+    );
+    return true;
+}

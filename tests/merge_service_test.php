@@ -226,6 +226,14 @@ final class merge_service_test extends \advanced_testcase {
             'other' => ['usersinvolved' => ['toid' => $target, 'fromid' => $source]],
         ]);
         observer::user_merged($event);
+        // The observer only queues the work; nothing has moved yet.
+        $this->assertNull($this->ue($target));
+        $this->assertCount(1, \core\task\manager::get_adhoc_tasks(task\reconcile_merge::class));
+        // Queuing the same merge again does not duplicate the task.
+        observer::user_merged($event);
+        $this->assertCount(1, \core\task\manager::get_adhoc_tasks(task\reconcile_merge::class));
+        $this->expectOutputRegex('/FlexAccess merge \d+ -> \d+: reconciled/');
+        $this->runAdhocTasks(task\reconcile_merge::class);
         $this->assertNotNull($this->ue($target));
     }
 
