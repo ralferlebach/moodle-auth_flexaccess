@@ -96,6 +96,22 @@ final class privacy_provider_test extends \core_privacy\tests\provider_testcase 
         $prefs = $writer->get_user_preferences('auth_flexaccess');
         $this->assertObjectHasProperty('auth_flexaccess_pendingemail', $prefs);
         $this->assertSame('pending@example.com', $prefs->auth_flexaccess_pendingemail->value);
+
+        // Readable for the data subject (Lessons Learnt 20): translated folder, words, dates, no hashes.
+        $plugin = get_string('pluginname', 'auth_flexaccess');
+        $account = $writer->get_data([$plugin, get_string('privacy:metadata:account', 'auth_flexaccess')]);
+        $this->assertNotEmpty($account->records);
+        $row = (array) reset($account->records);
+        $this->assertContains($row['accountstate'], [
+            get_string('accountstate_ephemeral', 'auth_flexaccess'),
+            get_string('accountstate_provisional', 'auth_flexaccess'),
+        ]);
+        $this->assertDoesNotMatchRegularExpression('/^\\d+$/', (string) $row['timecreated']);
+        $tokens = $writer->get_data([$plugin, get_string('privacy:metadata:token', 'auth_flexaccess')]);
+        $this->assertNotEmpty($tokens->records);
+        foreach ($tokens->records as $token) {
+            $this->assertObjectNotHasProperty('tokenhash', $token);
+        }
     }
 
     /**

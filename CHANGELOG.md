@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1.0 (2026092804) — 2026-09-28 — Review gegen Checkliste und Lessons Learnt (Schritt 3)
+- **Datenschutz-Export lesbar (Lesson 20).** Bisher exportierte der Provider rohe Tabellenzeilen: Tabellennamen als Ordner, Unix-Zeitstempel, interne Zustandscodes und den Hash der Einmal-Tokens. Jetzt:
+  - Ordner mit übersetzten Namen
+  - Zeitpunkte als Datum, Zustände und Kontotyp im Klartext, „ja/nein“ statt 0/1
+  - Mail-Betreff und -Text lesbar statt als JSON
+  - keine Token-Hashes mehr
+  Der Test prüft jetzt den Inhalt des Exports, nicht nur, dass es einen gibt.
+- Neue Strings für Kontotyp und -zustand im Klartext (de/en).
+- Version `2026092804`, Release `1.1.0`, `MATURITY_STABLE`. Abhängigkeit `enrol_flexaccess` ≥ `2026092804`.
+
 ## 1.1.0 (2026092803) — 2026-09-28 — Review gegen Checkliste und Lessons Learnt (Schritt 1 und 2)
 - **Links aus Mails lösen nichts mehr beim bloßen Öffnen aus (Lesson 5).** Bisher wurden `magic.php` und `persist.php` schon per GET ausgelöst: Das Token war verbraucht, der Magic-Link legte sofort eine Sitzung an, der Verifikationslink wandelte das Konto um. Mail-Scanner wie Outlook Safe Links öffnen Links vorab. So entstand eine Sitzung beim Scanner, und die Person sah danach „ungültiger Link“.
 - **Jetzt:** GET zeigt nur eine Bestätigungsseite (`local\link_confirmation`), erst der POST mit Sesskey löst aus. Über HTTP geprüft: GET und ein zweiter GET verbrauchen nichts und legen keine Sitzung an, ein POST ohne gültigen Sesskey bleibt folgenlos.

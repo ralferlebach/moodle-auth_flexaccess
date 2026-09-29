@@ -32,6 +32,7 @@ use core_privacy\local\request\approved_contextlist;
 use core_privacy\local\request\approved_userlist;
 use core_privacy\local\request\contextlist;
 use core_privacy\local\request\userlist;
+use core_privacy\local\request\transform;
 use core_privacy\local\request\writer;
 
 /**
@@ -159,22 +160,72 @@ final class provider implements
      * @return void
      */
     public static function export_user_data(approved_contextlist $contextlist): void {
-        global $DB;
         foreach ($contextlist->get_contexts() as $context) {
             if (!$context instanceof \context_user) {
                 continue;
             }
-            $userid = $context->instanceid;
-            foreach (self::TABLES as $table) {
-                $records = $DB->get_records($table, ['userid' => $userid]);
+            $userid = (int) $context->instanceid;
+            // Readable for the person the data is about: translated folder names, dates instead of
+            // timestamps, lifecycle states in words. Token hashes are omitted - they are meaningless
+            // to the person and no secret is stored in clear anywhere.
+            foreach (self::export_sections($userid) as $key => $records) {
                 if ($records) {
                     writer::with_context($context)->export_data(
-                        [get_string('pluginname', 'auth_flexaccess'), $table],
-                        (object) ['records' => array_values($records)]
+                        [get_string('pluginname', 'auth_flexaccess'), get_string('privacy:metadata:' . $key, 'auth_flexaccess')],
+                        (object) ['records' => $records]
                     );
                 }
             }
         }
+    }
+
+    /**
+     * The exportable records of a user, per section, in readable form.
+     *
+     * @param int $userid User id.
+     * @return array<string, array> Section key => records.
+     */
+    private static function export_sections(int $userid): array {
+        global $DB;
+        $date = static fn($t) => empty($t) ? null : transform::datetime((int) $t);
+        $sections = ['account' => [], 'token' => [], 'mail' => []];
+        foreach ($DB->get_records('auth_flexaccess_account', ['userid' => $userid]) as $row) {
+            $sections['account'][] = (object) [
+                'accounttype' => get_string(
+                    'accounttype_' . str_replace(' user', '', (string) $row->accounttype),
+                    'auth_flexaccess'
+                ),
+                'accountstate' => get_string('accountstate_' . $row->accountstate, 'auth_flexaccess'),
+                'referencecode' => $row->referencecode,
+                'sourcecourseid' => $row->sourcecourseid,
+                'timecreated' => $date($row->timecreated),
+                'timeactivated' => $date($row->timeactivated),
+                'timeexpires' => $date($row->timeexpires),
+                'batchcredential' => transform::yesno((bool) $row->batchcredential),
+                'lockedby' => $row->lockedby,
+            ];
+        }
+        foreach ($DB->get_records('auth_flexaccess_token', ['userid' => $userid]) as $row) {
+            $sections['token'][] = (object) [
+                'purpose' => $row->purpose,
+                'timecreated' => $date($row->timecreated),
+                'timeexpires' => $date($row->timeexpires),
+                'timeused' => $date($row->timeused),
+            ];
+        }
+        foreach ($DB->get_records('auth_flexaccess_mailqueue', ['userid' => $userid]) as $row) {
+            $payload = json_decode((string) $row->payloadjson, true);
+            $sections['mail'][] = (object) [
+                'recipient' => $row->recipient,
+                'mailtype' => $row->mailtype,
+                'status' => $row->status,
+                'subject' => is_array($payload) ? ($payload['subject'] ?? null) : null,
+                'body' => is_array($payload) ? ($payload['body'] ?? null) : null,
+                'timecreated' => $date($row->timecreated),
+                'timesent' => $date($row->timesent ?? null),
+            ];
+        }
+        return $sections;
     }
 
     /**
