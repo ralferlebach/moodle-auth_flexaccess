@@ -60,6 +60,8 @@ if ($token !== '') {
         echo $OUTPUT->notification(get_string('persistsuccess', 'auth_flexaccess'), 'success');
     } else if ($status === 'emailtaken') {
         echo $OUTPUT->notification(get_string('registeremailtaken', 'auth_flexaccess'), 'error');
+    } else if ($status === 'foreignlock') {
+        echo $OUTPUT->notification(get_string('persistforeignlock', 'auth_flexaccess'), 'error');
     } else {
         echo $OUTPUT->notification(get_string('persistinvalid', 'auth_flexaccess'), 'error');
     }
@@ -117,6 +119,8 @@ echo $OUTPUT->header();
 echo $OUTPUT->heading(get_string('persisttitle', 'auth_flexaccess'));
 if ($failure === 'emailtaken') {
     echo $OUTPUT->notification(get_string('registeremailtaken', 'auth_flexaccess'), 'error');
+} else if ($failure === 'foreignlock') {
+    echo $OUTPUT->notification(get_string('persistforeignlock', 'auth_flexaccess'), 'error');
 } else if ($failure !== null) {
     echo $OUTPUT->notification(get_string('persistinvalid', 'auth_flexaccess'), 'error');
 }

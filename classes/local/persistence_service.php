@@ -69,6 +69,11 @@ final class persistence_service {
             if (!account_service::is_convertible($userid, $now)) {
                 return 'notapplicable';
             }
+            // A suspension FlexAccess may not lift (administrative or unknown origin) blocks the
+            // conversion itself: no permanent identity is created next to a suspended Moodle user.
+            if (!lifecycle::suspension_liftable($userid)) {
+                return 'foreignlock';
+            }
             $email = \core_text::strtolower(trim($email));
             if ($email === '' || !validate_email($email)) {
                 return 'invalidemail';

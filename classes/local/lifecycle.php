@@ -123,6 +123,12 @@ final class lifecycle {
     public static function transition_to_active_authenticated(int $userid, ?int $now = null): bool {
         global $DB;
         $now = $now ?? time();
+        // The target state includes an unsuspended Moodle user. If FlexAccess may not lift the current
+        // suspension (unknown or administrative origin), the transition is refused before anything
+        // is written - it never commits ACTIVE/PENDING_CREDENTIAL next to a suspended user.
+        if (!self::suspension_liftable($userid)) {
+            return false;
+        }
         $account = $DB->get_record(self::TABLE, ['userid' => $userid]);
         if (!$account) {
             return false;
@@ -137,7 +143,7 @@ final class lifecycle {
         }
         $account->timemodified = $now;
         $DB->update_record(self::TABLE, $account);
-        self::set_core_flags($userid, 0, 1);
+        self::require_core_flags($userid, 0, 1);
         self::set_restricted($userid, false);
         unset_user_preference('auth_flexaccess_pendingcredential', $userid);
         return true;
@@ -157,6 +163,12 @@ final class lifecycle {
     public static function transition_to_pending_credential(int $userid, ?int $now = null): bool {
         global $DB;
         $now = $now ?? time();
+        // The target state includes an unsuspended Moodle user. If FlexAccess may not lift the current
+        // suspension (unknown or administrative origin), the transition is refused before anything
+        // is written - it never commits ACTIVE/PENDING_CREDENTIAL next to a suspended user.
+        if (!self::suspension_liftable($userid)) {
+            return false;
+        }
         $account = $DB->get_record(self::TABLE, ['userid' => $userid]);
         if (!$account) {
             return false;
@@ -167,7 +179,7 @@ final class lifecycle {
         $account->timeexpires = null;
         $account->timemodified = $now;
         $DB->update_record(self::TABLE, $account);
-        self::set_core_flags($userid, 0, 1);
+        self::require_core_flags($userid, 0, 1);
         self::set_restricted($userid, true);
         set_user_preference('auth_flexaccess_pendingcredential', $now, $userid);
         return true;
@@ -211,6 +223,9 @@ final class lifecycle {
     public static function transition_to_recovered_temporary(int $userid, int $lifetime, ?int $now = null): ?string {
         global $DB;
         $now = $now ?? time();
+        if (!self::suspension_liftable($userid)) {
+            return null;
+        }
         $account = $DB->get_record(self::TABLE, ['userid' => $userid]);
         if (!$account || $account->accounttype !== account_type::TEMPORARY_USER) {
             return null;
@@ -221,7 +236,7 @@ final class lifecycle {
         $account->timeexpires = $now + max(1, $lifetime);
         $account->timemodified = $now;
         $DB->update_record(self::TABLE, $account);
-        self::set_core_flags($userid, 0, null);
+        self::require_core_flags($userid, 0, null);
         self::set_restricted($userid, true);
         // The one-time follow-up reminder belongs to the previous lifetime.
         unset_user_preference('auth_flexaccess_followupsent', $userid);
@@ -579,6 +594,25 @@ final class lifecycle {
         }
         $DB->set_field(self::TABLE, 'lockedby', $origin, ['userid' => $userid]);
         return true;
+    }
+
+    /**
+     * Write the core flags of a transition's target state, or abort the transition.
+     *
+     * Callers have checked suspension_liftable() before writing anything, so this only fails when the
+     * suspension changed concurrently. The exception makes the surrounding transaction roll back:
+     * a transition either reaches its complete target state or leaves nothing behind.
+     *
+     * @param int $userid User id.
+     * @param int $suspended Target suspended flag.
+     * @param int|null $confirmed Target confirmed flag, or null to leave it unchanged.
+     * @return void
+     * @throws \moodle_exception When the target state cannot be reached.
+     */
+    private static function require_core_flags(int $userid, int $suspended, ?int $confirmed): void {
+        if (!self::set_core_flags($userid, $suspended, $confirmed)) {
+            throw new \moodle_exception('lifecycletargetnotreached', 'auth_flexaccess', '', $userid);
+        }
     }
 
     /**

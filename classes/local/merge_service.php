@@ -103,12 +103,15 @@ final class merge_service {
                 // suspension of the surviving identity stays and is reported, never lifted here.
                 $target = $DB->get_record('auth_flexaccess_account', ['userid' => $targetuserid]);
                 $result->targetlocked = !lifecycle::suspension_liftable($targetuserid);
+                $targetmoved = true;
                 if ($target && $target->accounttype === account_type::TEMPORARY_USER) {
-                    lifecycle::transition_to_active_authenticated($targetuserid, $now);
+                    // Refused for a suspension of foreign origin: the target keeps its state and
+                    // restriction until an administrator decides (reported as targetlocked).
+                    $targetmoved = lifecycle::transition_to_active_authenticated($targetuserid, $now);
                 } else if ($target) {
                     lifecycle::normalise($targetuserid);
                 }
-                if (self::holds_restriction($targetuserid)) {
+                if ($targetmoved && self::holds_restriction($targetuserid)) {
                     self::unrestrict_completely($targetuserid);
                     $result->restrictionlifted = true;
                 }

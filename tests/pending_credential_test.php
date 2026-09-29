@@ -192,4 +192,26 @@ final class pending_credential_test extends \advanced_testcase {
         // Not applicable to accounts that are not pending.
         $this->assertSame('notapplicable', api::resend_set_password($userid));
     }
+
+    /**
+     * REST-001: suspended outside FlexAccess while waiting - the set-password link does not finalise
+     * the account into ACTIVE next to a suspended user, and the link is not spent.
+     *
+     * @return void
+     */
+    public function test_foreign_suspension_blocks_finalisation_without_spending_the_link(): void {
+        global $DB;
+        $this->resetAfterTest();
+        $userid = $this->converted('pending.blocked@example.com');
+        $token = local\token_service::issue($userid, 'setpassword', 600);
+        $DB->set_field('user', 'suspended', 1, ['id' => $userid]);
+        $DB->set_field('auth_flexaccess_account', 'lockedby', 'admin', ['userid' => $userid]);
+        $this->assertNull(api::complete_set_password($token, 'Str0ng-Pass!23'));
+        $this->assertSame(account_state::PENDING_CREDENTIAL, api::get_account($userid)->accountstate);
+        // Once the administrator lifts the suspension, the same link completes the account.
+        $DB->set_field('user', 'suspended', 0, ['id' => $userid]);
+        $this->assertSame($userid, api::complete_set_password($token, 'Str0ng-Pass!23'));
+        $this->assertSame(account_state::ACTIVE, api::get_account($userid)->accountstate);
+        $this->assertSame([], api::find_state_mismatches(null, 10, [$userid]));
+    }
 }

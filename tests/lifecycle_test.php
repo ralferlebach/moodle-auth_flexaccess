@@ -161,8 +161,9 @@ final class lifecycle_test extends \advanced_testcase {
      * never an administrative one.
      *
      * The bug behind auth#5 was a FlexAccess suspension that survived the conversion. Since the origin
-     * of a suspension is recorded (lockedby), the same regression is tested with that origin, and the
-     * opposite case - an administrator's suspension - must survive every conversion path.
+     * of a suspension is recorded (lockedby), the same regression is tested with that origin. A
+     * suspension of foreign origin (unknown or administrative) blocks the conversion instead, so the
+     * lifecycle never commits ACTIVE/PENDING_CREDENTIAL next to a suspended user (REST-001).
      *
      * @return void
      */
@@ -189,14 +190,28 @@ final class lifecycle_test extends \advanced_testcase {
         $this->assertSame(account_state::ACTIVE, api::get_account($admin)->accountstate);
         $this->assertSame([], $this->codes($admin));
 
-        // An administrator's suspension survives the conversion; the account is refused at login and
-        // reported, instead of being silently unlocked.
-        $blocked = $this->combo(account_type::TEMPORARY_USER, account_state::EPHEMERAL, 1, true, time() + 3600);
-        $this->assertSame('converted', api::persist_temporary_user($blocked, 'blocked@example.com', 'B', 'L', 'Str0ng-Pass!23'));
-        $this->assertSame(account_state::ACTIVE, api::get_account($blocked)->accountstate);
-        $this->assertEquals(1, $DB->get_field('user', 'suspended', ['id' => $blocked]));
-        $this->assertSame(['active_suspended'], $this->codes($blocked));
-        $this->assertFalse(local\login_guard::is_eligible($blocked, local\login_guard::CHANNEL_PASSWORD));
+        // REST-001: a suspension FlexAccess may not lift blocks the conversion itself. Nothing changes,
+        // so no FlexAccess transition ever commits ACTIVE or PENDING_CREDENTIAL next to a suspended user.
+        foreach ([null, lifecycle::LOCKED_BY_ADMIN] as $origin) {
+            $blocked = $this->combo(account_type::TEMPORARY_USER, account_state::EPHEMERAL, 1, true, time() + 3600);
+            $DB->set_field('auth_flexaccess_account', 'lockedby', $origin, ['userid' => $blocked]);
+            $before = api::get_account($blocked);
+            $codesbefore = $this->codes($blocked);
+            $status = api::persist_temporary_user($blocked, "b{$blocked}@example.com", 'B', 'L', 'Str0ng-Pass!23');
+            $this->assertSame('foreignlock', $status);
+            $this->assertSame('foreignlock', api::admin_convert($blocked, "a{$blocked}@example.com"));
+            $after = api::get_account($blocked);
+            $this->assertSame($before->accounttype, $after->accounttype);
+            $this->assertSame(account_state::EPHEMERAL, $after->accountstate);
+            $this->assertEquals(1, $DB->get_field('user', 'suspended', ['id' => $blocked]));
+            $this->assertNotSame("b{$blocked}@example.com", $DB->get_field('user', 'email', ['id' => $blocked]));
+            // The pre-existing finding (unknown origin: live_suspended; admin: none) is left as it was.
+            $this->assertSame($codesbefore, $this->codes($blocked), 'The refused conversion must not create a mismatch.');
+            // The transitions themselves refuse as well (defence in depth), without writing anything.
+            $this->assertFalse(lifecycle::transition_to_active_authenticated($blocked));
+            $this->assertFalse(lifecycle::transition_to_pending_credential($blocked));
+            $this->assertSame(account_state::EPHEMERAL, api::get_account($blocked)->accountstate);
+        }
     }
 
     /**
