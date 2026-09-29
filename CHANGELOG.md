@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.1.0 (2026092805) — 2026-09-29 — Versions-Gleichschritt
+- Keine Codeänderung. Versions-Gleichschritt mit enrol und tool, deren Browser-Tests korrigiert und ergänzt wurden. Version `2026092805`, Release `1.1.0`, `MATURITY_STABLE`. Abhängigkeit `enrol_flexaccess` ≥ `2026092805`.
+
 ## 1.1.0 (2026092804) — 2026-09-28 — Review gegen Checkliste und Lessons Learnt (Schritt 3)
 - **Datenschutz-Export lesbar (Lesson 20).** Bisher exportierte der Provider rohe Tabellenzeilen: Tabellennamen als Ordner, Unix-Zeitstempel, interne Zustandscodes und den Hash der Einmal-Tokens. Jetzt:
   - Ordner mit übersetzten Namen
