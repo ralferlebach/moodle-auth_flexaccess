@@ -1059,6 +1059,12 @@ final class api {
             $waspending = false;
             $transaction = $DB->start_delegated_transaction();
             try {
+                // An account suspended outside FlexAccess meanwhile cannot become ACTIVE: the token
+                // is not spent, so the link still works once an administrator has lifted it.
+                if (!local\lifecycle::suspension_liftable($userid)) {
+                    $transaction->allow_commit();
+                    return null;
+                }
                 if (token_service::consume($token, 'setpassword', $now, $userid) === null) {
                     $transaction->allow_commit();
                     return null;

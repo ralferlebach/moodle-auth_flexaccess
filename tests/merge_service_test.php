@@ -287,4 +287,26 @@ final class merge_service_test extends \advanced_testcase {
         local\lifecycle::transition_to_active_authenticated($temp);
         $this->assertSame(0, $DB->count_records('role_assignments', ['roleid' => $roleid, 'userid' => $temp]));
     }
+
+    /**
+     * REST-001: a temporary surviving identity suspended outside FlexAccess is not turned into
+     * ACTIVE-and-suspended; it keeps its state and restriction until an administrator decides.
+     *
+     * @return void
+     */
+    public function test_foreign_locked_temporary_target_is_not_converted(): void {
+        global $DB;
+        $source = $this->visitor(time() + 3600);
+        $target = $this->visitor(time() + 3600);
+        $DB->set_field('user', 'suspended', 1, ['id' => $target]);
+        $result = api::reconcile_external_identity_merge($source, $target);
+        $this->assertTrue($result->targetlocked);
+        $account = api::get_account($target);
+        $this->assertSame(local\account_type::TEMPORARY_USER, $account->accounttype);
+        $this->assertTrue($this->restricted($target));
+        $this->assertSame([], array_filter(
+            api::find_state_mismatches(null, 10, [$target]),
+            static fn($m) => $m->code === 'active_suspended'
+        ));
+    }
 }

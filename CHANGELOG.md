@@ -1,7 +1,13 @@
 # Changelog
 
-## 1.1.0 (2026092900) — 2026-09-29 — Versions-Gleichschritt
-- Keine Codeänderung. Version `2026092900`, Release `1.1.0`, `MATURITY_STABLE`. Abhängigkeit `enrol_flexaccess` ≥ `2026092900`.
+## 1.1.0 (2026092900) — 2026-09-29 — Lifecycle-Transitionen nur mit vollständigem Zielzustand
+- **Lifecycle-Transitionen erreichen ihren Zielzustand vollständig oder gar nicht (Re-Audit REST-001).**
+  - **Bisher:** `transition_to_active_authenticated()` und `transition_to_pending_credential()` werteten das Ergebnis von `set_core_flags()` nicht aus. Bei einer Sperre, die FlexAccess nicht aufheben darf, entstand ACTIVE bzw. PENDING_CREDENTIAL neben einem gesperrten Moodle-Nutzer. Bei PENDING_CREDENTIAL ist das eine Sackgasse, denn gesperrte Nutzer erhalten keine Passwort-Mail.
+  - **Jetzt:** Eine solche Sperre weist die Konvertierung vor jeder Änderung mit `foreignlock` ab. Das gilt für die Nutzer-Konvertierung, den Verifikationslink und die Admin-Konvertierung; E-Mail und Zustand bleiben unverändert. Die Transitions prüfen selbst noch einmal und brechen mit Rollback ab, falls der Zielzustand trotzdem nicht erreicht wird.
+  - **Passwort setzen:** Ein zwischenzeitlich gesperrtes Konto wird nicht fertiggestellt, und der Link wird dabei nicht verbraucht.
+  - **Identitäts-Merge:** Ein temporäres Zielkonto mit fremder Sperre bleibt unverändert.
+  - Regressionstests für ACTIVE, PENDING_CREDENTIAL und Merge, jeweils mit fremder und mit FlexAccess-eigener Sperre. Eine Gegenprobe ohne die Prüfung schlägt an.
+- Version `2026092900`, Release `1.1.0`, `MATURITY_STABLE`. Abhängigkeit `enrol_flexaccess` ≥ `2026092900`.
 
 ## 1.1.0 (2026092805) — 2026-09-29 — Versions-Gleichschritt
 - Keine Codeänderung. Versions-Gleichschritt mit enrol und tool, deren Browser-Tests korrigiert und ergänzt wurden. Version `2026092805`, Release `1.1.0`, `MATURITY_STABLE`. Abhängigkeit `enrol_flexaccess` ≥ `2026092805`.

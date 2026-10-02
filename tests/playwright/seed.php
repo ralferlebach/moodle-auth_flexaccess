@@ -60,6 +60,15 @@ if (!in_array('flexaccess', $enabledauths, true)) {
     set_config('auth', implode(',', $enabledauths));
 }
 
+// Both halves of FlexAccess must be enabled, as on any site that uses it: entry flows stop before any
+// side effect while the enrolment or the authentication plugin is disabled (kill switch, 2026092900).
+$enabledenrols = explode(',', (string) get_config('core', 'enrol_plugins_enabled'));
+if (!in_array('flexaccess', $enabledenrols, true)) {
+    $enabledenrols[] = 'flexaccess';
+    set_config('enrol_plugins_enabled', implode(',', array_filter($enabledenrols)));
+}
+\cache::make('enrol_flexaccess', 'policy')->purge();
+
 echo "export FLEXACCESS_BASE_URL='" . $CFG->wwwroot . "'\n";
 echo "export FLEXACCESS_COURSE_ID='" . $course->id . "'\n";
 echo "export FLEXACCESS_COURSE_NAME='" . $coursename . "'\n";
