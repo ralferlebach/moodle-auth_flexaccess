@@ -1132,6 +1132,190 @@ final class api {
     }
 
     /**
+     * Whether a FlexAccess account is usable again, judged by the central login guard.
+     *
+     * @param int $userid User id.
+     * @param int|null $now Current time.
+     * @return \stdClass ->usable, ->reason, ->channel, ->awaiting (see {@see local\login_guard::account_access()}).
+     */
+    public static function account_access(int $userid, ?int $now = null): \stdClass {
+        return local\login_guard::account_access($userid, $now);
+    }
+
+    /**
+     * Why a user may not be bound to an LTI platform identity ('' when allowed; see local\lti_guard).
+     *
+     * @param int $userid User id.
+     * @param int|null $now Current time.
+     * @return string
+     */
+    public static function lti_binding_problem(int $userid, ?int $now = null): string {
+        return local\lti_guard::durable_identity_problem($userid, $now);
+    }
+
+    /**
+     * Published LTI 1.3 resources in FlexAccess courses whose learner provisioning creates new accounts.
+     *
+     * @param int $limit Maximum rows; 0 = all.
+     * @return \stdClass[] toolid, courseid, provisioningmodelearner.
+     */
+    public static function lti_auto_provisioning_resources(int $limit = 200): array {
+        return local\lti_identity::auto_provisioning_resources($limit);
+    }
+
+    /**
+     * Probable FlexAccess/LTI duplicate identities, for the explicit merge review (hint only).
+     *
+     * @param int $limit Maximum rows; 0 = all.
+     * @return \stdClass[] ltiuserid, flexaccessuserid, issuer.
+     */
+    public static function lti_duplicate_candidates(int $limit = 200): array {
+        return local\lti_identity::duplicate_candidates($limit);
+    }
+
+    /**
+     * LTI bindings to FlexAccess identities that are not durable (their launches are refused).
+     *
+     * @param int $limit Maximum rows; 0 = all.
+     * @return \stdClass[] bindingid, userid, issuer, reason.
+     */
+    public static function lti_non_durable_bindings(int $limit = 200): array {
+        return local\lti_identity::non_durable_bindings($limit);
+    }
+
+    /**
+     * Assess merging two users that involve FlexAccess or LTI identities (read-only).
+     *
+     * @param int $fromuserid Identity to be merged away.
+     * @param int $touserid Surviving identity.
+     * @return \stdClass See {@see local\merge_guard::assess()}.
+     */
+    public static function assess_merge(int $fromuserid, int $touserid): \stdClass {
+        return local\merge_guard::assess($fromuserid, $touserid);
+    }
+
+    /**
+     * Record an administrator's approval to merge two durable identities (valid for one day).
+     *
+     * The administrator confirms that both accounts belong to the same person, verified independently of
+     * the e-mail address. Without this approval FlexAccess refuses the merge inside tool_mergeusers.
+     *
+     * @param int $fromuserid Identity to be merged away.
+     * @param int $touserid Surviving identity.
+     * @param bool $ownershipverified The explicit confirmation of the administrator.
+     * @return bool Whether the approval was recorded (refused for a disallowed direction).
+     */
+    public static function approve_merge(int $fromuserid, int $touserid, bool $ownershipverified): bool {
+        if (!$ownershipverified || $fromuserid === $touserid) {
+            return false;
+        }
+        $assessment = local\merge_guard::assess($fromuserid, $touserid);
+        if (array_diff($assessment->blockers, [local\merge_guard::NEEDS_APPROVAL])) {
+            return false;
+        }
+        local\merge_registry::record($fromuserid, $touserid, 'admin', local\merge_registry::APPROVED);
+        self::merge_action('approve', $fromuserid, $touserid, 0, 'approved');
+        return true;
+    }
+
+    /**
+     * Point the LTI bindings and memberships of a merged-away user to the survivor, then verify the merge.
+     *
+     * @param int $fromuserid Merged-away user.
+     * @param int $touserid Surviving user.
+     * @return \stdClass ->bindings, ->ltiusers, ->conflicts, ->status, ->reasons.
+     */
+    public static function repoint_merged_lti_identity(int $fromuserid, int $touserid): \stdClass {
+        $moved = local\lti_identity::repoint($fromuserid, $touserid);
+        $verified = local\merge_service::verify($fromuserid, $touserid);
+        $moved->status = $verified->status;
+        $moved->reasons = $verified->reasons;
+        self::merge_action('repoint', $fromuserid, $touserid, 0, $verified->status);
+        return $moved;
+    }
+
+    /**
+     * Re-check a registered merge (reconciles it when its postconditions now hold).
+     *
+     * @param int $fromuserid Merged-away user.
+     * @param int $touserid Surviving user.
+     * @return \stdClass ->status, ->reasons.
+     */
+    public static function recheck_merge(int $fromuserid, int $touserid): \stdClass {
+        $result = local\merge_service::verify($fromuserid, $touserid);
+        self::merge_action('recheck', $fromuserid, $touserid, 0, $result->status);
+        return $result;
+    }
+
+    /**
+     * Remove an LTI binding to a non-durable FlexAccess identity or a deleted user.
+     *
+     * @param int $bindingid auth_lti_linked_login id.
+     * @return bool
+     */
+    public static function remove_lti_binding(int $bindingid): bool {
+        global $DB;
+        $userid = (int) $DB->get_field('auth_lti_linked_login', 'userid', ['id' => $bindingid]);
+        $removed = local\lti_identity::remove_binding($bindingid);
+        if ($removed) {
+            self::merge_action('removebinding', $userid, 0, $bindingid, 'removed');
+        }
+        return $removed;
+    }
+
+    /**
+     * Registered merges that are open (pending, approved, review, refused), newest first.
+     *
+     * @param int $limit Maximum rows; 0 = all.
+     * @return \stdClass[]
+     */
+    public static function open_merges(int $limit = 200): array {
+        return local\merge_registry::open($limit);
+    }
+
+    /**
+     * Number of merges whose postconditions failed or that FlexAccess refused.
+     *
+     * @return int
+     */
+    public static function count_merges_needing_review(): int {
+        return local\merge_registry::count_needing_review();
+    }
+
+    /**
+     * LTI bindings whose Moodle user was deleted or no longer exists.
+     *
+     * @param int $limit Maximum rows; 0 = all.
+     * @return \stdClass[] bindingid, userid, issuer.
+     */
+    public static function lti_stale_bindings(int $limit = 200): array {
+        return local\lti_identity::stale_bindings($limit);
+    }
+
+    /**
+     * Log an administrator's action on a merge or binding.
+     *
+     * @param string $action Action.
+     * @param int $fromuserid Merged-away user (or the bound user for removebinding).
+     * @param int $touserid Surviving user.
+     * @param int $bindingid Binding id.
+     * @param string $outcome Outcome.
+     * @return void
+     */
+    private static function merge_action(string $action, int $fromuserid, int $touserid, int $bindingid, string $outcome): void {
+        event\identity_merge_action::create([
+            'context' => \context_system::instance(),
+            'other' => [
+                'action' => $action,
+                'fromuserid' => $fromuserid,
+                'touserid' => $touserid,
+                'bindingid' => $bindingid,
+                'outcome' => $outcome,
+            ],
+        ])->trigger();
+    }
+
+    /**
      * Create a session for a FlexAccess account through the central login guard.
      *
      * The only sanctioned way for FlexAccess pages (in any sibling plugin) to log an account in.

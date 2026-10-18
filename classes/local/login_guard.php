@@ -33,6 +33,9 @@ namespace auth_flexaccess\local;
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 final class login_guard {
+    /** @var array<int, true> Users signed in through a FlexAccess-guarded path in this request. */
+    private static array $guarded = [];
+
     /** Password login (including the session after a completed set-password). */
     public const CHANNEL_PASSWORD = 'password';
     /** Passwordless magic-link login (request and consumption). */
@@ -58,6 +61,8 @@ final class login_guard {
     public const REASON_INACTIVE = 'inactive';
     /** Refusal: the permanent identity still has no usable credential. */
     public const REASON_PENDINGCREDENTIAL = 'pendingcredential';
+    /** Refusal: the FlexAccess authentication plugin is disabled (as Core's validate_user checks). */
+    public const REASON_AUTHDISABLED = 'authdisabled';
     /** Refusal: account type and state, or account and core user, contradict each other. */
     public const REASON_STATEMISMATCH = 'statemismatch';
 
@@ -81,6 +86,10 @@ final class login_guard {
         }
         if ($user->auth !== 'flexaccess') {
             return self::REASON_NOACCOUNT;
+        }
+        // Same rule as Core's \core_auth\validate_user (Moodle 5.3+): a disabled auth method never logs in.
+        if (!is_enabled_auth('flexaccess')) {
+            return self::REASON_AUTHDISABLED;
         }
         $account = $DB->get_record('auth_flexaccess_account', ['userid' => $userid]);
         if (!$account) {
@@ -127,6 +136,40 @@ final class login_guard {
     }
 
     /**
+     * Whether the account can be used to get into Moodle again, through the channel it is meant for.
+     *
+     * Authenticated accounts sign in with their password; temporary accounts continue through their
+     * entry flow, access-list accounts with their card credential. The verdict is exactly the login
+     * guard's, so recovery and login can never disagree about whether an account is usable.
+     *
+     * @param int $userid User id.
+     * @param int|null $now Current time.
+     * @return \stdClass ->usable (bool), ->reason ('' or a REASON_* code), ->channel, ->awaiting ('' or
+     *     'credential' / 'verification': usable only after the user completes that step).
+     */
+    public static function account_access(int $userid, ?int $now = null): \stdClass {
+        global $DB;
+        $account = $DB->get_record('auth_flexaccess_account', ['userid' => $userid]);
+        $channel = self::CHANNEL_PASSWORD;
+        if ($account && (string) $account->accounttype === account_type::TEMPORARY_USER) {
+            $channel = (int) ($account->batchcredential ?? 0) === 1 ? self::CHANNEL_PASSWORD : self::CHANNEL_ENTRY;
+        }
+        $reason = self::evaluate($userid, $channel, $now);
+        $awaiting = '';
+        if ($reason === self::REASON_PENDINGCREDENTIAL) {
+            $awaiting = 'credential';
+        } else if ($reason === self::OK && $account && (string) $account->accountstate === account_state::PROVISIONAL) {
+            $awaiting = 'verification';
+        }
+        return (object) [
+            'usable' => $reason === self::OK,
+            'reason' => $reason,
+            'channel' => $channel,
+            'awaiting' => $awaiting,
+        ];
+    }
+
+    /**
      * Whether the user may obtain a session through the given channel.
      *
      * @param int $userid User id.
@@ -160,8 +203,43 @@ final class login_guard {
             self::log_refusal($userid, $channel, self::REASON_NOUSER);
             return false;
         }
+        self::mark_guarded_login($userid);
         complete_user_login($user);
         return true;
+    }
+
+    /**
+     * Record that the login of this user in the current request passed the guard.
+     *
+     * complete_user_login() then dispatches after_login_completed; the LTI/external-login check uses
+     * this mark to tell FlexAccess' own logins apart from logins by other paths (auth_lti, OAuth2, ...).
+     *
+     * @param int $userid User id.
+     * @return void
+     */
+    public static function mark_guarded_login(int $userid): void {
+        self::$guarded[$userid] = true;
+    }
+
+    /**
+     * Forget every mark of guarded logins (unit tests reuse user ids across tests in one process).
+     *
+     * @return void
+     */
+    public static function reset_guarded_logins(): void {
+        self::$guarded = [];
+    }
+
+    /**
+     * Whether the login of this user in the current request passed the guard (the mark is consumed).
+     *
+     * @param int $userid User id.
+     * @return bool
+     */
+    public static function consume_guarded_login(int $userid): bool {
+        $guarded = isset(self::$guarded[$userid]);
+        unset(self::$guarded[$userid]);
+        return $guarded;
     }
 
     /**

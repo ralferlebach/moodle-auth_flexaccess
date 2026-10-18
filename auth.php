@@ -77,7 +77,12 @@ class auth_plugin_flexaccess extends auth_plugin_base {
             }
             return false;
         }
-        return validate_internal_user_password($user, $password);
+        if (!validate_internal_user_password($user, $password)) {
+            return false;
+        }
+        // The login form completes this login next; mark it as one that passed the guard.
+        \auth_flexaccess\local\login_guard::mark_guarded_login((int) $user->id);
+        return true;
     }
 
     /**

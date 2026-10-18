@@ -125,5 +125,33 @@ function xmldb_auth_flexaccess_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026092801, 'auth', 'flexaccess');
     }
 
+    if ($oldversion < 2026101700) {
+        // Registry of identity merges: review state and per-record outcome (auth_flexaccess #13).
+        $table = new xmldb_table('auth_flexaccess_merge');
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('fromuserid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('touserid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('origin', XMLDB_TYPE_CHAR, '20', null, XMLDB_NOTNULL, null, 'event');
+        $table->add_field('status', XMLDB_TYPE_CHAR, '20', null, XMLDB_NOTNULL, null, 'pending');
+        $table->add_field('reasons', XMLDB_TYPE_TEXT, null, null, null, null, null);
+        $table->add_field('details', XMLDB_TYPE_TEXT, null, null, null, null, null);
+        $table->add_field('targetsuspended', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('targetlockedby', XMLDB_TYPE_CHAR, '20', null, null, null, null);
+        $table->add_field('timecreated', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('timemodified', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+        $table->add_key('fromuserid', XMLDB_KEY_FOREIGN, ['fromuserid'], 'user', ['id']);
+        $table->add_key('touserid', XMLDB_KEY_FOREIGN, ['touserid'], 'user', ['id']);
+        $table->add_index('pair_uix', XMLDB_INDEX_UNIQUE, ['fromuserid', 'touserid']);
+        $table->add_index('status_ix', XMLDB_INDEX_NOTUNIQUE, ['status']);
+        if (!$dbman->table_exists($table)) {
+            $dbman->create_table($table);
+        }
+        // Backfill: merges tool_mergeusers performed earlier between FlexAccess identities are registered
+        // for verification, so stale LTI bindings or grade pointers from before this release surface.
+        auth_flexaccess_backfill_merges();
+        upgrade_plugin_savepoint(true, 2026101700, 'auth', 'flexaccess');
+    }
+
     return true;
 }

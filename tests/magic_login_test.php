@@ -31,6 +31,17 @@ use auth_flexaccess\local\mail_worker;
  */
 final class magic_login_test extends \advanced_testcase {
     /**
+     * FlexAccess authentication enabled, as on a real site (a disabled plugin sends no login mail).
+     *
+     * @return void
+     */
+    protected function setUp(): void {
+        parent::setUp();
+        $this->resetAfterTest();
+        set_config('auth', 'flexaccess');
+    }
+
+    /**
      * Create a permanent, active FlexAccess account for a fresh user.
      *
      * @param string $email Email address.

@@ -84,5 +84,29 @@
         <INDEX NAME="time_ix" UNIQUE="false" FIELDS="timecreated"/>
       </INDEXES>
     </TABLE>
+    <TABLE NAME="auth_flexaccess_merge" COMMENT="Identity merges FlexAccess reconciled or must review (per pair, with outcome and postconditions)">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="fromuserid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="Identity merged away"/>
+        <FIELD NAME="touserid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="Surviving identity"/>
+        <FIELD NAME="origin" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="event" SEQUENCE="false" COMMENT="hook, event, admin or backfill"/>
+        <FIELD NAME="status" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="pending" SEQUENCE="false" COMMENT="pending, reconciled, review or refused"/>
+        <FIELD NAME="reasons" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Unmet postconditions, comma separated"/>
+        <FIELD NAME="details" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="JSON: per-record outcome of the reconciliation"/>
+        <FIELD NAME="targetsuspended" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="Survivor was suspended before the merge"/>
+        <FIELD NAME="targetlockedby" TYPE="char" LENGTH="20" NOTNULL="false" SEQUENCE="false" COMMENT="Origin of that suspension"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+        <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+        <KEY NAME="fromuserid" TYPE="foreign" FIELDS="fromuserid" REFTABLE="user" REFFIELDS="id"/>
+        <KEY NAME="touserid" TYPE="foreign" FIELDS="touserid" REFTABLE="user" REFFIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="pair_uix" UNIQUE="true" FIELDS="fromuserid, touserid"/>
+        <INDEX NAME="status_ix" UNIQUE="false" FIELDS="status"/>
+      </INDEXES>
+    </TABLE>
   </TABLES>
 </XMLDB>

@@ -4,7 +4,7 @@
 # Runs on push / PR to every branch EXCEPT main. Parallel jobs: phplint gates
 # phpunit; codeanalysis (phpcs blocking; phpmd/phpcpd advisory) and quality
 # (phpdoc/savepoints/validate) run in parallel and gate ci-complete. PHP-only
-# plugin: no grunt / mustache steps. Reduced matrix spanning Moodle 4.5/5.0/5.2.
+# plugin: no grunt / mustache steps. Reduced matrix spanning Moodle 4.5/5.0/5.2/5.3.
 # The full sequential matrix runs on main via moodle-plugin-ci-main.yml.
 #
 # FlexAccess has no external plugin dependencies; add-plugin only pulls the
@@ -212,14 +212,32 @@ jobs:
         ports:
           - 3306:3306
         options: --health-cmd="mysqladmin ping" --health-interval 10s --health-timeout 5s --health-retries 3
+      postgres17:
+        image: postgres:17
+        env:
+          POSTGRES_USER: 'postgres'
+          POSTGRES_HOST_AUTH_METHOD: 'trust'
+        ports:
+          - 5433:5432
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 3
+      mariadb114:
+        image: mariadb:11.4
+        env:
+          MARIADB_USER: 'root'
+          MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: "true"
+        ports:
+          - 3307:3306
+        options: --health-cmd="healthcheck.sh --connect --innodb_initialized" --health-interval 10s --health-timeout 5s --health-retries 5
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { moodle: MOODLE_405_STABLE, php: '8.1', database: pgsql }
-          - { moodle: MOODLE_500_STABLE, php: '8.2', database: mariadb }
-          - { moodle: MOODLE_502_STABLE, php: '8.3', database: pgsql }
-          - { moodle: MOODLE_502_STABLE, php: '8.4', database: pgsql }
+          - { moodle: MOODLE_405_STABLE, php: '8.1', database: pgsql, dbport: 5432 }
+          - { moodle: MOODLE_500_STABLE, php: '8.2', database: mariadb, dbport: 3306 }
+          - { moodle: MOODLE_502_STABLE, php: '8.3', database: pgsql, dbport: 5432 }
+          - { moodle: MOODLE_502_STABLE, php: '8.4', database: pgsql, dbport: 5432 }
+          - { moodle: MOODLE_503_STABLE, php: '8.3', database: pgsql, dbport: 5433 }
+          - { moodle: MOODLE_503_STABLE, php: '8.4', database: mariadb, dbport: 3307 }
     steps:
       - uses: actions/checkout@v4
         with:
@@ -248,7 +266,9 @@ jobs:
           moodle-plugin-ci add-plugin ralferlebach/moodle-enrol_flexaccess --branch development
           moodle-plugin-ci add-plugin ralferlebach/moodle-mod_flexaccess --branch development
           moodle-plugin-ci add-plugin ralferlebach/moodle-tool_flexaccess --branch development
-          moodle-plugin-ci install --plugin ./plugin --db-host=127.0.0.1
+          # The merge tests of auth_flexaccess run against the real tool_mergeusers.
+          moodle-plugin-ci add-plugin jpahullo/moodle-tool_mergeusers --branch MOODLE_405_STABLE
+          moodle-plugin-ci install --plugin ./plugin --db-host=127.0.0.1 --db-port=${{ matrix.dbport }}
         env:
           DB: ${{ matrix.database }}
           MOODLE_BRANCH: ${{ matrix.moodle }}

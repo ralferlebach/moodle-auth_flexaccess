@@ -29,6 +29,17 @@ use auth_flexaccess\local\mail_worker;
  */
 final class token_mail_security_test extends \advanced_testcase {
     /**
+     * FlexAccess authentication enabled, as on a real site (a disabled plugin sends no login mail).
+     *
+     * @return void
+     */
+    protected function setUp(): void {
+        parent::setUp();
+        $this->resetAfterTest();
+        set_config('auth', 'flexaccess');
+    }
+
+    /**
      * The queued magic-login job carries no token; the token appears only in the delivered mail.
      *
      * @return void

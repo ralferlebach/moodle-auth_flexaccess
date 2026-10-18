@@ -54,7 +54,10 @@ final class observer {
         $from = (int) ($involved['fromid'] ?? 0);
         if ($to > 0 && $from > 0) {
             // Latency budget: only the pair is recorded here; the reconciliation (about 35 queries per
-            // course) runs as an ad-hoc task instead of inside the merging plugin's request.
+            // course) runs as an ad-hoc task instead of inside the merging plugin's request. With the
+            // in-transaction hook the pair is already reconciled; the task then verifies what happened
+            // after the commit (tool_mergeusers unsuspends the kept user in its own observer).
+            local\merge_registry::record($from, $to, 'event');
             task\reconcile_merge::queue($from, $to);
         }
     }
@@ -67,8 +70,14 @@ final class observer {
      */
     public static function user_deleted(\core\event\user_deleted $event): void {
         $userid = (int) $event->objectid;
-        if ($userid > 0) {
-            api::purge_deleted_user_account($userid);
+        if ($userid <= 0) {
+            return;
         }
+        if (local\merge_registry::has_outstanding_source($userid)) {
+            // Merged away, but the merge is not reconciled yet: keep the classification the
+            // reconciliation needs; it removes the metadata once the postconditions hold.
+            return;
+        }
+        api::purge_deleted_user_account($userid);
     }
 }

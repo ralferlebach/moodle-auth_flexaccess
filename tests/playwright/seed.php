@@ -76,17 +76,20 @@ echo "export FLEXACCESS_COURSE_NAME='" . $coursename . "'\n";
 // pages. Created on a throwaway CI site only; the specs skip when the variables are absent.
 $adminuser = $DB->get_record('user', ['username' => 'flexa11y'], '*', IGNORE_MISSING);
 if (!$adminuser) {
-    $adminuser = \core_user::get_user(
-        user_create_user((object) [
-            'username' => 'flexa11y',
-            'password' => 'Flex-A11y-Pass!1',
-            'firstname' => 'Access',
-            'lastname' => 'Checker',
-            'email' => 'flexa11y@example.invalid',
-            'confirmed' => 1,
-            'mnethostid' => $CFG->mnet_localhost_id,
-        ], true, false)
-    );
+    $newuser = (object) [
+        'username' => 'flexa11y',
+        'password' => 'Flex-A11y-Pass!1',
+        'firstname' => 'Access',
+        'lastname' => 'Checker',
+        'email' => 'flexa11y@example.invalid',
+        'confirmed' => 1,
+        'mnethostid' => $CFG->mnet_localhost_id,
+    ];
+    // Moodle 5.3 deprecates user_create_user() in favour of \core\user::create_user().
+    $createdid = method_exists(\core\user::class, 'create_user')
+        ? \core\user::create_user($newuser, true, false)
+        : user_create_user($newuser, true, false);
+    $adminuser = \core_user::get_user($createdid);
 }
 role_assign(
     $DB->get_field('role', 'id', ['shortname' => 'manager']),

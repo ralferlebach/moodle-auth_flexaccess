@@ -92,3 +92,57 @@ function auth_flexaccess_withdraw_inferred_lockedby(): int {
     }
     return count($userids);
 }
+
+/**
+ * Register merges tool_mergeusers performed before 2026101700 that involve FlexAccess or LTI identities.
+ *
+ * Each registered pair is verified by the verify_merges ad-hoc task, so that merged identities whose LTI
+ * bindings or grade-delivery pointers still reference the merged-away user surface as review cases.
+ * Nothing is changed on the merged identities themselves.
+ *
+ * @return int Number of registered pairs.
+ */
+function auth_flexaccess_backfill_merges(): int {
+    global $DB;
+    $dbman = $DB->get_manager();
+    if (!$dbman->table_exists('tool_mergeusers') || !$dbman->table_exists('auth_flexaccess_merge')) {
+        return 0;
+    }
+    $columns = $DB->get_columns('tool_mergeusers');
+    if (isset($columns['status'])) {
+        $where = "(m.status = 'success' OR m.status IS NULL)";
+    } else if (isset($columns['success'])) {
+        $where = 'm.success = 1';
+    } else {
+        $where = '1 = 1';
+    }
+    $rows = $DB->get_recordset_sql(
+        "SELECT DISTINCT m.fromuserid, m.touserid
+           FROM {tool_mergeusers} m
+          WHERE $where
+            AND (EXISTS (SELECT 1 FROM {auth_flexaccess_account} a WHERE a.userid IN (m.fromuserid, m.touserid))
+                 OR EXISTS (SELECT 1 FROM {user} u WHERE u.id IN (m.fromuserid, m.touserid) AND u.auth IN ('flexaccess', 'lti'))
+                 OR EXISTS (SELECT 1 FROM {auth_lti_linked_login} l WHERE l.userid IN (m.fromuserid, m.touserid)))"
+    );
+    $now = time();
+    $count = 0;
+    foreach ($rows as $row) {
+        if ($DB->record_exists('auth_flexaccess_merge', ['fromuserid' => $row->fromuserid, 'touserid' => $row->touserid])) {
+            continue;
+        }
+        $DB->insert_record('auth_flexaccess_merge', (object) [
+            'fromuserid' => (int) $row->fromuserid,
+            'touserid' => (int) $row->touserid,
+            'origin' => 'backfill',
+            'status' => 'pending',
+            'timecreated' => $now,
+            'timemodified' => $now,
+        ]);
+        $count++;
+    }
+    $rows->close();
+    if ($count > 0) {
+        \core\task\manager::queue_adhoc_task(new \auth_flexaccess\task\verify_merges(), true);
+    }
+    return $count;
+}

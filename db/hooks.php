@@ -29,4 +29,19 @@ $callbacks = [
         'hook' => \core\hook\output\before_standard_top_of_body_html_generation::class,
         'callback' => '\auth_flexaccess\hook_callbacks::before_standard_top_of_body_html_generation',
     ],
+    [
+        // Logins by other paths (auth_lti bound launches, OAuth2, ...) obey the FlexAccess lifecycle too.
+        'hook' => \core_user\hook\after_login_completed::class,
+        'callback' => '\auth_flexaccess\hook_callbacks::after_login_completed',
+    ],
+    [
+        // Gate and reconcile tool_mergeusers merges inside their transaction; ignored without that plugin.
+        'hook' => \tool_mergeusers\hook\after_merged_all_tables::class,
+        'callback' => '\auth_flexaccess\hook_callbacks::mergeusers_after_merged_all_tables',
+    ],
+    [
+        // FlexAccess reconciles its identity tables itself; tool_mergeusers must not move them generically.
+        'hook' => \tool_mergeusers\hook\add_settings_before_merging::class,
+        'callback' => '\auth_flexaccess\hook_callbacks::mergeusers_add_settings',
+    ],
 ];

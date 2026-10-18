@@ -32,8 +32,14 @@ namespace auth_flexaccess\local;
  *    are the FlexAccess end times of the transferred enrolments removed.
  *  - The target keeps no temporary FlexAccess state and no restriction role. It is unsuspended only
  *    when FlexAccess itself had suspended it; a suspension with another origin is left alone.
- *  - No FlexAccess metadata survives on the source (account row, tokens, queued mail, restriction).
+ *  - No FlexAccess metadata survives on the source (account row, tokens, queued mail, restriction) -
+ *    but only once every postcondition of the merge holds (see {@see merge_guard::postconditions()}):
+ *    no LTI binding or LTI membership still points to the source, the target holds no duplicate LTI
+ *    membership and an administrative suspension of the target is still in place. Until then the pair
+ *    is "review" in the {@see merge_registry} and the source metadata is kept for the administrator.
  *    The source Moodle user itself is not deleted here; that is the merging tool's decision.
+ *  - A merge FlexAccess' policy does not allow (a durable FlexAccess identity merged into a non-FlexAccess
+ *    target, or two durable identities without an administrator's approval) is refused: nothing changes.
  *  - Idempotent: repeating the reconciliation creates no second enrolment or role.
  *
  * @package    auth_flexaccess
@@ -48,20 +54,23 @@ final class merge_service {
      * @param int $targetuserid Surviving identity.
      * @param bool $permanentcourseaccess Whether the merge explicitly establishes permanent course access.
      * @param int|null $now Current time.
-     * @return \stdClass ->status (reconciled|nothingtodo|invalid|locked), ->transferred, ->merged,
-     *     ->restrictionlifted (bool), ->sourcecleaned (bool), ->targetlocked (bool: the surviving identity
-     *     keeps a suspension FlexAccess did not set; it is left in place for an administrator).
+     * @param string $origin Who asks: hook (inside tool_mergeusers' transaction), event, admin, backfill.
+     * @return \stdClass ->status (reconciled|nothingtodo|review|refused|invalid|locked), ->reasons (string[]),
+     *     ->transferred, ->merged, ->restrictionlifted (bool), ->sourcecleaned (bool), ->targetlocked (bool: the
+     *     surviving identity keeps a suspension FlexAccess did not set; it is left in place for an administrator).
      */
     public static function reconcile(
         int $sourceuserid,
         int $targetuserid,
         bool $permanentcourseaccess = false,
-        ?int $now = null
+        ?int $now = null,
+        string $origin = 'event'
     ): \stdClass {
         global $DB;
         $now = $now ?? time();
         $result = (object) [
             'status' => 'invalid',
+            'reasons' => [],
             'transferred' => 0,
             'merged' => 0,
             'restrictionlifted' => false,
@@ -86,6 +95,27 @@ final class merge_service {
         try {
             $transaction = $DB->start_delegated_transaction();
             try {
+                $registry = merge_registry::record($sourceuserid, $targetuserid, $origin, null, $now);
+                // 0. FlexAccess' policy for the pair. Inside tool_mergeusers' transaction (origin hook) a
+                // violation refuses the merge. After the fact (event, backfill, re-check) the merge has
+                // already happened: a violation of the direction rule is then a review case, and nothing
+                // of the pair is changed, so that an administrator can still reverse it.
+                $assessment = merge_guard::assess($sourceuserid, $targetuserid, $now);
+                $blockers = $origin === 'hook'
+                    ? $assessment->blockers
+                    : array_values(array_diff($assessment->blockers, [merge_guard::NEEDS_APPROVAL]));
+                if ($blockers) {
+                    $status = $origin === 'hook' ? merge_registry::REFUSED : merge_registry::REVIEW;
+                    $result->status = $status;
+                    $result->reasons = $blockers;
+                    merge_registry::finish($registry, $status, $result->reasons, [
+                        'from' => self::facts($assessment->from),
+                        'to' => self::facts($assessment->to),
+                    ], $now);
+                    $transaction->allow_commit();
+                    return $result;
+                }
+
                 // 1. Course enrolments and FlexAccess course roles move to the surviving identity.
                 if (method_exists('\enrol_flexaccess\api', 'transfer_user_enrolments')) {
                     $moved = \enrol_flexaccess\api::transfer_user_enrolments(
@@ -116,8 +146,32 @@ final class merge_service {
                     $result->restrictionlifted = true;
                 }
 
-                // 3. Nothing FlexAccess-specific remains on the merged-away identity.
-                $result->sourcecleaned = self::clean_source($sourceuserid);
+                // 3. Postconditions decide: only a complete merge loses the source's FlexAccess metadata.
+                $result->reasons = merge_guard::postconditions($sourceuserid, $targetuserid, $registry);
+                if (!$result->reasons) {
+                    $result->sourcecleaned = self::clean_source($sourceuserid);
+                }
+                $changed = $result->transferred + $result->merged > 0 || $result->restrictionlifted || $result->sourcecleaned;
+                if ($result->reasons) {
+                    $result->status = merge_registry::REVIEW;
+                } else {
+                    $result->status = $changed ? 'reconciled' : 'nothingtodo';
+                }
+                merge_registry::finish(
+                    $registry,
+                    $result->reasons ? merge_registry::REVIEW : merge_registry::RECONCILED,
+                    $result->reasons,
+                    [
+                        'transferred' => $result->transferred,
+                        'merged' => $result->merged,
+                        'restrictionlifted' => $result->restrictionlifted,
+                        'sourcecleaned' => $result->sourcecleaned,
+                        'targetlocked' => $result->targetlocked,
+                        'from' => self::facts($assessment->from),
+                        'to' => self::facts(merge_guard::identity($targetuserid)),
+                    ],
+                    $now
+                );
                 $transaction->allow_commit();
             } catch (\Throwable $e) {
                 $transaction->rollback($e);
@@ -125,9 +179,62 @@ final class merge_service {
         } finally {
             $lock->release();
         }
-        $changed = $result->transferred + $result->merged > 0 || $result->restrictionlifted || $result->sourcecleaned;
-        $result->status = $changed ? 'reconciled' : 'nothingtodo';
         return $result;
+    }
+
+    /**
+     * Verify a merge after it was committed, and reconcile it if that has not happened yet.
+     *
+     * tool_mergeusers unsuspends the kept user in its own observer after the commit. When the surviving
+     * identity was suspended by someone other than FlexAccess before the merge (recorded inside the
+     * merge), that suspension is put back: a merge never lifts an administrative lock implicitly. The
+     * pair then stays "review" until an administrator decides.
+     *
+     * @param int $sourceuserid Identity merged away.
+     * @param int $targetuserid Surviving identity.
+     * @param int|null $now Current time.
+     * @return \stdClass ->status, ->reasons (string[]), ->suspensionrestored (bool).
+     */
+    public static function verify(int $sourceuserid, int $targetuserid, ?int $now = null): \stdClass {
+        global $DB;
+        $now = $now ?? time();
+        $row = merge_registry::get($sourceuserid, $targetuserid) ?? merge_registry::record($sourceuserid, $targetuserid, 'event');
+        $restored = false;
+        if (
+            (int) $row->targetsuspended === 1
+                && $row->targetlockedby !== lifecycle::LOCKED_BY_FLEXACCESS
+                && (int) $DB->get_field('user', 'suspended', ['id' => $targetuserid]) === 0
+        ) {
+            $DB->set_field('user', 'suspended', 1, ['id' => $targetuserid]);
+            if ($DB->record_exists('auth_flexaccess_account', ['userid' => $targetuserid])) {
+                $DB->set_field('auth_flexaccess_account', 'lockedby', $row->targetlockedby, ['userid' => $targetuserid]);
+            }
+            \core\session\manager::destroy_user_sessions($targetuserid);
+            \core\event\user_updated::create_from_userid($targetuserid)->trigger();
+            $restored = true;
+        }
+        if ($row->status !== merge_registry::RECONCILED || $restored) {
+            $result = self::reconcile($sourceuserid, $targetuserid, false, $now, 'verify');
+        } else {
+            $reasons = merge_guard::postconditions($sourceuserid, $targetuserid, $row);
+            if ($reasons) {
+                $details = (array) json_decode((string) $row->details, true);
+                merge_registry::finish($row, merge_registry::REVIEW, $reasons, $details, $now);
+            }
+            $result = (object) ['status' => $reasons ? merge_registry::REVIEW : 'reconciled', 'reasons' => $reasons];
+        }
+        $result->suspensionrestored = $restored;
+        return $result;
+    }
+
+    /**
+     * The facts of an identity as recorded in the registry (no contact data).
+     *
+     * @param \stdClass $identity Facts from {@see merge_guard::identity()}.
+     * @return array
+     */
+    private static function facts(\stdClass $identity): array {
+        return array_diff_key((array) $identity, ['email' => true]);
     }
 
     /**

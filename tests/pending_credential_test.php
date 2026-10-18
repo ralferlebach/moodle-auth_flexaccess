@@ -37,6 +37,9 @@ final class pending_credential_test extends \advanced_testcase {
      */
     protected function setUp(): void {
         parent::setUp();
+        $this->resetAfterTest();
+        // FlexAccess authentication enabled, as on a real site (a disabled plugin sends no login mail).
+        set_config('auth', 'flexaccess');
         $_SERVER['HTTP_USER_AGENT'] = $_SERVER['HTTP_USER_AGENT'] ?? 'phpunit';
     }
 

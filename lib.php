@@ -15,12 +15,40 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * Library callbacks for auth_flexaccess.
+ * Moodle callbacks of auth_flexaccess that have no hook equivalent.
  *
  * @package    auth_flexaccess
  * @copyright  2026 Ralf Erlebach
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
+
+/**
+ * Called at the end of every require_login(): refuses binding a non-durable FlexAccess identity to an
+ * LTI platform identity on auth_lti's "existing account" page (see {@see \auth_flexaccess\local\lti_guard}).
+ *
+ * It also re-checks the user of an LTI launch: auth_lti skips complete_user_login() when the bound
+ * user already has a session, so the after_login_completed hook does not see that launch.
+ *
+ * Moodle offers no hook for this point; both checks return after one string comparison on every
+ * other page.
+ *
+ * @param stdClass|int|null $courseorid Course passed to require_login().
+ * @param bool $autologinguest Whether guest auto-login was allowed.
+ * @param cm_info|stdClass|null $cm Course module.
+ * @param bool $setwantsurltome Whether wantsurl was set.
+ * @param bool $preventredirect Whether redirects were prevented.
+ * @return void
+ */
+function auth_flexaccess_after_require_login(
+    $courseorid = null,
+    $autologinguest = null,
+    $cm = null,
+    $setwantsurltome = null,
+    $preventredirect = null
+): void {
+    \auth_flexaccess\local\lti_guard::check_binding_request();
+    \auth_flexaccess\local\lti_guard::check_launch_session();
+}
 
 /**
  * Status checks contributed to Site administration > Reports > System status.

@@ -63,4 +63,84 @@ class hook_callbacks {
             'alert alert-info flexaccess-persist-hint'
         ));
     }
+
+    /**
+     * Re-check FlexAccess accounts signed in by a path other than FlexAccess' own (auth_lti #12).
+     *
+     * A bound LTI launch signs the user in with complete_user_login() after checking only the Moodle
+     * suspension flag. FlexAccess' expiry, lifecycle state and credential rules are enforced here; a
+     * refused session is ended at once and the request stops with an error - never as a guest.
+     *
+     * @param \core_user\hook\after_login_completed $hook The hook.
+     * @return void
+     * @throws \moodle_exception When the session was refused.
+     */
+    public static function after_login_completed(\core_user\hook\after_login_completed $hook): void {
+        global $USER;
+        if (empty($USER->id) || isguestuser()) {
+            return;
+        }
+        $userid = (int) $USER->id;
+        if (\auth_flexaccess\local\lti_guard::enforce_session($userid) !== '') {
+            throw new \moodle_exception('externalloginrefused', 'auth_flexaccess', new \moodle_url('/login/index.php'));
+        }
+    }
+
+    /**
+     * Gate tool_mergeusers' merge from inside its transaction (auth_flexaccess #13).
+     *
+     * Runs after tool_mergeusers moved every table and before it commits. FlexAccess refuses the merge
+     * when its policy does not allow it (a durable FlexAccess identity into a non-FlexAccess target, two
+     * durable identities without approval), and when the result would leave LTI bindings or grade
+     * delivery pointing at the merged-away user or duplicate a membership: an error message makes
+     * tool_mergeusers roll the whole merge back. Otherwise FlexAccess reconciles its own state in the same
+     * transaction and records the surviving identity's suspension, which tool_mergeusers lifts afterwards.
+     *
+     * @param \tool_mergeusers\hook\after_merged_all_tables $hook The hook.
+     * @return void
+     */
+    public static function mergeusers_after_merged_all_tables($hook): void {
+        $from = (int) $hook->fromid;
+        $to = (int) $hook->toid;
+        if ($from <= 0 || $to <= 0 || $from === $to) {
+            return;
+        }
+        $registry = \auth_flexaccess\local\merge_registry::record($from, $to, 'hook');
+        \auth_flexaccess\local\merge_registry::snapshot_target($registry, $to);
+        $result = \auth_flexaccess\local\merge_service::reconcile($from, $to, false, null, 'hook');
+        if ($result->status === 'locked') {
+            // Another reconciliation of the pair is running: never commit a merge FlexAccess did not check.
+            $hook->add_error_message(get_string('mergerefused_locked', 'auth_flexaccess'));
+            return;
+        }
+        $blocking = array_intersect($result->reasons, \auth_flexaccess\local\merge_guard::BLOCKING_POSTCONDITIONS);
+        if ($result->status === \auth_flexaccess\local\merge_registry::REFUSED || $blocking) {
+            foreach ($result->status === \auth_flexaccess\local\merge_registry::REFUSED ? $result->reasons : $blocking as $reason) {
+                $hook->add_error_message(get_string('mergerefused_' . $reason, 'auth_flexaccess'));
+            }
+            return;
+        }
+        $hook->add_log(get_string('mergereconciled', 'auth_flexaccess', (object) [
+            'status' => $result->status,
+            'reasons' => $result->reasons ? implode(', ', $result->reasons) : '-',
+        ]));
+    }
+
+    /**
+     * Keep tool_mergeusers' generic table merge away from FlexAccess' own identity tables.
+     *
+     * The account lifecycle row, tokens, queued mail and the merge registry describe one identity each;
+     * moving them onto the surviving user would blur which identity was durable and break the policy
+     * check that runs before the merge commits. FlexAccess reconciles them itself
+     * ({@see self::mergeusers_after_merged_all_tables()}). String keys are deliberate: tool_mergeusers
+     * combines settings with array_replace_recursive(), which would let numeric keys overwrite its own
+     * default exceptions.
+     *
+     * @param \tool_mergeusers\hook\add_settings_before_merging $hook The hook.
+     * @return void
+     */
+    public static function mergeusers_add_settings($hook): void {
+        $tables = ['auth_flexaccess_account', 'auth_flexaccess_token', 'auth_flexaccess_mailqueue', 'auth_flexaccess_merge'];
+        $hook->add_setting('exceptions', array_combine($tables, $tables));
+    }
 }

@@ -25,10 +25,10 @@ partial installation does not work - a missing sibling means a missing part of t
 Requirements
 ------------
 
-This plugin requires Moodle 4.5+
+This plugin requires Moodle 4.5 LTS up to Moodle 5.3 (tested on 4.5, 5.0, 5.2 and 5.3).
 
 It also requires the other FlexAccess plugins. All four are released together and must be installed
-in the same version (currently 1.1.0 / 2026092900):
+in the same version (currently 1.2.0 / 2026101700):
 
 * **enrol_flexaccess (FlexAccess enrolment)** - required dependency, declared in version.php\
   https://github.com/ralferlebach/moodle-enrol_flexaccess
@@ -87,6 +87,7 @@ This plugin also introduces these additional scheduled tasks:
 
 * **\auth_flexaccess\task\process_mail_queue** - Sends the mails waiting in the FlexAccess queue, within the configured hourly limit, and retries failed deliveries.\ By default, the task is enabled and runs every minute.
 * **\auth_flexaccess\task\expire_accounts** - Marks temporary accounts as expired and purges them after the configured retention.\ By default, the task is enabled and runs hourly.
+* **\auth_flexaccess\task\reconcile_merge** and **\auth_flexaccess\task\verify_merges** - Ad-hoc tasks that complete and verify identity merges (tool_mergeusers) after they were committed. They are queued on demand and have no schedule.
 
 
 How this plugin works / Pitfalls
@@ -97,6 +98,18 @@ A visitor who opens a FlexAccess-enabled course is offered an entry page instead
 A temporary account is a real Moodle account with a generated username and a placeholder address. It carries the visitor's progress, expires after the configured lifetime and is purged afterwards. When the visitor decides to keep their progress, the same account is personalised: it receives their real address and name, and from then on it is an ordinary, fully-fledged Moodle account. Because the account id never changes, nothing that was already done is lost.
 
 **Pitfall:** all FlexAccess mail goes through this plugin's queue. Mails carrying a one-time secret are queued without that secret; the token is created by the worker immediately before delivery, so it is never stored. That also means a mail is only as timely as the queue: with a low hourly limit, invitations and login links can be delayed.
+
+
+LTI 1.3 and merged accounts
+---------------------------
+
+FlexAccess accounts can be linked to an LTI 1.3 platform identity through Moodle's own "link an existing account" page (enrol_lti / auth_lti). Only a **durable** account may be linked: authenticated, active, confirmed, with its own password and no address change waiting for confirmation. A temporary session or an account still waiting for its password is refused before Moodle stores the link, and the pending launch is discarded. A launch through an existing link is checked again after login; an expired or suspended FlexAccess account cannot launch, and the session is ended rather than turned into a guest session. Identities are never matched by e-mail address or name.
+
+Merges with **tool_mergeusers** (optional) are checked inside its transaction: a durable FlexAccess account cannot be merged into a non-FlexAccess account, and two durable identities can only be merged after an administrator approved that pair (Site administration -> Users -> Accounts -> FlexAccess administration -> System status -> LTI identities). A refused merge is rolled back completely. After the merge, FlexAccess moves its course access onto the surviving account and keeps the source's metadata until LTI links and memberships verifiably point to the survivor.
+
+The full policy, the evidence matrix and the procedure for interrupted merges are described in [docs/lti_identities.md](docs/lti_identities.md).
+
+**Pitfall:** with the enrol_lti provisioning mode "create accounts automatically" (AUTO_ONLY), Moodle creates a second account even when a FlexAccess account with the same address exists. Prefer "prompt for an existing account" in FlexAccess courses; otherwise use the reviewed merge workflow.
 
 
 Theme support

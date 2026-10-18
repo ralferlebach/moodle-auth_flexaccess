@@ -53,8 +53,9 @@ class reconcile_merge extends \core\task\adhoc_task {
         $from = (int) ($data['from'] ?? 0);
         $to = (int) ($data['to'] ?? 0);
         if ($from > 0 && $to > 0) {
-            $result = \auth_flexaccess\api::reconcile_external_identity_merge($from, $to, false);
-            mtrace("FlexAccess merge {$from} -> {$to}: {$result->status}");
+            $result = \auth_flexaccess\local\merge_service::verify($from, $to);
+            $reasons = $result->reasons ? ' (' . implode(', ', $result->reasons) . ')' : '';
+            mtrace("FlexAccess merge {$from} -> {$to}: {$result->status}{$reasons}");
         }
     }
 }

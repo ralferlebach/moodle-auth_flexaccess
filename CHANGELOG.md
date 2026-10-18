@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.2.0 (2026101700) — 2026-10-17 — LTI-Identitäten sicher binden und zusammenführen, Moodle 5.3
+- **LTI-Bindung nur für dauerhafte Konten (#12, LTI-BINDING).**
+  - **Bisher:** Moodles Seite „bestehendes Konto verknüpfen“ (`auth/lti/login.php`) band jedes gerade angemeldete Konto an die Plattform-Identität – auch eine temporäre FlexAccess-Sitzung, eine Zugangskarte oder ein Konto ohne eigenes Passwort. Ein späterer Launch über die Bindung prüfte nur Moodles Sperr-Flag; abgelaufene Konten kamen bis zum nächsten Ablauf-Task hinein.
+  - **Jetzt:** `local\lti_guard` weist eine Bindung vor dem Schreiben ab, wenn das Konto nicht authentifiziert, aktiv, bestätigt, mit eigenem Passwort und ohne offene Adressbestätigung ist; der wartende Launch wird verworfen. Ein Launch über eine bestehende Bindung wird nach der Anmeldung (`after_login_completed`) mit denselben Regeln geprüft, eine unzulässige Sitzung sofort beendet – nie zur Gastsitzung. Ist die Person auf dem Provider bereits angemeldet (Core überspringt dann `complete_user_login()`), prüft die Launch-Seite dieselben Regeln. Bindungen entstehen nie per E-Mail oder Name; die gleiche Adresse dient nur als Dublettenhinweis im Systemstatus.
+  - Nutzer, deren Authentifizierung auf eine andere Methode umgestellt wurde, regelt diese Methode; FlexAccess weist sie trotz verbliebener Kontozeile nicht ab.
+- **Zusammenführung mit tool_mergeusers (#13, LTI-MERGE).**
+  - **Bisher:** Ein dauerhaftes FlexAccess-Konto konnte in ein auth_lti-Konto ohne Passwort aufgehen; LTI-Bindungen und -Mitgliedschaften wurden nicht geprüft, und die Quelldaten wurden entfernt, bevor feststand, dass der Merge vollständig war.
+  - **Jetzt:** Die Richtlinie wird in der Transaktion von tool_mergeusers geprüft; ein Verstoß rollt den gesamten Merge zurück. Ein dauerhaftes Konto geht nie in ein Konto ohne eigene Passwortanmeldung auf (auch kein temporäres oder passwortloses FlexAccess-Konto); läuft gleichzeitig eine Bearbeitung desselben Paars, wird der Merge ebenfalls abgewiesen (`locked`). Zwei dauerhafte Identitäten brauchen eine Freigabe (ein Tag gültig). Das neue Register `auth_flexaccess_merge` führt jedes Paar mit Status, Gründen und Nachbedingungen; Quelldaten bleiben, bis Bindungen und Mitgliedschaften nachweislich auf das Ziel zeigen. Eine administrative Sperre des Ziels, die tool_mergeusers aufhebt, wird wiederhergestellt.
+  - Umhängen von Bindungen und Mitgliedschaften nur für Paare, deren Merge geschehen ist und geprüft wird – eine Freigabe allein verschiebt nie die Bindungen eines lebenden Kontos.
+  - Upgrade-Schritt registriert frühere Merges und prüft sie (`task\verify_merges`); offene Fälle erscheinen im Systemstatus und auf der Seite „LTI-Identitäten“ (tool).
+  - Dokumentation mit Nachweismatrix und Vorgehen bei unterbrochenen Merges: `docs/lti_identities.md`.
+- **Moodle 5.3 (tool #11, COMPAT-004/005):** Der Login-Guard weist mindestens alles ab, was `\core_auth\validate_user` abweist (gelöscht, unbestätigt, gesperrt, Auth-Plugin deaktiviert); neuer Grund `authdisabled`. Nutzer-APIs nutzen `\core\user::create_user()`/`update_user()`, wo vorhanden.
+- Behoben: Die Systemstatus-Prüfung `lifecycle_invariants` war beim Umbau von `lib.php` in diesem Release kurzzeitig nicht mehr registriert; jetzt wieder eingehängt und durch einen Test abgesichert.
+- Datenschutz-Provider um das Merge-Register erweitert. CI: Moodle 5.3 × PHP 8.3/8.4 × PostgreSQL 17/MariaDB 11.4; die auth-Workflows installieren tool_mergeusers.
+- Version `2026101700`, Release `1.2.0`, `MATURITY_STABLE`, `supported` [405, 503]. Abhängigkeit `enrol_flexaccess` ≥ `2026101700`.
+
 ## 1.1.0 (2026092900) — 2026-09-29 — Lifecycle-Transitionen nur mit vollständigem Zielzustand
 - **Lifecycle-Transitionen erreichen ihren Zielzustand vollständig oder gar nicht (Re-Audit REST-001).**
   - **Bisher:** `transition_to_active_authenticated()` und `transition_to_pending_credential()` werteten das Ergebnis von `set_core_flags()` nicht aus. Bei einer Sperre, die FlexAccess nicht aufheben darf, entstand ACTIVE bzw. PENDING_CREDENTIAL neben einem gesperrten Moodle-Nutzer. Bei PENDING_CREDENTIAL ist das eine Sackgasse, denn gesperrte Nutzer erhalten keine Passwort-Mail.

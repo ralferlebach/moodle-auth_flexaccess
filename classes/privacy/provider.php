@@ -96,6 +96,14 @@ final class provider implements
         // a site secret, so a row cannot be traced back to a person and cannot be exported for a
         // subject access request - but it is declared here because it derives from personal data,
         // and it is purged with the rest of the plugin's data.
+        $collection->add_database_table('auth_flexaccess_merge', [
+            'fromuserid' => 'privacy:metadata:merge:fromuserid',
+            'touserid' => 'privacy:metadata:merge:touserid',
+            'status' => 'privacy:metadata:merge:status',
+            'reasons' => 'privacy:metadata:merge:reasons',
+            'details' => 'privacy:metadata:merge:details',
+            'timecreated' => 'privacy:metadata:merge:timecreated',
+        ], 'privacy:metadata:merge');
         $collection->add_database_table('auth_flexaccess_ratehit', [
             'bucket' => 'privacy:metadata:ratehit:bucket',
             'identifier' => 'privacy:metadata:ratehit:identifier',
@@ -121,6 +129,8 @@ final class provider implements
         foreach (self::TABLES as $i => $table) {
             $checks[] = "EXISTS (SELECT 1 FROM {" . $table . "} t$i WHERE t$i.userid = ctx.instanceid)";
         }
+        $checks[] = "EXISTS (SELECT 1 FROM {auth_flexaccess_merge} m
+                              WHERE m.fromuserid = ctx.instanceid OR m.touserid = ctx.instanceid)";
         $checks[] = "EXISTS (SELECT 1 FROM {user_preferences} up
                               WHERE up.userid = ctx.instanceid AND up.name = :pref)";
         $params['pref'] = self::PENDING_PREF;
@@ -151,6 +161,13 @@ final class provider implements
                 ['userid' => $context->instanceid]
             );
         }
+        $userlist->add_from_sql(
+            'userid',
+            "SELECT fromuserid AS userid FROM {auth_flexaccess_merge} WHERE fromuserid = :u1
+             UNION
+             SELECT touserid AS userid FROM {auth_flexaccess_merge} WHERE touserid = :u2",
+            ['u1' => $context->instanceid, 'u2' => $context->instanceid]
+        );
     }
 
     /**
@@ -188,7 +205,7 @@ final class provider implements
     private static function export_sections(int $userid): array {
         global $DB;
         $date = static fn($t) => empty($t) ? null : transform::datetime((int) $t);
-        $sections = ['account' => [], 'token' => [], 'mail' => []];
+        $sections = ['account' => [], 'token' => [], 'mail' => [], 'merge' => []];
         foreach ($DB->get_records('auth_flexaccess_account', ['userid' => $userid]) as $row) {
             $sections['account'][] = (object) [
                 'accounttype' => get_string(
@@ -223,6 +240,20 @@ final class provider implements
                 'body' => is_array($payload) ? ($payload['body'] ?? null) : null,
                 'timecreated' => $date($row->timecreated),
                 'timesent' => $date($row->timesent ?? null),
+            ];
+        }
+        $merges = $DB->get_records_select(
+            'auth_flexaccess_merge',
+            'fromuserid = :u1 OR touserid = :u2',
+            ['u1' => $userid, 'u2' => $userid]
+        );
+        foreach ($merges as $row) {
+            $sections['merge'][] = (object) [
+                'role' => (int) $row->fromuserid === $userid ? 'mergedaway' : 'survivor',
+                'status' => $row->status,
+                'reasons' => $row->reasons,
+                'timecreated' => $date($row->timecreated),
+                'timemodified' => $date($row->timemodified),
             ];
         }
         return $sections;
@@ -281,6 +312,7 @@ final class provider implements
         unset_user_preference(self::PENDING_PREF, $context->instanceid);
         unset_user_preference(self::FOLLOWUP_PREF, $context->instanceid);
         unset_user_preference(self::PENDINGCREDENTIAL_PREF, $context->instanceid);
+        self::delete_merges((int) $context->instanceid);
     }
 
     /**
@@ -301,6 +333,7 @@ final class provider implements
             unset_user_preference(self::PENDING_PREF, $context->instanceid);
             unset_user_preference(self::FOLLOWUP_PREF, $context->instanceid);
             unset_user_preference(self::PENDINGCREDENTIAL_PREF, $context->instanceid);
+            self::delete_merges((int) $context->instanceid);
         }
     }
 
@@ -323,6 +356,22 @@ final class provider implements
             unset_user_preference(self::PENDING_PREF, $context->instanceid);
             unset_user_preference(self::FOLLOWUP_PREF, $context->instanceid);
             unset_user_preference(self::PENDINGCREDENTIAL_PREF, $context->instanceid);
+            self::delete_merges((int) $context->instanceid);
         }
+    }
+
+    /**
+     * Delete the merge registry rows a user takes part in.
+     *
+     * @param int $userid User id.
+     * @return void
+     */
+    private static function delete_merges(int $userid): void {
+        global $DB;
+        $DB->delete_records_select(
+            'auth_flexaccess_merge',
+            'fromuserid = :u1 OR touserid = :u2',
+            ['u1' => $userid, 'u2' => $userid]
+        );
     }
 }
