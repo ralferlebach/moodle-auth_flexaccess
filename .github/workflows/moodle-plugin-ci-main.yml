@@ -22,9 +22,39 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+
+  family:
+    name: "Plugin family (exact commits)"
+    runs-on: ubuntu-22.04
+    outputs:
+      lock: ${{ steps.resolve.outputs.lock }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: plugin
+      - name: Self-test of the family resolver
+        run: python3 plugin/.github/scripts/test_flexaccess_family.py
+      - name: Pin the four plugins and tool_mergeusers to exact commits
+        id: resolve
+        # Resolves the "main" heads of the siblings ONCE to commit SHAs and requires every plugin at
+        # this commit's version. The four repositories are uploaded one after another, so a sibling may
+        # still be on the previous version for a few minutes: wait for it, then fail hard (no fallback).
+        run: |
+          python3 plugin/.github/scripts/flexaccess_family.py resolve \
+            --self auth_flexaccess --self-dir plugin --self-sha "$GITHUB_SHA" --ref main --wait 1200 \
+            --out family-lock.json --github-output "$GITHUB_OUTPUT" --summary "$GITHUB_STEP_SUMMARY"
+      - name: Keep the tested combination
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: flexaccess-family-lock
+          path: family-lock.json
+          if-no-files-found: ignore
+
   test:
     name: "CI / ${{ matrix.moodle }} / PHP ${{ matrix.php }} / ${{ matrix.database }}"
     runs-on: ubuntu-22.04
+    needs: [family]
     services:
       postgres:
         image: postgres:16
@@ -103,13 +133,14 @@ jobs:
           sudo locale-gen en_AU.UTF-8
       - name: Install Moodle, dependencies and plugin
         run: |
-          moodle-plugin-ci add-plugin ralferlebach/moodle-enrol_flexaccess
-          moodle-plugin-ci add-plugin ralferlebach/moodle-mod_flexaccess
-          moodle-plugin-ci add-plugin ralferlebach/moodle-tool_flexaccess
-          # The merge tests of auth_flexaccess run against the real tool_mergeusers.
-          moodle-plugin-ci add-plugin jpahullo/moodle-tool_mergeusers --branch MOODLE_405_STABLE
+          # Exactly the commits pinned by the "family" job (no moving branches).
+          python3 plugin/.github/scripts/flexaccess_family.py fetch --lock-json "$FAMILY_LOCK" \
+            --self auth_flexaccess --dest moodle-plugin-ci-plugins --with-mergeusers
           moodle-plugin-ci install --plugin ./plugin --db-host=127.0.0.1 --db-port=${{ matrix.dbport }}
+          # The tested combination: exact commits of the family, Moodle, PHP and database versions.
+          set -o pipefail; php plugin/.github/scripts/record_environment.php moodle | tee -a "$GITHUB_STEP_SUMMARY"
         env:
+          FAMILY_LOCK: ${{ needs.family.outputs.lock }}
           DB: ${{ matrix.database }}
           MOODLE_BRANCH: ${{ matrix.moodle }}
       - name: PHP Lint
@@ -174,47 +205,6 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
 
-  ecosystem-lockstep:
-    name: Ecosystem version lockstep
-    runs-on: ubuntu-22.04
-    steps:
-      - name: Check out plugin
-        uses: actions/checkout@v4
-        with:
-          path: plugin
-
-      - name: All four FlexAccess plugins must ship the same version
-        run: |
-          get_version() {
-            grep -oE '\$plugin->version[[:space:]]*=[[:space:]]*[0-9]+' "$1"               | grep -oE '[0-9]+$'
-          }
-          own=$(get_version plugin/version.php)
-          echo "This plugin: $own"
-          rc=0
-          for sib in auth enrol mod tool; do
-            git clone --depth 1 --branch main               "https://github.com/ralferlebach/moodle-${sib}_flexaccess.git" "/tmp/$sib" >/dev/null 2>&1
-            sibver=$(get_version "/tmp/$sib/version.php")
-            echo "  ${sib}_flexaccess: $sibver"
-            if [[ "$sibver" != "$own" ]]; then
-              echo "  MISMATCH: expected $own"
-              rc=1
-            fi
-          done
-          if [[ $rc -ne 0 ]]; then
-            # Four separate repositories can only be pushed one after another, so during a rollout
-            # the siblings are legitimately still on the previous version. Failing here would make
-            # the first three pushes red every single time - the gate would be noise, not a gate.
-            # It is therefore enforced where "released together" is actually claimed: on a tag.
-            if [[ "${{ github.ref_type }}" == "tag" ]]; then
-              echo "Release gate: a tagged release requires all four plugins at one version."
-              exit 1
-            fi
-            echo "::warning::Ecosystem versions differ - expected while a rollout is in progress."
-            echo "Kein Fehler: auf einem Branch-Push wird der Gleichstand nur berichtet."
-            exit 0
-          fi
-          echo "All four plugins are in lockstep."
-
   release-artefact:
     name: Release artefact contents
     runs-on: ubuntu-22.04
@@ -269,6 +259,7 @@ jobs:
   coverage:
     name: Coverage
     runs-on: ubuntu-22.04
+    needs: [family]
     services:
       postgres:
         image: postgres@sha256:6efd0df010dc3cb40d5e33e3ef84acecc5e73161bd3df06029ee8698e5e12c60
@@ -303,11 +294,14 @@ jobs:
 
       - name: Install Moodle and the plugin ecosystem
         run: |
-          moodle-plugin-ci add-plugin ralferlebach/moodle-enrol_flexaccess
-          moodle-plugin-ci add-plugin ralferlebach/moodle-mod_flexaccess
-          moodle-plugin-ci add-plugin ralferlebach/moodle-tool_flexaccess
+          # Exactly the commits pinned by the "family" job (no moving branches).
+          python3 plugin/.github/scripts/flexaccess_family.py fetch --lock-json "$FAMILY_LOCK" \
+            --self auth_flexaccess --dest moodle-plugin-ci-plugins
           moodle-plugin-ci install --plugin ./plugin --db-host=127.0.0.1
+          # The tested combination: exact commits of the family, Moodle, PHP and database versions.
+          set -o pipefail; php plugin/.github/scripts/record_environment.php moodle | tee -a "$GITHUB_STEP_SUMMARY"
         env:
+          FAMILY_LOCK: ${{ needs.family.outputs.lock }}
           DB: pgsql
           MOODLE_BRANCH: MOODLE_405_STABLE
 
@@ -338,7 +332,7 @@ jobs:
 
   maturity-gate:
     name: Release gate
-    needs: [test, ecosystem-lockstep, release-artefact, coverage]
+    needs: [family, test, release-artefact, coverage]
     runs-on: ubuntu-22.04
     # Without always() this job is skipped whenever one of its dependencies fails - and a skipped
     # job is not re-executed by "re-run failed jobs", so it stays skipped for good and keeps
@@ -353,7 +347,7 @@ jobs:
           # This job is the single place where the release gates are judged, so it reports each
           # result and fails on any that is not green - whatever the declared maturity is.
           rc=0
-          for entry in             "test=${{ needs.test.result }}"             "ecosystem-lockstep=${{ needs.ecosystem-lockstep.result }}"             "release-artefact=${{ needs.release-artefact.result }}"             "coverage=${{ needs.coverage.result }}"; do
+          for entry in             "test=${{ needs.test.result }}"             "family=${{ needs.family.result }}"             "release-artefact=${{ needs.release-artefact.result }}"             "coverage=${{ needs.coverage.result }}"; do
             echo "  ${entry%%=*}: ${entry#*=}"
             if [[ "${entry#*=}" != "success" ]]; then
               rc=1

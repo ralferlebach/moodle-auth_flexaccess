@@ -146,3 +146,24 @@ function auth_flexaccess_backfill_merges(): int {
     }
     return $count;
 }
+
+/**
+ * Confirm registered merges from the tool_mergeusers log (auth_flexaccess #14). Idempotent.
+ *
+ * A pair counts as merged only when tool_mergeusers holds a successful log record for exactly that pair;
+ * pairs without such a record stay unconfirmed, and nothing that moves data is allowed for them.
+ *
+ * @return int Number of pairs confirmed.
+ */
+function auth_flexaccess_confirm_merges(): int {
+    global $DB;
+    $count = 0;
+    $rows = $DB->get_recordset_select('auth_flexaccess_merge', 'timeconfirmed = 0', null, 'id', 'id, fromuserid, touserid');
+    foreach ($rows as $row) {
+        if (\auth_flexaccess\local\merge_registry::confirm((int) $row->fromuserid, (int) $row->touserid, null, 'backfill')) {
+            $count++;
+        }
+    }
+    $rows->close();
+    return $count;
+}

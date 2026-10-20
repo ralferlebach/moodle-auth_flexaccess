@@ -47,3 +47,7 @@ tests/load/k6
 tests/load/*.tgz
 tests/load/*.jtl
 tests/load/.load-env
+
+# Python bytecode of the CI helper scripts
+__pycache__/
+*.pyc

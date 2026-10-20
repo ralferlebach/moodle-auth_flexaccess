@@ -1,0 +1,16 @@
+{
+  "comment": "FlexAccess plugin family (identical in all four repositories). Read by .github/scripts/flexaccess_family.py: the repositories and Moodle paths of the four plugins, and the exact tool_mergeusers commit every CI run installs. Update the mergeusers SHA deliberately, never to a moving branch.",
+  "plugins": {
+    "auth_flexaccess": {"repo": "ralferlebach/moodle-auth_flexaccess", "path": "auth/flexaccess"},
+    "enrol_flexaccess": {"repo": "ralferlebach/moodle-enrol_flexaccess", "path": "enrol/flexaccess"},
+    "mod_flexaccess": {"repo": "ralferlebach/moodle-mod_flexaccess", "path": "mod/flexaccess"},
+    "tool_flexaccess": {"repo": "ralferlebach/moodle-tool_flexaccess", "path": "admin/tool/flexaccess"}
+  },
+  "mergeusers": {
+    "repo": "jpahullo/moodle-tool_mergeusers",
+    "path": "admin/tool/mergeusers",
+    "branch": "MOODLE_405_STABLE",
+    "sha": "61c13f0484986ba78898b1760464adfe2eb97aae",
+    "version": 2026081302
+  }
+}

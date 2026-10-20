@@ -105,7 +105,13 @@ class hook_callbacks {
         if ($from <= 0 || $to <= 0 || $from === $to) {
             return;
         }
-        $registry = \auth_flexaccess\local\merge_registry::record($from, $to, 'hook');
+        // Inside tool_mergeusers' transaction: the merge is in progress, not confirmed (no log record yet).
+        $registry = \auth_flexaccess\local\merge_registry::record(
+            $from,
+            $to,
+            'hook',
+            \auth_flexaccess\local\merge_registry::MERGE_IN_PROGRESS
+        );
         \auth_flexaccess\local\merge_registry::snapshot_target($registry, $to);
         $result = \auth_flexaccess\local\merge_service::reconcile($from, $to, false, null, 'hook');
         if ($result->status === 'locked') {

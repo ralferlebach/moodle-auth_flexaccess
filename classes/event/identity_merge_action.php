@@ -19,7 +19,9 @@ namespace auth_flexaccess\event;
 /**
  * An administrator acted on an identity merge or an LTI binding (approve, repoint, remove binding, re-check).
  *
- * other: action (approve|repoint|removebinding|recheck), fromuserid, touserid, bindingid, outcome.
+ * other: action (approve|repoint|removebinding|recheck), fromuserid, touserid, bindingid, outcome; for approve
+ * and repoint also the evidence: approvedby, timeapproved, mergelogid (tool_mergeusers log record), reasons,
+ * bindings, ltiusers, conflicts.
  *
  * @package    auth_flexaccess
  * @copyright  2026 Ralf Erlebach

@@ -153,5 +153,31 @@ function xmldb_auth_flexaccess_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026101700, 'auth', 'flexaccess');
     }
 
+    if ($oldversion < 2026101800) {
+        // Merge evidence and approval (consent) per pair (auth_flexaccess #14): a registry row is no longer
+        // taken as proof of a merge; only the successful tool_mergeusers log record of the pair is.
+        $table = new xmldb_table('auth_flexaccess_merge');
+        if (!$dbman->table_exists($table)) {
+            // A site that installed an intermediate development state of 2026101700 has no registry yet.
+            $dbman->install_one_table_from_xmldb_file(__DIR__ . '/install.xml', 'auth_flexaccess_merge');
+        }
+        $fields = [
+            new xmldb_field('approvedby', XMLDB_TYPE_INTEGER, '10', null, null, null, null, 'targetlockedby'),
+            new xmldb_field('timeapproved', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0', 'approvedby'),
+            new xmldb_field('mergelogid', XMLDB_TYPE_INTEGER, '10', null, null, null, null, 'timeapproved'),
+            new xmldb_field('timeconfirmed', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0', 'mergelogid'),
+        ];
+        foreach ($fields as $field) {
+            if (!$dbman->field_exists($table, $field)) {
+                $dbman->add_field($table, $field);
+            }
+        }
+        // Approvals of 1.2.0 (2026101700) recorded no approver: they become "preapproved" without consent and
+        // must be given again; earlier merges are confirmed from the tool_mergeusers log where it exists.
+        $DB->set_field('auth_flexaccess_merge', 'status', 'preapproved', ['status' => 'approved']);
+        auth_flexaccess_confirm_merges();
+        upgrade_plugin_savepoint(true, 2026101800, 'auth', 'flexaccess');
+    }
+
     return true;
 }

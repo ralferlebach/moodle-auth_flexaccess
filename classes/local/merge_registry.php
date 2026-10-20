@@ -17,12 +17,23 @@
 namespace auth_flexaccess\local;
 
 /**
- * Registry of identity merges: one row per merged pair, with review state and per-record outcome.
+ * Registry of identity merges: one row per pair, with its stage, the evidence of the merge and the outcome.
  *
- * The registry is what makes a merge accountable after the fact: an administrator's approval of a merge
- * of two durable identities, the surviving identity's suspension before the merge, the reconciliation
- * outcome, and every postcondition that is not met. A pair stays "review" until a re-check passes; the
- * merged-away identity's FlexAccess metadata is kept until then.
+ * A registry row is NOT proof that two users were merged (auth_flexaccess #14). The stage (status) says
+ * where FlexAccess is with a pair; whether the Moodle users really were merged is recorded separately as
+ * evidence: the id of the successful tool_mergeusers log record for exactly this pair. Only a confirmed
+ * merge - evidence present and still verifiable - unlocks actions that move data of the merged-away
+ * identity (re-pointing LTI bindings and memberships).
+ *
+ * Stages:
+ *  - preapproved: an administrator confirmed that two durable identities belong to one person; nothing
+ *    is merged yet (the approval is valid for {@see self::APPROVAL_LIFETIME}).
+ *  - pending: recorded without evidence (a direct reconciliation, or an earlier merge from the backfill).
+ *  - mergeinprogress: tool_mergeusers is merging the pair, inside its transaction.
+ *  - mergeconfirmed: tool_mergeusers reported the merge as successful; reconciliation still to run.
+ *  - reconciled: confirmed and every postcondition met.
+ *  - review: at least one postcondition is not met (or no evidence exists); needs an administrator.
+ *  - refused: FlexAccess refused the merge (fail closed).
  *
  * @package    auth_flexaccess
  * @copyright  2026 Ralf Erlebach
@@ -32,15 +43,19 @@ final class merge_registry {
     /** Table name. */
     public const TABLE = 'auth_flexaccess_merge';
 
-    /** Status: recorded, reconciliation not done yet. */
+    /** Stage: recorded without evidence of a merge. */
     public const PENDING = 'pending';
-    /** Status: an administrator approved merging this pair of durable identities. */
-    public const APPROVED = 'approved';
-    /** Status: reconciled, every postcondition met. */
+    /** Stage: an administrator approved merging this pair of durable identities; no merge yet. */
+    public const PREAPPROVED = 'preapproved';
+    /** Stage: tool_mergeusers is merging the pair (inside its transaction). */
+    public const MERGE_IN_PROGRESS = 'mergeinprogress';
+    /** Stage: tool_mergeusers confirmed the merge; FlexAccess' reconciliation is still to run. */
+    public const MERGE_CONFIRMED = 'mergeconfirmed';
+    /** Stage: reconciled, every postcondition met. */
     public const RECONCILED = 'reconciled';
-    /** Status: merged, but at least one postcondition is not met; needs an administrator. */
+    /** Stage: at least one postcondition is not met; needs an administrator. */
     public const REVIEW = 'review';
-    /** Status: FlexAccess refused the merge (fail closed); nothing of the pair was changed by FlexAccess. */
+    /** Stage: FlexAccess refused the merge (fail closed); nothing of the pair was changed by FlexAccess. */
     public const REFUSED = 'refused';
 
     /** How long an approval stays valid, in seconds. */
@@ -59,12 +74,12 @@ final class merge_registry {
     }
 
     /**
-     * Record a pair (idempotent); an existing row keeps its status unless one is given.
+     * Record a pair (idempotent); an existing row keeps its stage unless one is given.
      *
      * @param int $fromuserid Identity merged away.
      * @param int $touserid Surviving identity.
-     * @param string $origin hook, event, admin or backfill.
-     * @param string|null $status Status to set, or null to keep/default.
+     * @param string $origin hook, event, admin, verify or backfill.
+     * @param string|null $status Stage to set, or null to keep/default.
      * @param int|null $now Current time.
      * @return \stdClass The row.
      */
@@ -95,10 +110,35 @@ final class merge_registry {
             'details' => null,
             'targetsuspended' => 0,
             'targetlockedby' => null,
+            'approvedby' => null,
+            'timeapproved' => 0,
+            'mergelogid' => null,
+            'timeconfirmed' => 0,
             'timecreated' => $now,
             'timemodified' => $now,
         ];
         $row->id = (int) $DB->insert_record(self::TABLE, $row);
+        return $row;
+    }
+
+    /**
+     * Record an administrator's approval (consent) for merging a pair of durable identities.
+     *
+     * @param int $fromuserid Identity to be merged away.
+     * @param int $touserid Identity to keep.
+     * @param int $approverid The administrator who confirmed the ownership of both accounts.
+     * @param int|null $now Current time.
+     * @return \stdClass The row.
+     */
+    public static function approve(int $fromuserid, int $touserid, int $approverid, ?int $now = null): \stdClass {
+        global $DB;
+        $now = $now ?? time();
+        $row = self::get($fromuserid, $touserid);
+        $merged = $row && (int) $row->timeconfirmed > 0;
+        $row = self::record($fromuserid, $touserid, 'admin', $merged ? null : self::PREAPPROVED, $now);
+        $row->approvedby = $approverid;
+        $row->timeapproved = $now;
+        $DB->update_record(self::TABLE, $row);
         return $row;
     }
 
@@ -120,7 +160,7 @@ final class merge_registry {
      * Store the outcome of a reconciliation or re-check.
      *
      * @param \stdClass $row Registry row.
-     * @param string $status New status.
+     * @param string $status New stage.
      * @param string[] $reasons Unmet postconditions or refusal reasons.
      * @param array $details Per-record outcome (JSON-encoded).
      * @param int|null $now Current time.
@@ -145,12 +185,89 @@ final class merge_registry {
      */
     public static function is_approved(int $fromuserid, int $touserid, ?int $now = null): bool {
         $row = self::get($fromuserid, $touserid);
-        return $row && $row->status === self::APPROVED
-            && (int) $row->timemodified > ($now ?? time()) - self::APPROVAL_LIFETIME;
+        return $row && !empty($row->approvedby)
+            && (int) $row->timeapproved > ($now ?? time()) - self::APPROVAL_LIFETIME;
     }
 
     /**
-     * Rows that need an administrator (review, refused, or still pending), newest first.
+     * The successful tool_mergeusers log record of exactly this pair, if it exists.
+     *
+     * Supports both log schemas of tool_mergeusers (status 'success', or the older success flag).
+     *
+     * @param int $fromuserid Identity merged away.
+     * @param int $touserid Surviving identity.
+     * @param int|null $logid A specific log record to check (from the merge event), or null for the latest.
+     * @return \stdClass|null id, timemodified.
+     */
+    public static function mergeusers_log(int $fromuserid, int $touserid, ?int $logid = null): ?\stdClass {
+        global $DB;
+        if (!$DB->get_manager()->table_exists('tool_mergeusers')) {
+            return null;
+        }
+        $columns = $DB->get_columns('tool_mergeusers');
+        if (isset($columns['status'])) {
+            $success = "status = 'success'";
+        } else if (isset($columns['success'])) {
+            $success = 'success = 1';
+        } else {
+            return null;
+        }
+        $params = ['from' => $fromuserid, 'to' => $touserid];
+        $where = "fromuserid = :from AND touserid = :to AND $success";
+        if ($logid !== null) {
+            $where .= ' AND id = :id';
+            $params['id'] = $logid;
+        }
+        $rows = $DB->get_records_select('tool_mergeusers', $where, $params, 'id DESC', 'id, timemodified', 0, 1);
+        return $rows ? reset($rows) : null;
+    }
+
+    /**
+     * Record the evidence that tool_mergeusers merged the pair (idempotent).
+     *
+     * @param int $fromuserid Identity merged away.
+     * @param int $touserid Surviving identity.
+     * @param int|null $logid Log record id reported by the merge event, or null to look it up.
+     * @param string $origin Who confirms: event, verify, backfill.
+     * @param int|null $now Current time.
+     * @return bool Whether the merge is confirmed now.
+     */
+    public static function confirm(int $fromuserid, int $touserid, ?int $logid, string $origin, ?int $now = null): bool {
+        global $DB;
+        $log = self::mergeusers_log($fromuserid, $touserid, $logid);
+        if (!$log) {
+            return false;
+        }
+        $now = $now ?? time();
+        $row = self::get($fromuserid, $touserid) ?? self::record($fromuserid, $touserid, $origin, null, $now);
+        if ((int) $row->mergelogid === (int) $log->id && (int) $row->timeconfirmed > 0) {
+            return true;
+        }
+        $row->mergelogid = (int) $log->id;
+        $row->timeconfirmed = $now;
+        if (in_array($row->status, [self::PENDING, self::PREAPPROVED, self::MERGE_IN_PROGRESS], true)) {
+            $row->status = self::MERGE_CONFIRMED;
+        }
+        $row->timemodified = $now;
+        $DB->update_record(self::TABLE, $row);
+        return true;
+    }
+
+    /**
+     * Whether the pair was merged, by evidence that is still verifiable now.
+     *
+     * @param int $fromuserid Identity merged away.
+     * @param int $touserid Surviving identity.
+     * @return bool
+     */
+    public static function is_confirmed(int $fromuserid, int $touserid): bool {
+        $row = self::get($fromuserid, $touserid);
+        return $row && (int) $row->timeconfirmed > 0 && !empty($row->mergelogid)
+            && self::mergeusers_log($fromuserid, $touserid, (int) $row->mergelogid) !== null;
+    }
+
+    /**
+     * Rows that need an administrator (review, refused, unconfirmed, approved but not merged), newest first.
      *
      * @param int $limit Maximum rows; 0 = all.
      * @return \stdClass[]
@@ -159,8 +276,15 @@ final class merge_registry {
         global $DB;
         return array_values($DB->get_records_select(
             self::TABLE,
-            'status IN (:review, :refused, :pending, :approved)',
-            ['review' => self::REVIEW, 'refused' => self::REFUSED, 'pending' => self::PENDING, 'approved' => self::APPROVED],
+            'status IN (:review, :refused, :pending, :approved, :inprogress, :confirmed)',
+            [
+                'review' => self::REVIEW,
+                'refused' => self::REFUSED,
+                'pending' => self::PENDING,
+                'approved' => self::PREAPPROVED,
+                'inprogress' => self::MERGE_IN_PROGRESS,
+                'confirmed' => self::MERGE_CONFIRMED,
+            ],
             'timemodified DESC, id DESC',
             '*',
             0,
@@ -191,8 +315,14 @@ final class merge_registry {
         global $DB;
         return $DB->record_exists_select(
             self::TABLE,
-            'fromuserid = :from AND status IN (:pending, :review)',
-            ['from' => $fromuserid, 'pending' => self::PENDING, 'review' => self::REVIEW]
+            'fromuserid = :from AND status IN (:pending, :review, :inprogress, :confirmed)',
+            [
+                'from' => $fromuserid,
+                'pending' => self::PENDING,
+                'review' => self::REVIEW,
+                'inprogress' => self::MERGE_IN_PROGRESS,
+                'confirmed' => self::MERGE_CONFIRMED,
+            ]
         );
     }
 }

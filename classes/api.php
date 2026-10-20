@@ -1206,6 +1206,7 @@ final class api {
      * @return bool Whether the approval was recorded (refused for a disallowed direction).
      */
     public static function approve_merge(int $fromuserid, int $touserid, bool $ownershipverified): bool {
+        global $USER;
         if (!$ownershipverified || $fromuserid === $touserid) {
             return false;
         }
@@ -1213,25 +1214,66 @@ final class api {
         if (array_diff($assessment->blockers, [local\merge_guard::NEEDS_APPROVAL])) {
             return false;
         }
-        local\merge_registry::record($fromuserid, $touserid, 'admin', local\merge_registry::APPROVED);
-        self::merge_action('approve', $fromuserid, $touserid, 0, 'approved');
+        local\merge_registry::approve($fromuserid, $touserid, (int) $USER->id);
+        self::merge_action('approve', $fromuserid, $touserid, 0, 'preapproved', ['approvedby' => (int) $USER->id]);
         return true;
     }
 
     /**
      * Point the LTI bindings and memberships of a merged-away user to the survivor, then verify the merge.
      *
+     * Allowed only for a merge tool_mergeusers confirmed (see {@see local\lti_identity::repoint()});
+     * otherwise nothing changes and the refusal codes are returned.
+     *
      * @param int $fromuserid Merged-away user.
      * @param int $touserid Surviving user.
-     * @return \stdClass ->bindings, ->ltiusers, ->conflicts, ->status, ->reasons.
+     * @param bool $ownershipverified The administrator confirmed that both accounts belong to one person.
+     * @return \stdClass ->status, ->reasons, ->bindings, ->ltiusers, ->conflicts, ->mergelogid.
      */
-    public static function repoint_merged_lti_identity(int $fromuserid, int $touserid): \stdClass {
-        $moved = local\lti_identity::repoint($fromuserid, $touserid);
-        $verified = local\merge_service::verify($fromuserid, $touserid);
-        $moved->status = $verified->status;
-        $moved->reasons = $verified->reasons;
-        self::merge_action('repoint', $fromuserid, $touserid, 0, $verified->status);
-        return $moved;
+    public static function repoint_merged_lti_identity(int $fromuserid, int $touserid, bool $ownershipverified): \stdClass {
+        $result = local\lti_identity::repoint($fromuserid, $touserid, $ownershipverified);
+        if ($result->status === 'repointed' || $result->status === 'nothingtodo') {
+            $verified = local\merge_service::verify($fromuserid, $touserid);
+            $result->verification = $verified->status;
+            $result->reasons = $verified->reasons;
+        }
+        $row = local\merge_registry::get($fromuserid, $touserid);
+        self::merge_action('repoint', $fromuserid, $touserid, 0, $result->status, [
+            'reasons' => implode(',', $result->reasons),
+            'bindings' => $result->bindings,
+            'ltiusers' => $result->ltiusers,
+            'conflicts' => implode(',', $result->conflicts),
+            'mergelogid' => $result->mergelogid,
+            'approvedby' => (int) ($row->approvedby ?? 0),
+            'timeapproved' => (int) ($row->timeapproved ?? 0),
+        ]);
+        return $result;
+    }
+
+    /**
+     * Why the LTI bindings and memberships of a pair cannot be re-pointed now (read-only).
+     *
+     * @param int $fromuserid Merged-away user.
+     * @param int $touserid Surviving user.
+     * @return string[] Refusal codes; empty when the merge is confirmed and re-pointing is allowed.
+     */
+    public static function lti_repoint_blockers(int $fromuserid, int $touserid): array {
+        return local\lti_identity::repoint_blockers($fromuserid, $touserid);
+    }
+
+    /**
+     * The evidence that tool_mergeusers merged a pair, if it is still verifiable.
+     *
+     * @param int $fromuserid Merged-away user.
+     * @param int $touserid Surviving user.
+     * @return \stdClass|null ->logid, ->timeconfirmed.
+     */
+    public static function merge_evidence(int $fromuserid, int $touserid): ?\stdClass {
+        if (!local\merge_registry::is_confirmed($fromuserid, $touserid)) {
+            return null;
+        }
+        $row = local\merge_registry::get($fromuserid, $touserid);
+        return (object) ['logid' => (int) $row->mergelogid, 'timeconfirmed' => (int) $row->timeconfirmed];
     }
 
     /**
@@ -1264,7 +1306,7 @@ final class api {
     }
 
     /**
-     * Registered merges that are open (pending, approved, review, refused), newest first.
+     * Registered merges that are open (preapproved, pending, in progress, confirmed, review, refused), newest first.
      *
      * @param int $limit Maximum rows; 0 = all.
      * @return \stdClass[]
@@ -1300,9 +1342,17 @@ final class api {
      * @param int $touserid Surviving user.
      * @param int $bindingid Binding id.
      * @param string $outcome Outcome.
+     * @param array $evidence Further audit data (merge evidence, consent, per-record counts).
      * @return void
      */
-    private static function merge_action(string $action, int $fromuserid, int $touserid, int $bindingid, string $outcome): void {
+    private static function merge_action(
+        string $action,
+        int $fromuserid,
+        int $touserid,
+        int $bindingid,
+        string $outcome,
+        array $evidence = []
+    ): void {
         event\identity_merge_action::create([
             'context' => \context_system::instance(),
             'other' => [
@@ -1311,7 +1361,7 @@ final class api {
                 'touserid' => $touserid,
                 'bindingid' => $bindingid,
                 'outcome' => $outcome,
-            ],
+            ] + $evidence,
         ])->trigger();
     }
 

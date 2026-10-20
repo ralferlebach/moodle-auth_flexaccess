@@ -131,31 +131,107 @@ final class lti_identity {
         ));
     }
 
+    /** Repoint refusal: no verifiable tool_mergeusers evidence that the pair was merged. */
+    public const REPOINT_NOT_CONFIRMED = 'mergenotconfirmed';
+    /** Repoint refusal: the merged-away user still exists as an active, independent account. */
+    public const REPOINT_SOURCE_ACTIVE = 'sourceactive';
+    /** Repoint refusal: the survivor is not a canonical identity (missing, deleted or merged away itself). */
+    public const REPOINT_TARGET_NOT_CANONICAL = 'targetnotcanonical';
+    /** Repoint refusal: the administrator did not confirm that both accounts belong to the same person. */
+    public const REPOINT_OWNERSHIP = 'ownershipnotverified';
+    /** Repoint refusal: the survivor is already a member of a tool the source belongs to. */
+    public const REPOINT_CONFLICT = 'membershipconflict';
+
+    /**
+     * Why the LTI bindings and memberships of a pair must not be re-pointed now (read-only).
+     *
+     * Re-pointing moves data of the merged-away identity, so it needs a merge that really happened: the
+     * successful tool_mergeusers log record of exactly this pair (a registry row alone is no proof), a
+     * merged-away account that is no longer an active, independent user (suspended or deleted, as
+     * tool_mergeusers leaves it) and a survivor that is a canonical identity.
+     *
+     * @param int $fromuserid Merged-away user.
+     * @param int $touserid Surviving user.
+     * @return string[] Refusal codes (REPOINT_*); empty when re-pointing is allowed.
+     */
+    public static function repoint_blockers(int $fromuserid, int $touserid): array {
+        global $DB;
+        $blockers = [];
+        if (
+            $fromuserid <= 0 || $touserid <= 0 || $fromuserid === $touserid
+                || !merge_registry::is_confirmed($fromuserid, $touserid)
+        ) {
+            $blockers[] = self::REPOINT_NOT_CONFIRMED;
+        }
+        $source = $DB->get_record('user', ['id' => $fromuserid], 'id, deleted, suspended');
+        if ($source && (int) $source->deleted === 0 && (int) $source->suspended === 0) {
+            $blockers[] = self::REPOINT_SOURCE_ACTIVE;
+        }
+        $target = $DB->get_record('user', ['id' => $touserid], 'id, deleted');
+        $mergedaway = $DB->record_exists_select(
+            merge_registry::TABLE,
+            'fromuserid = :to AND timeconfirmed > 0',
+            ['to' => $touserid]
+        );
+        if (!$target || (int) $target->deleted === 1 || $mergedaway) {
+            $blockers[] = self::REPOINT_TARGET_NOT_CANONICAL;
+        }
+        return $blockers;
+    }
+
     /**
      * Point the LTI bindings and memberships of a merged-away user to the surviving user.
      *
      * The authorised adapter for the two Core tables Moodle offers no API for: auth_lti's
-     * create_user_binding() never rebinds an existing (iss, sub), and enrol_lti has no merge API. Only
-     * pairs registered as merged are handled, all in one transaction, and a membership of a tool the
-     * survivor already belongs to is left alone and reported (two memberships would mean two grade
-     * delivery targets). The caller verifies the merge afterwards.
+     * create_user_binding() never rebinds an existing (iss, sub), and enrol_lti has no merge API. It runs
+     * in two phases. Validation (no write): the blockers of {@see self::repoint_blockers()}, the
+     * administrator's ownership confirmation, and the memberships - a tool both users belong to would give
+     * the survivor two grade-delivery targets, so the whole repoint is refused. Mutation: in one
+     * transaction, followed by a postcondition check that rolls everything back if anything still points
+     * to the source. A repeated request finds nothing to move.
      *
      * @param int $fromuserid Merged-away user.
      * @param int $touserid Surviving user.
-     * @return \stdClass ->bindings (moved), ->ltiusers (moved), ->conflicts (toolids left alone).
+     * @param bool $ownershipverified The administrator confirmed that both accounts belong to one person.
+     * @return \stdClass ->status (repointed|nothingtodo|refused|conflict), ->reasons (string[]),
+     *     ->bindings, ->ltiusers (moved), ->conflicts (toolids), ->mergelogid.
      */
-    public static function repoint(int $fromuserid, int $touserid): \stdClass {
+    public static function repoint(int $fromuserid, int $touserid, bool $ownershipverified): \stdClass {
         global $DB;
-        $result = (object) ['bindings' => 0, 'ltiusers' => 0, 'conflicts' => []];
-        $registry = merge_registry::get($fromuserid, $touserid);
-        $merged = $registry && in_array($registry->status, [merge_registry::PENDING, merge_registry::REVIEW], true);
-        if (!$merged || $fromuserid === $touserid) {
-            // An approval alone is not a merge: bindings of a live identity are never moved.
-            throw new \coding_exception('Only merges that happened and await review can be repointed.');
+        $result = (object) [
+            'status' => 'refused',
+            'reasons' => self::repoint_blockers($fromuserid, $touserid),
+            'bindings' => 0,
+            'ltiusers' => 0,
+            'conflicts' => [],
+            'mergelogid' => (int) (merge_registry::get($fromuserid, $touserid)->mergelogid ?? 0),
+        ];
+        if (!$ownershipverified) {
+            $result->reasons[] = self::REPOINT_OWNERSHIP;
+        }
+        if ($result->reasons) {
+            return $result;
+        }
+        $haslti = $DB->get_manager()->table_exists('enrol_lti_users');
+        $bindings = $DB->get_records('auth_lti_linked_login', ['userid' => $fromuserid], 'id', 'id');
+        $members = $haslti ? $DB->get_records('enrol_lti_users', ['userid' => $fromuserid], 'id', 'id, toolid') : [];
+        foreach ($members as $member) {
+            if ($DB->record_exists('enrol_lti_users', ['userid' => $touserid, 'toolid' => $member->toolid])) {
+                $result->conflicts[] = (int) $member->toolid;
+            }
+        }
+        if ($result->conflicts) {
+            $result->status = 'conflict';
+            $result->reasons = [self::REPOINT_CONFLICT];
+            return $result;
+        }
+        if (!$bindings && !$members) {
+            $result->status = 'nothingtodo';
+            return $result;
         }
         $transaction = $DB->start_delegated_transaction();
         $now = time();
-        foreach ($DB->get_records('auth_lti_linked_login', ['userid' => $fromuserid]) as $binding) {
+        foreach ($bindings as $binding) {
             $DB->update_record('auth_lti_linked_login', (object) [
                 'id' => $binding->id,
                 'userid' => $touserid,
@@ -163,17 +239,18 @@ final class lti_identity {
             ]);
             $result->bindings++;
         }
-        if ($DB->get_manager()->table_exists('enrol_lti_users')) {
-            foreach ($DB->get_records('enrol_lti_users', ['userid' => $fromuserid]) as $member) {
-                if ($DB->record_exists('enrol_lti_users', ['userid' => $touserid, 'toolid' => $member->toolid])) {
-                    $result->conflicts[] = (int) $member->toolid;
-                    continue;
-                }
-                $DB->set_field('enrol_lti_users', 'userid', $touserid, ['id' => $member->id]);
-                $result->ltiusers++;
-            }
+        foreach ($members as $member) {
+            $DB->set_field('enrol_lti_users', 'userid', $touserid, ['id' => $member->id]);
+            $result->ltiusers++;
+        }
+        $left = $DB->record_exists('auth_lti_linked_login', ['userid' => $fromuserid])
+            || ($haslti && $DB->record_exists('enrol_lti_users', ['userid' => $fromuserid]));
+        if ($left) {
+            // A concurrent write re-created a pointer to the source: nothing of this repoint is kept.
+            $transaction->rollback(new \moodle_exception('repointincomplete', 'auth_flexaccess'));
         }
         $transaction->allow_commit();
+        $result->status = 'repointed';
         return $result;
     }
 

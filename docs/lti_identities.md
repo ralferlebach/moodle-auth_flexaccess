@@ -66,7 +66,8 @@ müssen. Die Seite **tool_flexaccess → Systemstatus → LTI-Identitäten** lis
 1. **Bewerten** (`api::assess_merge()`, Seite „LTI-Identitäten“): Quelle (wird entfernt) und Ziel
    (bleibt) werden gegenübergestellt; Sperrgründe und Warnungen werden angezeigt.
 2. **Freigeben**, wenn beide Identitäten dauerhaft sind (FlexAccess-Konto mit Passwort oder auth_lti):
-   `api::approve_merge()` legt eine Freigabe im Register `auth_flexaccess_merge` an. Sie gilt einen Tag.
+   `api::approve_merge()` hält im Register `auth_flexaccess_merge` fest, wer freigegeben hat und wann
+   (Stufe „preapproved“, `approvedby`, `timeapproved`). Die Freigabe gilt einen Tag.
 3. **Zusammenführen** in tool_mergeusers. Innerhalb der Transaktion von tool_mergeusers:
    - `add_settings_before_merging`: Die FlexAccess-eigenen Tabellen (Konto, Tokens, Mailqueue,
      Register) werden vom generischen Tabellen-Merge ausgenommen.
@@ -80,6 +81,44 @@ müssen. Die Seite **tool_flexaccess → Systemstatus → LTI-Identitäten** lis
    und LTI-Mitgliedschaften werden überprüft, eine administrative Sperre des Ziels wird wiederhergestellt,
    falls tool_mergeusers sie nach dem Commit aufgehoben hat. Erst wenn alle Nachbedingungen erfüllt sind,
    werden die FlexAccess-Daten der Quelle entfernt.
+
+### Registerstufen und Nachweis (ab 2026101800, auth_flexaccess #14)
+
+Ein Registereintrag ist **kein** Nachweis, dass zwei Nutzer zusammengeführt wurden. Die Stufe sagt, wo
+FlexAccess mit einem Paar steht; ob Moodle die Nutzer wirklich zusammengeführt hat, steht getrennt davon
+als Nachweis im Eintrag: die ID des erfolgreichen tool_mergeusers-Protokolleintrags für genau dieses Paar
+(`mergelogid`, `timeconfirmed`). Gesetzt wird er vom Ereignis `user_merged_success` (nach dem Commit), von
+der Prüfung (`verify`) oder beim Upgrade aus dem Protokoll; bei jeder Verwendung wird er erneut gegen die
+Tabelle `tool_mergeusers` geprüft.
+
+| Stufe | Bedeutung |
+|---|---|
+| `preapproved` | Freigabe erteilt, noch nicht zusammengeführt |
+| `pending` | Erfasst ohne Nachweis (direkte Abgleichung, Altbestand) |
+| `mergeinprogress` | tool_mergeusers führt gerade zusammen (in seiner Transaktion) |
+| `mergeconfirmed` | tool_mergeusers hat den Merge bestätigt, die Prüfung läuft noch |
+| `reconciled` | Abgeschlossen, alle Nachbedingungen erfüllt |
+| `review` | Mindestens eine Nachbedingung nicht erfüllt |
+| `refused` | Von FlexAccess abgewiesen |
+
+**Umhängen** (Bindungen in `auth_lti_linked_login`, Mitgliedschaften in `enrol_lti_users`) ist nur
+möglich, wenn alle Bedingungen gelten – sonst wird nichts verändert:
+
+| Bedingung | Code bei Ablehnung |
+|---|---|
+| Nachweis vorhanden und noch prüfbar | `mergenotconfirmed` |
+| Zu entfernendes Konto ist kein aktives, eigenständiges Konto mehr (gesperrt oder gelöscht, wie tool_mergeusers es hinterlässt) | `sourceactive` |
+| Ziel existiert und wurde nicht selbst zusammengeführt | `targetnotcanonical` |
+| Die Administratorin bestätigt, dass beide Konten derselben Person gehören | `ownershipnotverified` |
+| Keine Mitgliedschaft der Quelle in einem Tool, dem das Ziel schon angehört (sonst zwei Notenempfänger) | `membershipconflict` |
+
+Die Prüfung läuft vollständig vor der ersten Änderung; die Änderung selbst läuft in einer Transaktion und
+wird zurückgerollt, falls danach noch etwas auf die Quelle zeigt. Eine Wiederholung findet nichts mehr
+zu verschieben. Jede Aktion wird als `identity_merge_action` mit Quelle, Ziel, Nachweis (`mergelogid`),
+Freigabe (`approvedby`, `timeapproved`), Ergebnis und Zahlen protokolliert.
+
+Hinweis: Ist in tool_mergeusers „Nutzer sperren“ (`suspenduser`) abgeschaltet, bleibt das zusammengeführte
+Konto aktiv; dann wird Umhängen mit `sourceactive` abgelehnt, bis das Konto gesperrt oder gelöscht ist.
 
 ### Sperrgründe (Merge wird abgewiesen)
 
@@ -130,7 +169,10 @@ die Nachbedingungen am Datenbestand:
 | Bindung bleibt nach dem Merge | `test_lti_into_flexaccess_keeps_login_binding_and_grade_delivery` | `@provider … stable relaunch`, `@provider NRPS membership sync …` |
 | Notenrückgabe nach dem Merge | `test_lti_into_flexaccess_keeps_login_binding_and_grade_delivery` | – (AGS-E2E vor dem Merge: `@provider the provider grade reaches …`) |
 | Dauerhaft → temporär/passwortlos wird abgewiesen | `test_durable_flexaccess_into_temporary_flexaccess_is_refused` | – |
-| Umhängen nur für geschehene Merges in Prüfung | `test_repoint_requires_a_merge_under_review` | – |
+| Umhängen nur nach bestätigtem Merge; Freigabe allein genügt nicht | `test_repoint_requires_a_merge_under_review` | – |
+| Zwei lebende, nicht zusammengeführte Konten (pending/review, gefälschter Nachweis): keine Änderung | `test_repoint_refused_for_unmerged_pairs` | tool `merge-review.spec.js` (kein Umhängen angeboten) |
+| Bestätigter Merge: Umhängen, Wiederholung ohne Wirkung, Relaunch beim Ziel | `test_stale_binding_after_confirmed_merge_is_repointed` | – |
+| Konflikt doppelter Mitgliedschaft: nichts geändert, protokolliert | `test_repoint_conflict_changes_nothing` | – |
 | Doppelte Mitgliedschaft wird abgewiesen | `test_duplicate_membership_is_refused` | – |
 | Administrative Sperre bleibt erhalten | `test_admin_lock_of_survivor_is_restored` | – |
 | Altbestände werden nachregistriert | `test_backfill_registers_earlier_merges` | – |
@@ -149,7 +191,9 @@ Commit, Merge vor dem Upgrade auf 1.2.0). Vorgehen:
 2. Auf **tool_flexaccess → Systemstatus → LTI-Identitäten** zeigt jedes Paar seine offenen Nachbedingungen.
 3. Je nach Grund:
    - `sourcebindings` / `sourceltiusers`: **Umhängen** (verschiebt Bindungen und Mitgliedschaften auf das
-     Ziel; eine Mitgliedschaft in einem Tool, dem das Ziel schon angehört, bleibt stehen und wird gemeldet).
+     Ziel). Angeboten nur für einen von tool_mergeusers bestätigten Merge und mit Bestätigung der
+     Zugehörigkeit; die Seite nennt sonst den Grund. Bei einer Mitgliedschaft in einem Tool, dem das Ziel
+     schon angehört, wird nichts verschoben – zuerst die doppelte Mitgliedschaft auflösen.
    - `duplicateltiusers`: die überzählige Mitgliedschaft in enrol_lti prüfen und entfernen, dann **Erneut prüfen**.
    - Bindung an ein nicht dauerhaftes oder gelöschtes Konto: **Bindung entfernen** – die Person wird beim
      nächsten Launch erneut gefragt und kann ihr dauerhaftes Konto verknüpfen.

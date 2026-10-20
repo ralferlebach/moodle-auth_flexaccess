@@ -199,6 +199,9 @@ final class merge_service {
         global $DB;
         $now = $now ?? time();
         $row = merge_registry::get($sourceuserid, $targetuserid) ?? merge_registry::record($sourceuserid, $targetuserid, 'event');
+        if ((int) $row->timeconfirmed === 0 && merge_registry::confirm($sourceuserid, $targetuserid, null, 'verify', $now)) {
+            $row = merge_registry::get($sourceuserid, $targetuserid);
+        }
         $restored = false;
         if (
             (int) $row->targetsuspended === 1

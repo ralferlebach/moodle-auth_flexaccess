@@ -7,8 +7,8 @@
 # plugin: no grunt / mustache steps. Reduced matrix spanning Moodle 4.5/5.0/5.2/5.3.
 # The full sequential matrix runs on main via moodle-plugin-ci-main.yml.
 #
-# FlexAccess has no external plugin dependencies; add-plugin only pulls the
-# sibling plugins required by this component's hard dependency graph.
+# The sibling plugins (and tool_mergeusers) are installed at exact commits: the "family" job pins them
+# once (.github/scripts/flexaccess_family.py, tool_flexaccess #12) and every job installs that lock.
 ##############################################################################
 
 name: Moodle Plugin CI Dev
@@ -29,6 +29,34 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+
+  family:
+    name: "Plugin family (exact commits)"
+    runs-on: ubuntu-22.04
+    outputs:
+      lock: ${{ steps.resolve.outputs.lock }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: plugin
+      - name: Self-test of the family resolver
+        run: python3 plugin/.github/scripts/test_flexaccess_family.py
+      - name: Pin the four plugins and tool_mergeusers to exact commits
+        id: resolve
+        # Resolves the "development" heads of the siblings ONCE to commit SHAs and requires every plugin at
+        # this commit's version. The four repositories are uploaded one after another, so a sibling may
+        # still be on the previous version for a few minutes: wait for it, then fail hard (no fallback).
+        run: |
+          python3 plugin/.github/scripts/flexaccess_family.py resolve \
+            --self auth_flexaccess --self-dir plugin --self-sha "$GITHUB_SHA" --ref development --wait 1200 \
+            --out family-lock.json --github-output "$GITHUB_OUTPUT" --summary "$GITHUB_STEP_SUMMARY"
+      - name: Keep the tested combination
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: flexaccess-family-lock
+          path: family-lock.json
+          if-no-files-found: ignore
 
   lint-php:
     name: "PHP lint (phplint)"
@@ -127,6 +155,7 @@ jobs:
   quality:
     name: "Quality (phpdoc / savepoints / validate)"
     runs-on: ubuntu-22.04
+    needs: [family]
     services:
       postgres:
         image: postgres:16
@@ -161,11 +190,14 @@ jobs:
           sudo locale-gen en_AU.UTF-8
       - name: Install Moodle, dependencies and plugin (no test init)
         run: |
-          moodle-plugin-ci add-plugin ralferlebach/moodle-enrol_flexaccess --branch development
-          moodle-plugin-ci add-plugin ralferlebach/moodle-mod_flexaccess --branch development
-          moodle-plugin-ci add-plugin ralferlebach/moodle-tool_flexaccess --branch development
+          # Exactly the commits pinned by the "family" job (no moving branches).
+          python3 plugin/.github/scripts/flexaccess_family.py fetch --lock-json "$FAMILY_LOCK" \
+            --self auth_flexaccess --dest moodle-plugin-ci-plugins
           moodle-plugin-ci install --plugin ./plugin --db-host=127.0.0.1 --no-init
+          # The tested combination: exact commits of the family, Moodle, PHP and database versions.
+          set -o pipefail; php plugin/.github/scripts/record_environment.php moodle | tee -a "$GITHUB_STEP_SUMMARY"
         env:
+          FAMILY_LOCK: ${{ needs.family.outputs.lock }}
           DB: pgsql
           MOODLE_BRANCH: MOODLE_405_STABLE
       - name: Moodle PHPDoc Checker
@@ -194,7 +226,7 @@ jobs:
   phpunit:
     name: "PHPUnit / ${{ matrix.moodle }} / PHP ${{ matrix.php }} / ${{ matrix.database }}"
     runs-on: ubuntu-22.04
-    needs: [lint-php]
+    needs: [family, lint-php]
     services:
       postgres:
         image: postgres:16
@@ -263,13 +295,14 @@ jobs:
           sudo locale-gen en_AU.UTF-8
       - name: Install Moodle, dependencies and plugin
         run: |
-          moodle-plugin-ci add-plugin ralferlebach/moodle-enrol_flexaccess --branch development
-          moodle-plugin-ci add-plugin ralferlebach/moodle-mod_flexaccess --branch development
-          moodle-plugin-ci add-plugin ralferlebach/moodle-tool_flexaccess --branch development
-          # The merge tests of auth_flexaccess run against the real tool_mergeusers.
-          moodle-plugin-ci add-plugin jpahullo/moodle-tool_mergeusers --branch MOODLE_405_STABLE
+          # Exactly the commits pinned by the "family" job (no moving branches).
+          python3 plugin/.github/scripts/flexaccess_family.py fetch --lock-json "$FAMILY_LOCK" \
+            --self auth_flexaccess --dest moodle-plugin-ci-plugins --with-mergeusers
           moodle-plugin-ci install --plugin ./plugin --db-host=127.0.0.1 --db-port=${{ matrix.dbport }}
+          # The tested combination: exact commits of the family, Moodle, PHP and database versions.
+          set -o pipefail; php plugin/.github/scripts/record_environment.php moodle | tee -a "$GITHUB_STEP_SUMMARY"
         env:
+          FAMILY_LOCK: ${{ needs.family.outputs.lock }}
           DB: ${{ matrix.database }}
           MOODLE_BRANCH: ${{ matrix.moodle }}
       - name: PHPUnit tests
@@ -292,7 +325,7 @@ jobs:
   behat:
     name: "Behat / MOODLE_405_STABLE / PHP 8.2 / Chrome"
     runs-on: ubuntu-22.04
-    needs: [lint-php]
+    needs: [family, lint-php]
     services:
       mariadb:
         image: mariadb:10.11
@@ -327,11 +360,14 @@ jobs:
           sudo locale-gen en_AU.UTF-8
       - name: Install Moodle, dependencies and plugin
         run: |
-          moodle-plugin-ci add-plugin ralferlebach/moodle-enrol_flexaccess --branch development
-          moodle-plugin-ci add-plugin ralferlebach/moodle-mod_flexaccess --branch development
-          moodle-plugin-ci add-plugin ralferlebach/moodle-tool_flexaccess --branch development
+          # Exactly the commits pinned by the "family" job (no moving branches).
+          python3 plugin/.github/scripts/flexaccess_family.py fetch --lock-json "$FAMILY_LOCK" \
+            --self auth_flexaccess --dest moodle-plugin-ci-plugins
           moodle-plugin-ci install --plugin ./plugin --db-host=127.0.0.1
+          # The tested combination: exact commits of the family, Moodle, PHP and database versions.
+          set -o pipefail; php plugin/.github/scripts/record_environment.php moodle | tee -a "$GITHUB_STEP_SUMMARY"
         env:
+          FAMILY_LOCK: ${{ needs.family.outputs.lock }}
           DB: mariadb
           MOODLE_BRANCH: MOODLE_405_STABLE
       - name: Behat features
@@ -398,14 +434,14 @@ jobs:
 
   ci-complete:
     name: CI complete
-    needs: [lint-php, codeanalysis, quality, phpunit, behat, stale-files]
+    needs: [family, lint-php, codeanalysis, quality, phpunit, behat, stale-files]
     runs-on: ubuntu-22.04
     if: always()
     steps:
       - name: All dev jobs must have succeeded
         run: |
-          result="${{ needs.lint-php.result }}-${{ needs.codeanalysis.result }}-${{ needs.quality.result }}-${{ needs.phpunit.result }}-${{ needs.behat.result }}-${{ needs.stale-files.result }}"
-          if [[ "$result" == "success-success-success-success-success-success" ]]; then
+          result="${{ needs.family.result }}-${{ needs.lint-php.result }}-${{ needs.codeanalysis.result }}-${{ needs.quality.result }}-${{ needs.phpunit.result }}-${{ needs.behat.result }}-${{ needs.stale-files.result }}"
+          if [[ "$result" == "success-success-success-success-success-success-success" ]]; then
             echo "All dev CI jobs passed."
           else
             echo "CI result: $result - one or more jobs failed or were cancelled."

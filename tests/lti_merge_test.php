@@ -61,6 +61,8 @@ final class lti_merge_test extends \advanced_testcase {
         // The rollback of tool_mergeusers must be a real one: without this the test itself runs inside an
         // outer transaction and a refused merge could not be undone.
         $this->preventResetByRollback();
+        // Approvals record the approving administrator (consent, auth_flexaccess #14).
+        $this->setAdminUser();
         require_once($CFG->dirroot . '/auth/lti/auth.php');
         set_config('auth', 'flexaccess,lti');
         set_config('enrol_plugins_enabled', 'manual,flexaccess,lti');
@@ -199,6 +201,7 @@ final class lti_merge_test extends \advanced_testcase {
 
         $this->assertTrue(api::approve_merge($lti, $flex, true));
         $this->assertTrue($this->mergeusers($flex, $lti));
+        $this->assertTrue(merge_registry::is_confirmed($lti, $flex), 'The tool_mergeusers log record is the evidence.');
         $auth = new \auth_plugin_lti();
         $this->assertSame($flex, (int) $auth->get_user_binding(self::ISS, 'dup-3'));
         $this->assertSame($flex, (int) $auth->get_user_binding('https://other.example.org', 'dup-3b'));
@@ -234,32 +237,138 @@ final class lti_merge_test extends \advanced_testcase {
     }
 
     /**
-     * Bindings still pointing to the source keep the pair in review (no cleanup); repointing completes it.
+     * A binding a merge tool left behind keeps the pair under review; after a merge tool_mergeusers
+     * confirmed, the administrator's re-point moves it to the survivor and the relaunch lands there.
      */
-    public function test_stale_binding_keeps_review_until_repointed(): void {
+    public function test_stale_binding_after_confirmed_merge_is_repointed(): void {
         global $DB;
+        $this->require_mergeusers();
         $source = api::create_temporary_user(time() + HOURSECS);
         enrol_get_plugin('flexaccess')->enrol_user($this->instance, $source, \enrol_flexaccess\local\participant_role::get_id());
-        (new \auth_plugin_lti())->create_user_binding(self::ISS, 'stale-1', $source);
         $target = $this->durable();
+        $this->assertTrue($this->mergeusers($target, $source));
+        $this->assertTrue(merge_registry::is_confirmed($source, $target), 'tool_mergeusers logged the merge.');
 
-        // A merge tool that did not move auth_lti_linked_login (or a manual data move) leaves it behind.
-        $result = merge_service::reconcile($source, $target);
+        // A binding written for the merged-away user afterwards (a table the merge tool did not handle).
+        (new \auth_plugin_lti())->create_user_binding(self::ISS, 'stale-1', $source);
+        $result = merge_service::verify($source, $target);
         $this->assertSame(merge_registry::REVIEW, $result->status);
         $this->assertContains(merge_guard::SOURCE_BINDINGS, $result->reasons);
-        $this->assertFalse($result->sourcecleaned);
-        $this->assertTrue($DB->record_exists('auth_flexaccess_account', ['userid' => $source]), 'Source metadata kept for review.');
         $this->assertSame(1, api::count_merges_needing_review());
 
-        $repointed = api::repoint_merged_lti_identity($source, $target);
+        // Without the ownership confirmation nothing moves.
+        $refused = api::repoint_merged_lti_identity($source, $target, false);
+        $this->assertSame('refused', $refused->status);
+        $this->assertSame([local\lti_identity::REPOINT_OWNERSHIP], $refused->reasons);
+        $this->assertSame($source, (int) (new \auth_plugin_lti())->get_user_binding(self::ISS, 'stale-1'));
+
+        $repointed = api::repoint_merged_lti_identity($source, $target, true);
+        $this->assertSame('repointed', $repointed->status);
         $this->assertSame(1, $repointed->bindings);
         $this->assertSame([], $repointed->reasons);
         $this->assertSame($target, (int) (new \auth_plugin_lti())->get_user_binding(self::ISS, 'stale-1'));
         $this->assertFalse($DB->record_exists('auth_flexaccess_account', ['userid' => $source]));
         $this->assertSame(merge_registry::RECONCILED, merge_registry::get($source, $target)->status);
         $this->assertSame(0, api::count_merges_needing_review());
+
+        // Repeated request: nothing left to move, nothing changes.
+        $again = api::repoint_merged_lti_identity($source, $target, true);
+        $this->assertSame('nothingtodo', $again->status);
+
+        // Relaunch: the platform identity resolves to the survivor.
+        @(new \auth_plugin_lti())->complete_login(
+            ['iss' => self::ISS, 'sub' => 'stale-1'],
+            new \moodle_url('/'),
+            \auth_plugin_lti::PROVISIONING_MODE_PROMPT_EXISTING_ONLY
+        );
+        global $USER;
+        $this->assertSame($target, (int) $USER->id);
     }
 
+    /**
+     * auth_flexaccess #14: a registry row is no proof of a merge. Two live, unmerged accounts with a
+     * "pending" or "review" row are never re-pointed, and neither LTI table changes.
+     */
+    public function test_repoint_refused_for_unmerged_pairs(): void {
+        global $DB;
+        $source = api::create_temporary_user(time() + HOURSECS);
+        (new \auth_plugin_lti())->create_user_binding(self::ISS, 'live-1', $source);
+        $DB->insert_record('enrol_lti_users', (object) [
+            'userid' => $source,
+            'toolid' => $this->tool->id,
+            'sourceid' => 'live-1',
+            'timecreated' => time(),
+        ]);
+        $target = $this->durable();
+        $snapshot = static fn(): array => [
+            $DB->get_records('auth_lti_linked_login', null, 'id'),
+            $DB->get_records('enrol_lti_users', null, 'id'),
+        ];
+
+        // Stage "pending": recorded without a merge.
+        merge_registry::record($source, $target, 'admin');
+        $before = $snapshot();
+        $result = api::repoint_merged_lti_identity($source, $target, true);
+        $this->assertSame('refused', $result->status);
+        $this->assertContains(local\lti_identity::REPOINT_NOT_CONFIRMED, $result->reasons);
+        $this->assertContains(local\lti_identity::REPOINT_SOURCE_ACTIVE, $result->reasons);
+        $this->assertEquals($before, $snapshot());
+
+        // Stage "review": a direct reconciliation of the live pair leaves it under review - still no proof.
+        $reconciled = merge_service::reconcile($source, $target);
+        $this->assertSame(merge_registry::REVIEW, $reconciled->status);
+        $before = $snapshot();
+        $result = api::repoint_merged_lti_identity($source, $target, true);
+        $this->assertSame('refused', $result->status);
+        $this->assertContains(local\lti_identity::REPOINT_NOT_CONFIRMED, $result->reasons);
+        $this->assertEquals($before, $snapshot());
+        $this->assertSame($source, (int) (new \auth_plugin_lti())->get_user_binding(self::ISS, 'live-1'));
+
+        // A forged evidence id (a log record of another pair) is not accepted either.
+        $DB->set_field(merge_registry::TABLE, 'mergelogid', 999999, ['fromuserid' => $source, 'touserid' => $target]);
+        $DB->set_field(merge_registry::TABLE, 'timeconfirmed', time(), ['fromuserid' => $source, 'touserid' => $target]);
+        $this->assertFalse(merge_registry::is_confirmed($source, $target));
+        $this->assertSame('refused', api::repoint_merged_lti_identity($source, $target, true)->status);
+        $this->assertEquals($before, $snapshot());
+    }
+
+    /**
+     * A membership conflict (the survivor already belongs to the source's tool) refuses the whole
+     * repoint - also the bindings stay where they are - and the audit log records the outcome.
+     */
+    public function test_repoint_conflict_changes_nothing(): void {
+        global $DB;
+        $this->require_mergeusers();
+        $source = api::create_temporary_user(time() + HOURSECS);
+        $target = $this->durable();
+        $this->assertTrue($this->mergeusers($target, $source));
+        // Left behind for the source after the merge: a binding and a membership of a tool the survivor
+        // already belongs to.
+        (new \auth_plugin_lti())->create_user_binding(self::ISS, 'conflict-1', $source);
+        foreach ([$target, $source] as $userid) {
+            $DB->insert_record('enrol_lti_users', (object) [
+                'userid' => $userid,
+                'toolid' => $this->tool->id,
+                'sourceid' => 'conflict-' . $userid,
+                'timecreated' => time(),
+            ]);
+        }
+        merge_service::verify($source, $target);
+        $before = [$DB->get_records('auth_lti_linked_login', null, 'id'), $DB->get_records('enrol_lti_users', null, 'id')];
+
+        $sink = $this->redirectEvents();
+        $result = api::repoint_merged_lti_identity($source, $target, true);
+        $events = array_values(array_filter($sink->get_events(), static fn($e) => $e instanceof event\identity_merge_action));
+        $sink->close();
+        $this->assertSame('conflict', $result->status);
+        $this->assertSame([(int) $this->tool->id], $result->conflicts);
+        $after = [$DB->get_records('auth_lti_linked_login', null, 'id'), $DB->get_records('enrol_lti_users', null, 'id')];
+        $this->assertEquals($before, $after);
+        $this->assertCount(1, $events);
+        $this->assertSame('conflict', $events[0]->other['outcome']);
+        $this->assertSame((int) merge_registry::get($source, $target)->mergelogid, $events[0]->other['mergelogid']);
+        $this->assertGreaterThan(0, $events[0]->other['mergelogid']);
+    }
     /**
      * MERGE-LTI-004: a deletion of the source before the queued reconciliation keeps the metadata it needs.
      */
@@ -416,13 +525,14 @@ final class lti_merge_test extends \advanced_testcase {
     public function test_repoint_requires_a_merge_under_review(): void {
         $flex = $this->durable(['email' => 'pair@example.org']);
         $lti = $this->lti_duplicate('pair-1');
-        \auth_flexaccess\api::approve_merge($lti, $flex, true);
-        try {
-            \auth_flexaccess\local\lti_identity::repoint($lti, $flex);
-            $this->fail('An approved, not merged pair must not be re-pointed.');
-        } catch (\coding_exception $e) {
-            $this->assertStringContainsString('await review', $e->getMessage());
-        }
+        $this->setAdminUser();
+        $this->assertTrue(\auth_flexaccess\api::approve_merge($lti, $flex, true));
+        $row = merge_registry::get($lti, $flex);
+        $this->assertSame(merge_registry::PREAPPROVED, $row->status);
+        $this->assertEquals(get_admin()->id, $row->approvedby);
+        $result = \auth_flexaccess\local\lti_identity::repoint($lti, $flex, true);
+        $this->assertSame('refused', $result->status, 'An approved, not merged pair must not be re-pointed.');
+        $this->assertContains(\auth_flexaccess\local\lti_identity::REPOINT_NOT_CONFIRMED, $result->reasons);
         $this->assertSame($lti, (int) (new \auth_plugin_lti())->get_user_binding(self::ISS, 'pair-1'));
     }
 }

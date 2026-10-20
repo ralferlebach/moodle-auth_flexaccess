@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.2.0 (2026101800) — 2026-10-18 — LTI-Umhängen nur nach bestätigtem Merge, CI auf exakte Commits
+- **Umhängen von LTI-Bindungen nur nach nachgewiesenem Merge (#14, MERGE-INTEGRITY).**
+  - **Bisher:** Ein Registereintrag mit Status „pending“ oder „review“ galt als Beleg, dass zwei Nutzer zusammengeführt wurden. Eine direkte Abgleichung legte einen solchen Eintrag auch für zwei weiterhin eigenständige Konten an, und „Umhängen“ verschob dann Bindungen und Notenziele eines lebenden Kontos.
+  - **Jetzt:** Das Register trennt Stufe und Nachweis. Stufen: `preapproved`, `pending`, `mergeinprogress`, `mergeconfirmed`, `reconciled`, `review`, `refused`. Nachweis ist allein der erfolgreiche tool_mergeusers-Protokolleintrag genau dieses Paars (`mergelogid`, `timeconfirmed`); er wird bei jeder Verwendung erneut geprüft. Die Freigabe hält fest, wer freigegeben hat (`approvedby`, `timeapproved`).
+  - Umhängen verlangt: bestätigten Merge, ein gesperrtes oder gelöschtes Quellkonto, ein kanonisches Ziel und die Bestätigung der Zugehörigkeit. Es prüft alles vor der ersten Änderung; eine doppelte Tool-Mitgliedschaft verhindert das ganze Umhängen. Die Änderung läuft in einer Transaktion mit Nachkontrolle, eine Wiederholung ist wirkungslos. Protokolliert werden Quelle, Ziel, Nachweis, Freigabe, Ergebnis und Zahlen.
+  - Upgrade-Schritt `2026101800`: neue Felder; bisherige Freigaben ohne Freigebende werden zu `preapproved` und müssen erneut erteilt werden; frühere Merges werden aus dem tool_mergeusers-Protokoll bestätigt. Der Schritt legt das Register auch an, falls ein Zwischenstand von 2026101700 es nicht hatte.
+  - Datenschutz: Die freigebende Person ist im Datenschutz-Provider erfasst (Export als „approver“; bei Löschung wird nur ihre Kennung entfernt).
+- **CI auf exakte Commits (tool #12):** Die Geschwister-Plugins und tool_mergeusers werden in jedem Lauf einmal auf Commit-SHAs festgelegt, auf gleiche Familienversion geprüft und genau so installiert. Kein Rückfall auf andere Branches; beim Hochladen der vier Repositories nacheinander wartet der Lauf bis zu 20 Minuten. Die getestete Kombination steht in der Job-Zusammenfassung und als Artefakt. Damit ist auch die rote CI vom 18.10. behoben: Jobs hatten Geschwister geklont, bevor diese hochgeladen waren.
+- Version `2026101800`, Release `1.2.0`, `MATURITY_STABLE`, `supported` [405, 503]. Abhängigkeit `enrol_flexaccess` ≥ `2026101800`.
+
 ## 1.2.0 (2026101700) — 2026-10-17 — LTI-Identitäten sicher binden und zusammenführen, Moodle 5.3
 - **LTI-Bindung nur für dauerhafte Konten (#12, LTI-BINDING).**
   - **Bisher:** Moodles Seite „bestehendes Konto verknüpfen“ (`auth/lti/login.php`) band jedes gerade angemeldete Konto an die Plattform-Identität – auch eine temporäre FlexAccess-Sitzung, eine Zugangskarte oder ein Konto ohne eigenes Passwort. Ein späterer Launch über die Bindung prüfte nur Moodles Sperr-Flag; abgelaufene Konten kamen bis zum nächsten Ablauf-Task hinein.

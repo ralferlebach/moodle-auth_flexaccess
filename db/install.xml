@@ -90,11 +90,15 @@
         <FIELD NAME="fromuserid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="Identity merged away"/>
         <FIELD NAME="touserid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="Surviving identity"/>
         <FIELD NAME="origin" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="event" SEQUENCE="false" COMMENT="hook, event, admin or backfill"/>
-        <FIELD NAME="status" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="pending" SEQUENCE="false" COMMENT="pending, reconciled, review or refused"/>
+        <FIELD NAME="status" TYPE="char" LENGTH="20" NOTNULL="true" DEFAULT="pending" SEQUENCE="false" COMMENT="Stage: preapproved, pending, mergeinprogress, mergeconfirmed, reconciled, review or refused"/>
         <FIELD NAME="reasons" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Unmet postconditions, comma separated"/>
         <FIELD NAME="details" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="JSON: per-record outcome of the reconciliation"/>
         <FIELD NAME="targetsuspended" TYPE="int" LENGTH="1" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="Survivor was suspended before the merge"/>
         <FIELD NAME="targetlockedby" TYPE="char" LENGTH="20" NOTNULL="false" SEQUENCE="false" COMMENT="Origin of that suspension"/>
+        <FIELD NAME="approvedby" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="Administrator who confirmed that both accounts belong to one person"/>
+        <FIELD NAME="timeapproved" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="When the merge was approved"/>
+        <FIELD NAME="mergelogid" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="Evidence: the successful tool_mergeusers log record of this pair"/>
+        <FIELD NAME="timeconfirmed" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="When the merge was confirmed by that evidence"/>
         <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
         <FIELD NAME="timemodified" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
       </FIELDS>

@@ -58,6 +58,10 @@ final class observer {
             // in-transaction hook the pair is already reconciled; the task then verifies what happened
             // after the commit (tool_mergeusers unsuspends the kept user in its own observer).
             local\merge_registry::record($from, $to, 'event');
+            // The success event comes after tool_mergeusers committed and logged the merge: that log record
+            // is the evidence of the merge (auth_flexaccess #14), re-verified against the log table.
+            $logid = isset($event->other['logid']) ? (int) $event->other['logid'] : 0;
+            local\merge_registry::confirm($from, $to, $logid > 0 ? $logid : null, 'event');
             task\reconcile_merge::queue($from, $to);
         }
     }

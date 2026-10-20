@@ -74,27 +74,16 @@ jobs:
 
       - name: Install the plugin ecosystem into Moodle
         run: |
-          # ONE installation routine, one ref. Installing the siblings twice (once from a branch,
-          # once from SIBLING_REF) left `cp -a` copying a repository INTO the existing plugin
-          # directory, which produced nested sibling repositories and meant the browser test ran
-          # against whichever copy landed first - the tested ecosystem was not reproducible.
-          #
-          # SIBLING_REF pins the ref the siblings are taken from; it defaults to the branch this
-          # workflow runs on, so a run always tests one coherent state.
+          # ONE installation routine, one exactly pinned combination (tool_flexaccess #12). The siblings
+          # are resolved ONCE from SIBLING_REF (default: the branch this workflow runs on) to commit
+          # SHAs, every plugin must carry this plugin's version, and exactly those commits are
+          # installed. A missing branch or another version fails the run - there is no fallback.
           SIBLING_REF="${SIBLING_REF:-$GITHUB_REF_NAME}"
-          echo "Geschwister-Plugins von Ref: $SIBLING_REF"
-
-          install_plugin () {
-            local sib="$1" dest="$2" src="/tmp/src_$1"
-            rm -rf "$src" "$MOODLE_PUBLIC/$dest"
-            git clone --depth 1 --branch "$SIBLING_REF" \
-              "https://github.com/ralferlebach/moodle-${sib}_flexaccess.git" "$src" \
-              || git clone --depth 1 \
-                 "https://github.com/ralferlebach/moodle-${sib}_flexaccess.git" "$src"
-            mkdir -p "$(dirname "$MOODLE_PUBLIC/$dest")"
-            cp -a "$src" "$MOODLE_PUBLIC/$dest"
-            rm -rf "$MOODLE_PUBLIC/$dest/.git"
-          }
+          python3 plugin/.github/scripts/flexaccess_family.py resolve --self auth_flexaccess --self-dir plugin \
+            --self-sha "$GITHUB_SHA" --ref "$SIBLING_REF" --wait 600 --out family-lock.json \
+            --summary "$GITHUB_STEP_SUMMARY"
+          python3 plugin/.github/scripts/flexaccess_family.py fetch --lock-file family-lock.json \
+            --self auth_flexaccess --layout moodle --dest "$MOODLE_PUBLIC"
 
           # The plugin under test comes from this checkout, never from a clone.
           rm -rf "$MOODLE_PUBLIC/auth/flexaccess"
@@ -102,11 +91,6 @@ jobs:
           cp -a plugin "$MOODLE_PUBLIC/auth/flexaccess"
           rm -rf "$MOODLE_PUBLIC/auth/flexaccess/.git"
 
-          # The four plugins declare each other as dependencies (auth <-> enrol is circular), so
-          # Moodle cannot be installed with only one of them present.
-          install_plugin enrol enrol/flexaccess
-          install_plugin mod mod/flexaccess
-          install_plugin tool admin/tool/flexaccess
 
       - name: Verify a clean plugin layout
         run: |

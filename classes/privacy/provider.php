@@ -103,6 +103,9 @@ final class provider implements
             'reasons' => 'privacy:metadata:merge:reasons',
             'details' => 'privacy:metadata:merge:details',
             'timecreated' => 'privacy:metadata:merge:timecreated',
+            'approvedby' => 'privacy:metadata:merge:approvedby',
+            'timeapproved' => 'privacy:metadata:merge:timeapproved',
+            'mergelogid' => 'privacy:metadata:merge:mergelogid',
         ], 'privacy:metadata:merge');
         $collection->add_database_table('auth_flexaccess_ratehit', [
             'bucket' => 'privacy:metadata:ratehit:bucket',
@@ -130,7 +133,8 @@ final class provider implements
             $checks[] = "EXISTS (SELECT 1 FROM {" . $table . "} t$i WHERE t$i.userid = ctx.instanceid)";
         }
         $checks[] = "EXISTS (SELECT 1 FROM {auth_flexaccess_merge} m
-                              WHERE m.fromuserid = ctx.instanceid OR m.touserid = ctx.instanceid)";
+                              WHERE m.fromuserid = ctx.instanceid OR m.touserid = ctx.instanceid
+                                 OR m.approvedby = ctx.instanceid)";
         $checks[] = "EXISTS (SELECT 1 FROM {user_preferences} up
                               WHERE up.userid = ctx.instanceid AND up.name = :pref)";
         $params['pref'] = self::PENDING_PREF;
@@ -165,8 +169,10 @@ final class provider implements
             'userid',
             "SELECT fromuserid AS userid FROM {auth_flexaccess_merge} WHERE fromuserid = :u1
              UNION
-             SELECT touserid AS userid FROM {auth_flexaccess_merge} WHERE touserid = :u2",
-            ['u1' => $context->instanceid, 'u2' => $context->instanceid]
+             SELECT touserid AS userid FROM {auth_flexaccess_merge} WHERE touserid = :u2
+             UNION
+             SELECT approvedby AS userid FROM {auth_flexaccess_merge} WHERE approvedby = :u3",
+            ['u1' => $context->instanceid, 'u2' => $context->instanceid, 'u3' => $context->instanceid]
         );
     }
 
@@ -244,12 +250,20 @@ final class provider implements
         }
         $merges = $DB->get_records_select(
             'auth_flexaccess_merge',
-            'fromuserid = :u1 OR touserid = :u2',
-            ['u1' => $userid, 'u2' => $userid]
+            'fromuserid = :u1 OR touserid = :u2 OR approvedby = :u3',
+            ['u1' => $userid, 'u2' => $userid, 'u3' => $userid]
         );
         foreach ($merges as $row) {
+            if ((int) $row->fromuserid === $userid) {
+                $role = 'mergedaway';
+            } else if ((int) $row->touserid === $userid) {
+                $role = 'survivor';
+            } else {
+                $role = 'approver';
+            }
             $sections['merge'][] = (object) [
-                'role' => (int) $row->fromuserid === $userid ? 'mergedaway' : 'survivor',
+                'role' => $role,
+                'timeapproved' => $date((int) ($row->timeapproved ?? 0) ?: null),
                 'status' => $row->status,
                 'reasons' => $row->reasons,
                 'timecreated' => $date($row->timecreated),
@@ -373,5 +387,7 @@ final class provider implements
             'fromuserid = :u1 OR touserid = :u2',
             ['u1' => $userid, 'u2' => $userid]
         );
+        // An approver's id is personal data of the approver; the merge record itself stays.
+        $DB->set_field('auth_flexaccess_merge', 'approvedby', null, ['approvedby' => $userid]);
     }
 }
