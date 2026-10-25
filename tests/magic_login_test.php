@@ -30,6 +30,9 @@ use auth_flexaccess\local\mail_worker;
  * @covers \auth_flexaccess\api
  */
 final class magic_login_test extends \advanced_testcase {
+    /** @var \frozen_clock The scenario's frozen Moodle clock: every reference time of a test reads it. */
+    private \frozen_clock $clock;
+
     /**
      * FlexAccess authentication enabled, as on a real site (a disabled plugin sends no login mail).
      *
@@ -37,6 +40,7 @@ final class magic_login_test extends \advanced_testcase {
      */
     protected function setUp(): void {
         parent::setUp();
+        $this->clock = $this->mock_clock_with_frozen();
         $this->resetAfterTest();
         set_config('auth', 'flexaccess');
     }
@@ -70,7 +74,7 @@ final class magic_login_test extends \advanced_testcase {
         $this->assertSame(0, $sink->count());
         $this->assertEquals(1, $DB->count_records('auth_flexaccess_mailqueue', ['status' => 'queued']));
 
-        mail_worker::run(time());
+        mail_worker::run($this->clock->time());
         $messages = $sink->get_messages();
         $sink->close();
         $this->assertCount(1, $messages);
@@ -124,7 +128,7 @@ final class magic_login_test extends \advanced_testcase {
         $user = $this->getDataGenerator()->create_user([
             'email' => 'temp@example.com', 'username' => 'temp@example.com', 'auth' => 'flexaccess',
         ]);
-        account_service::create_temporary((int) $user->id, '9999999999', time() + DAYSECS);
+        account_service::create_temporary((int) $user->id, '9999999999', $this->clock->time() + DAYSECS);
 
         $this->assertSame('sent', \auth_flexaccess\api::request_magic_login('temp@example.com'));
         $this->assertEquals(0, $DB->count_records('auth_flexaccess_mailqueue', []));

@@ -43,8 +43,9 @@ final class process_mail_queue extends \core\task\scheduled_task {
      * Execute task.
      */
     public function execute(): void {
-        \auth_flexaccess\local\mail_worker::run();
-        $now = time();
+        // One reference time for the whole run: sending, rate-limit housekeeping and retention.
+        $now = \core\di::get(\core\clock::class)->time();
+        \auth_flexaccess\local\mail_worker::run($now);
         // Housekeeping: drop rate-limit hit rows older than a day so the table stays small.
         \auth_flexaccess\local\rate_limiter::prune($now - DAYSECS);
         // Retention: remove delivered/failed queue rows and dead tokens once past the retention
@@ -52,6 +53,6 @@ final class process_mail_queue extends \core\task\scheduled_task {
         $retentiondays = (int) get_config('auth_flexaccess', 'retentiondays');
         $retention = max(DAYSECS, ($retentiondays > 0 ? $retentiondays : 30) * DAYSECS);
         \auth_flexaccess\local\mail_worker::prune_delivered($now - $retention);
-        \auth_flexaccess\local\token_service::prune($now - $retention);
+        \auth_flexaccess\local\token_service::prune($now - $retention, $now);
     }
 }

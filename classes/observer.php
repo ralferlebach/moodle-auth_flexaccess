@@ -52,18 +52,59 @@ final class observer {
         $involved = (array) ($event->other['usersinvolved'] ?? []);
         $to = (int) ($involved['toid'] ?? 0);
         $from = (int) ($involved['fromid'] ?? 0);
-        if ($to > 0 && $from > 0) {
+        if ($to > 0 && $from > 0 && local\merge_policy::involved($from, $to)) {
             // Latency budget: only the pair is recorded here; the reconciliation (about 35 queries per
             // course) runs as an ad-hoc task instead of inside the merging plugin's request. With the
             // in-transaction hook the pair is already reconciled; the task then verifies what happened
             // after the commit (tool_mergeusers unsuspends the kept user in its own observer).
-            local\merge_registry::record($from, $to, 'event');
+            // The merge happened: an approval that was waiting for it becomes a merge to verify.
+            $existing = local\merge_registry::get($from, $to);
+            $stage = $existing && $existing->status === local\merge_registry::PREAPPROVED ? local\merge_registry::PENDING : null;
+            local\merge_registry::record($from, $to, 'event', $stage);
             // The success event comes after tool_mergeusers committed and logged the merge: that log record
             // is the evidence of the merge (auth_flexaccess #14), re-verified against the log table.
             $logid = isset($event->other['logid']) ? (int) $event->other['logid'] : 0;
             local\merge_registry::confirm($from, $to, $logid > 0 ? $logid : null, 'event');
             task\reconcile_merge::queue($from, $to);
         }
+    }
+
+    /**
+     * Record a merge that failed - typically because FlexAccess refused it inside the transaction, which
+     * rolled the refusal back as well.
+     *
+     * The verdict is assessed again on the restored data; nothing of the pair is changed. A pair without
+     * FlexAccess state or with a confirmed merge is left alone.
+     *
+     * @param \core\event\base $event tool_mergeusers' failure event (other['usersinvolved'] with toid/fromid).
+     * @return void
+     */
+    public static function user_merge_failed(\core\event\base $event): void {
+        $involved = (array) ($event->other['usersinvolved'] ?? []);
+        $to = (int) ($involved['toid'] ?? 0);
+        $from = (int) ($involved['fromid'] ?? 0);
+        if ($to <= 0 || $from <= 0 || $from === $to || !local\merge_policy::involved($from, $to)) {
+            return;
+        }
+        $row = local\merge_registry::get($from, $to);
+        if ($row && (int) $row->timeconfirmed > 0) {
+            return;
+        }
+        $assessment = local\merge_guard::assess($from, $to);
+        $reasons = array_merge(
+            $assessment->blockers,
+            array_intersect($assessment->warnings, local\merge_guard::BLOCKING_POSTCONDITIONS)
+        );
+        // Raised inside the rolled-back transaction: the collisions exceeded the archive bounds.
+        if ($limit = local\merge_evidence::refusal($from, $to)) {
+            $reasons[] = $limit;
+            local\merge_evidence::clear_refusal($from, $to);
+        }
+        $row = local\merge_registry::record($from, $to, 'event');
+        local\merge_registry::finish($row, local\merge_registry::REFUSED, $reasons ?: ['mergefailed'], [
+            'origins' => $assessment->origins,
+            'lostroutes' => $assessment->lostroutes,
+        ]);
     }
 
     /**

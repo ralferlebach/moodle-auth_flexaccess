@@ -65,18 +65,20 @@ müssen. Die Seite **tool_flexaccess → Systemstatus → LTI-Identitäten** lis
 
 1. **Bewerten** (`api::assess_merge()`, Seite „LTI-Identitäten“): Quelle (wird entfernt) und Ziel
    (bleibt) werden gegenübergestellt; Sperrgründe und Warnungen werden angezeigt.
-2. **Freigeben**, wenn beide Identitäten dauerhaft sind (FlexAccess-Konto mit Passwort oder auth_lti):
-   `api::approve_merge()` hält im Register `auth_flexaccess_merge` fest, wer freigegeben hat und wann
-   (Stufe „preapproved“, `approvedby`, `timeapproved`). Die Freigabe gilt einen Tag.
+2. **Freigeben** – ab 2026102401 vor **jeder** Zusammenführung mit FlexAccess-Beteiligung, auch bei
+   temporären und provisorischen Quellen: `api::approve_merge()` (Berechtigung `moodle/user:update`) hält im Register `auth_flexaccess_merge` fest, wer freigegeben hat, wann
+   und mit welchem **Eigentumsnachweis** (Stufe „preapproved“, `approvedby`, `timeapproved`, `prooftype`,
+   `proofevidence`). Die Freigabe gilt einen Tag. Die Regeln für alle Herkunftstypen (FlexAccess, lokal,
+   LTI, institutionell) beschreibt [merge_policy.md](merge_policy.md).
 3. **Zusammenführen** in tool_mergeusers. Innerhalb der Transaktion von tool_mergeusers:
    - `add_settings_before_merging`: Die FlexAccess-eigenen Tabellen (Konto, Tokens, Mailqueue,
      Register) werden vom generischen Tabellen-Merge ausgenommen.
    - `after_merged_all_tables`: Die Richtlinie wird geprüft und die FlexAccess-Einschreibungen der
      Quelle werden auf das Ziel übertragen – noch in derselben Transaktion. Ein Verstoß (oder eine
      gleichzeitig laufende Bearbeitung desselben Paars, `locked`) meldet einen Fehler an tool_mergeusers,
-     das daraufhin die **gesamte Transaktion zurückrollt** – es ändert sich nichts. Ein abgewiesener
-     Merge hinterlässt deshalb auch keinen Registereintrag; die Ablehnung steht im Protokoll von
-     tool_mergeusers.
+     das daraufhin die **gesamte Transaktion zurückrollt** – es ändert sich nichts. Die Ablehnung steht im
+     Protokoll von tool_mergeusers; ab 2026102400 trägt FlexAccess sie nach dem Rollback aus dem Ereignis
+     `user_merged_failure` erneut als Stufe „refused“ mit Grund ins Register ein.
 4. **Prüfung** nach dem Commit (Ad-hoc-Aufgabe `reconcile_merge`, `merge_service::verify()`): Bindungen
    und LTI-Mitgliedschaften werden überprüft, eine administrative Sperre des Ziels wird wiederhergestellt,
    falls tool_mergeusers sie nach dem Commit aufgehoben hat. Erst wenn alle Nachbedingungen erfüllt sind,
@@ -125,7 +127,7 @@ Konto aktiv; dann wird Umhängen mit `sourceactive` abgelehnt, bis das Konto ges
 | Code | Bedeutung |
 |---|---|
 | `sourcedurable` | Ein dauerhaftes FlexAccess-Konto soll in ein Konto ohne eigene Passwortanmeldung aufgehen (Nicht-FlexAccess-Konto, temporäres oder noch passwortloses FlexAccess-Konto) – die Person verlöre ihre Passwortanmeldung |
-| `needsapproval` | Zwei dauerhafte Identitäten ohne gültige Freigabe |
+| `needsapproval` | Keine gültige Freigabe mit Eigentumsnachweis (ab 2026102401 für jede Herkunft) |
 | `targetmissing` | Das Ziel existiert nicht (mehr) |
 
 ### Nachbedingungen (sonst Status „review“)
@@ -165,7 +167,7 @@ die Nachbedingungen am Datenbestand:
 | Gesperrte Konten können nicht launchen | `test_bound_launch_of_suspended_account_is_refused` | `@provider FlexAccess expiry … suspended …` |
 | AUTO_ONLY verknüpft nie per E-Mail | `test_auto_only_creates_distinct_user_and_never_links_by_email` | `@provider automatic account, approved merge …` |
 | Dauerhaft → auth_lti wird abgewiesen (Rollback) | `lti_merge_test::test_durable_flexaccess_into_lti_is_refused` | – |
-| Zwei dauerhafte Identitäten brauchen Freigabe | `test_merge_of_durable_identities_needs_approval` | `@provider automatic account, approved merge …` |
+| Jede Zusammenführung braucht eine Freigabe (auch temporär/provisorisch, `merge_matrix_test::test_temporary_source_needs_an_ownership_proof`) | `test_merge_of_durable_identities_needs_approval` | `@provider automatic account, approved merge …` |
 | Bindung bleibt nach dem Merge | `test_lti_into_flexaccess_keeps_login_binding_and_grade_delivery` | `@provider … stable relaunch`, `@provider NRPS membership sync …` |
 | Notenrückgabe nach dem Merge | `test_lti_into_flexaccess_keeps_login_binding_and_grade_delivery` | – (AGS-E2E vor dem Merge: `@provider the provider grade reaches …`) |
 | Dauerhaft → temporär/passwortlos wird abgewiesen | `test_durable_flexaccess_into_temporary_flexaccess_is_refused` | – |

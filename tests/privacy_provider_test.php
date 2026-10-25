@@ -31,6 +31,14 @@ use core_privacy\local\request\approved_userlist;
  * @covers \auth_flexaccess\privacy\provider
  */
 final class privacy_provider_test extends \core_privacy\tests\provider_testcase {
+    /** @var \frozen_clock The scenario's frozen Moodle clock: every reference time of a test reads it. */
+    private \frozen_clock $clock;
+
+    protected function setUp(): void {
+        parent::setUp();
+        $this->clock = $this->mock_clock_with_frozen();
+    }
+
     /**
      * Create a user with a FlexAccess account, a token, a queued mail and a pending-email preference.
      *
@@ -40,7 +48,7 @@ final class privacy_provider_test extends \core_privacy\tests\provider_testcase 
         global $DB;
         $user = $this->getDataGenerator()->create_user();
         $userid = (int) $user->id;
-        account_service::create_temporary($userid, '4242424242', time() + DAYSECS);
+        account_service::create_temporary($userid, '4242424242', $this->clock->time() + DAYSECS);
         local\token_service::issue($userid, 'persistence', 900);
         \auth_flexaccess\api::queue_mail($userid, 'pending@example.com', 'Subject', 'Body');
         set_user_preference('auth_flexaccess_pendingemail', 'pending@example.com', $userid);

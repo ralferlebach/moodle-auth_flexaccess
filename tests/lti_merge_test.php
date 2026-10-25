@@ -38,8 +38,14 @@ use auth_flexaccess\local\merge_service;
  * @covers \auth_flexaccess\observer
  */
 final class lti_merge_test extends \advanced_testcase {
+    /** @var \frozen_clock The scenario's frozen Moodle clock: every reference time of a test reads it. */
+    private \frozen_clock $clock;
+
     /** Platform issuer. */
     private const ISS = 'https://platform.example.org';
+
+    /** An accepted ownership proof (kind, evidence). */
+    private const PROOF = ['reauthentication', 'Logged in with both accounts at the help desk, ticket 4711.'];
 
     /** @var \stdClass Course with a FlexAccess instance and a published LTI tool. */
     private \stdClass $course;
@@ -56,6 +62,7 @@ final class lti_merge_test extends \advanced_testcase {
     protected function setUp(): void {
         global $CFG, $DB;
         parent::setUp();
+        $this->clock = $this->mock_clock_with_frozen();
         $this->resetAfterTest();
         local\login_guard::reset_guarded_logins();
         // The rollback of tool_mergeusers must be a real one: without this the test itself runs inside an
@@ -104,6 +111,17 @@ final class lti_merge_test extends \advanced_testcase {
     }
 
     /**
+     * Approve a pair with an accepted ownership proof (every merge needs one, auth_flexaccess #13).
+     *
+     * @param int $from Source.
+     * @param int $to Survivor.
+     * @return void
+     */
+    private function approve(int $from, int $to): void {
+        $this->assertTrue(api::approve_merge($from, $to, true, ...self::PROOF));
+    }
+
+    /**
      * A durable FlexAccess account (password, ACTIVE) enrolled in the course.
      *
      * @param array $fields User fields.
@@ -133,7 +151,7 @@ final class lti_merge_test extends \advanced_testcase {
             'toolid' => $this->tool->id,
             'sourceid' => $sub,
             'serviceurl' => 'https://platform.example.org/ags/lineitem',
-            'timecreated' => time(),
+            'timecreated' => $this->clock->time(),
         ]);
         return $userid;
     }
@@ -172,9 +190,9 @@ final class lti_merge_test extends \advanced_testcase {
         $assessment = api::assess_merge($lti, $flex);
         $this->assertTrue($assessment->needsapproval);
         $this->assertContains(merge_guard::NEEDS_APPROVAL, $assessment->blockers);
-        $this->assertFalse(api::approve_merge($lti, $flex, false), 'Approval requires the explicit confirmation.');
-        $this->assertFalse(api::approve_merge($flex, $lti, true), 'The disallowed direction cannot be approved.');
-        $this->assertTrue(api::approve_merge($lti, $flex, true));
+        $this->assertFalse(api::approve_merge($lti, $flex, false, ...self::PROOF), 'Approval requires the explicit confirmation.');
+        $this->assertFalse(api::approve_merge($flex, $lti, true, ...self::PROOF), 'The disallowed direction cannot be approved.');
+        $this->assertTrue(api::approve_merge($lti, $flex, true, ...self::PROOF));
         $this->assertSame([], api::assess_merge($lti, $flex)->blockers);
     }
 
@@ -199,7 +217,7 @@ final class lti_merge_test extends \advanced_testcase {
         $this->assertFalse($this->mergeusers($flex, $lti), 'Without approval FlexAccess refuses inside the transaction.');
         $this->assertSame($lti, (int) (new \auth_plugin_lti())->get_user_binding(self::ISS, 'dup-3'));
 
-        $this->assertTrue(api::approve_merge($lti, $flex, true));
+        $this->assertTrue(api::approve_merge($lti, $flex, true, ...self::PROOF));
         $this->assertTrue($this->mergeusers($flex, $lti));
         $this->assertTrue(merge_registry::is_confirmed($lti, $flex), 'The tool_mergeusers log record is the evidence.');
         $auth = new \auth_plugin_lti();
@@ -230,7 +248,7 @@ final class lti_merge_test extends \advanced_testcase {
         $lti = $this->lti_duplicate('dup-4');
         $DB->insert_record('enrol_lti_users', (object) ['userid' => $flex, 'toolid' => $this->tool->id, 'serviceurl' => 'native']);
         $this->assertContains(merge_guard::DUPLICATE_LTI_USERS, api::assess_merge($lti, $flex)->warnings);
-        $this->assertTrue(api::approve_merge($lti, $flex, true));
+        $this->assertTrue(api::approve_merge($lti, $flex, true, ...self::PROOF));
         $this->assertFalse($this->mergeusers($flex, $lti));
         $this->assertSame(2, $DB->count_records('enrol_lti_users', ['toolid' => $this->tool->id]));
         $this->assertSame(1, $DB->count_records('enrol_lti_users', ['userid' => $lti]));
@@ -243,9 +261,10 @@ final class lti_merge_test extends \advanced_testcase {
     public function test_stale_binding_after_confirmed_merge_is_repointed(): void {
         global $DB;
         $this->require_mergeusers();
-        $source = api::create_temporary_user(time() + HOURSECS);
+        $source = api::create_temporary_user($this->clock->time() + HOURSECS);
         enrol_get_plugin('flexaccess')->enrol_user($this->instance, $source, \enrol_flexaccess\local\participant_role::get_id());
         $target = $this->durable();
+        $this->approve($source, $target);
         $this->assertTrue($this->mergeusers($target, $source));
         $this->assertTrue(merge_registry::is_confirmed($source, $target), 'tool_mergeusers logged the merge.');
 
@@ -291,13 +310,13 @@ final class lti_merge_test extends \advanced_testcase {
      */
     public function test_repoint_refused_for_unmerged_pairs(): void {
         global $DB;
-        $source = api::create_temporary_user(time() + HOURSECS);
+        $source = api::create_temporary_user($this->clock->time() + HOURSECS);
         (new \auth_plugin_lti())->create_user_binding(self::ISS, 'live-1', $source);
         $DB->insert_record('enrol_lti_users', (object) [
             'userid' => $source,
             'toolid' => $this->tool->id,
             'sourceid' => 'live-1',
-            'timecreated' => time(),
+            'timecreated' => $this->clock->time(),
         ]);
         $target = $this->durable();
         $snapshot = static fn(): array => [
@@ -326,7 +345,8 @@ final class lti_merge_test extends \advanced_testcase {
 
         // A forged evidence id (a log record of another pair) is not accepted either.
         $DB->set_field(merge_registry::TABLE, 'mergelogid', 999999, ['fromuserid' => $source, 'touserid' => $target]);
-        $DB->set_field(merge_registry::TABLE, 'timeconfirmed', time(), ['fromuserid' => $source, 'touserid' => $target]);
+        $pair = ['fromuserid' => $source, 'touserid' => $target];
+        $DB->set_field(merge_registry::TABLE, 'timeconfirmed', $this->clock->time(), $pair);
         $this->assertFalse(merge_registry::is_confirmed($source, $target));
         $this->assertSame('refused', api::repoint_merged_lti_identity($source, $target, true)->status);
         $this->assertEquals($before, $snapshot());
@@ -339,8 +359,9 @@ final class lti_merge_test extends \advanced_testcase {
     public function test_repoint_conflict_changes_nothing(): void {
         global $DB;
         $this->require_mergeusers();
-        $source = api::create_temporary_user(time() + HOURSECS);
+        $source = api::create_temporary_user($this->clock->time() + HOURSECS);
         $target = $this->durable();
+        $this->approve($source, $target);
         $this->assertTrue($this->mergeusers($target, $source));
         // Left behind for the source after the merge: a binding and a membership of a tool the survivor
         // already belongs to.
@@ -350,7 +371,7 @@ final class lti_merge_test extends \advanced_testcase {
                 'userid' => $userid,
                 'toolid' => $this->tool->id,
                 'sourceid' => 'conflict-' . $userid,
-                'timecreated' => time(),
+                'timecreated' => $this->clock->time(),
             ]);
         }
         merge_service::verify($source, $target);
@@ -374,10 +395,11 @@ final class lti_merge_test extends \advanced_testcase {
      */
     public function test_source_deleted_before_reconciliation(): void {
         global $DB;
-        $source = api::create_temporary_user(time() + HOURSECS);
+        $source = api::create_temporary_user($this->clock->time() + HOURSECS);
         enrol_get_plugin('flexaccess')->enrol_user($this->instance, $source, \enrol_flexaccess\local\participant_role::get_id());
         $target = (int) $this->getDataGenerator()->create_user()->id;
         // The merge event is recorded first; the ad-hoc task has not run yet.
+        $this->approve($source, $target);
         observer::user_merged($this->merged_event($target, $source));
         $this->assertSame(merge_registry::PENDING, merge_registry::get($source, $target)->status);
 
@@ -402,11 +424,12 @@ final class lti_merge_test extends \advanced_testcase {
     public function test_admin_lock_of_survivor_is_restored(): void {
         global $DB;
         $this->require_mergeusers();
-        $source = api::create_temporary_user(time() + HOURSECS);
+        $source = api::create_temporary_user($this->clock->time() + HOURSECS);
         $target = $this->durable();
         $DB->set_field('user', 'suspended', 1, ['id' => $target]);
         $DB->set_field('auth_flexaccess_account', 'lockedby', local\lifecycle::LOCKED_BY_ADMIN, ['userid' => $target]);
 
+        $this->approve($source, $target);
         $this->assertTrue($this->mergeusers($target, $source));
         // The own observer of tool_mergeusers unsuspends the kept user after the commit.
         $this->assertEquals(0, $DB->get_field('user', 'suspended', ['id' => $target]));
@@ -432,7 +455,7 @@ final class lti_merge_test extends \advanced_testcase {
         $DB->insert_record('tool_mergeusers', (object) [
             'touserid' => $target,
             'fromuserid' => $source,
-            'timemodified' => time() - DAYSECS,
+            'timemodified' => $this->clock->time() - DAYSECS,
             'log' => '[]',
             'status' => 'success',
         ]);
@@ -443,16 +466,22 @@ final class lti_merge_test extends \advanced_testcase {
         ob_end_clean();
         $row = merge_registry::get($source, $target);
         $this->assertNotSame(merge_registry::PENDING, $row->status);
-        $this->assertStringContainsString(merge_guard::SOURCE_BINDINGS, (string) $row->reasons);
+        // A merge from before FlexAccess' check has no approval: it is a review case until an administrator
+        // approves it afterwards with an ownership proof; then the stale binding surfaces.
+        $this->assertSame(merge_guard::NEEDS_APPROVAL, $row->reasons);
+        $this->approve($source, $target);
+        $this->assertContains(merge_guard::SOURCE_BINDINGS, api::recheck_merge($source, $target)->reasons);
     }
 
     /**
      * Temporary visitor into a durable LTI identity (the original contract) still reconciles.
      */
     public function test_temporary_into_lti_identity_reconciles(): void {
-        $source = api::create_temporary_user(time() + HOURSECS);
+        $source = api::create_temporary_user($this->clock->time() + HOURSECS);
         enrol_get_plugin('flexaccess')->enrol_user($this->instance, $source, \enrol_flexaccess\local\participant_role::get_id());
         $target = $this->lti_duplicate('keep-1');
+        $this->assertSame(merge_registry::REVIEW, merge_service::reconcile($source, $target)->status, 'No proof yet.');
+        $this->approve($source, $target);
         $result = merge_service::reconcile($source, $target);
         $this->assertSame('reconciled', $result->status);
         $this->assertSame(merge_registry::RECONCILED, merge_registry::get($source, $target)->status);
@@ -463,7 +492,7 @@ final class lti_merge_test extends \advanced_testcase {
      */
     public function test_binding_diagnosis_and_removal(): void {
         global $DB;
-        $temporary = api::create_temporary_user(time() + HOURSECS);
+        $temporary = api::create_temporary_user($this->clock->time() + HOURSECS);
         (new \auth_plugin_lti())->create_user_binding(self::ISS, 'temp-1', $temporary);
         $durable = $this->durable();
         (new \auth_plugin_lti())->create_user_binding(self::ISS, 'durable-1', $durable);
@@ -508,7 +537,7 @@ final class lti_merge_test extends \advanced_testcase {
     public function test_durable_flexaccess_into_temporary_flexaccess_is_refused(): void {
         global $DB;
         $flex = $this->durable();
-        $temporary = \auth_flexaccess\api::create_temporary_user(time() + HOURSECS);
+        $temporary = \auth_flexaccess\api::create_temporary_user($this->clock->time() + HOURSECS);
         $assessment = merge_guard::assess($flex, $temporary);
         $this->assertContains(merge_guard::SOURCE_DURABLE, $assessment->blockers);
 
@@ -526,7 +555,7 @@ final class lti_merge_test extends \advanced_testcase {
         $flex = $this->durable(['email' => 'pair@example.org']);
         $lti = $this->lti_duplicate('pair-1');
         $this->setAdminUser();
-        $this->assertTrue(\auth_flexaccess\api::approve_merge($lti, $flex, true));
+        $this->assertTrue(\auth_flexaccess\api::approve_merge($lti, $flex, true, ...self::PROOF));
         $row = merge_registry::get($lti, $flex);
         $this->assertSame(merge_registry::PREAPPROVED, $row->status);
         $this->assertEquals(get_admin()->id, $row->approvedby);

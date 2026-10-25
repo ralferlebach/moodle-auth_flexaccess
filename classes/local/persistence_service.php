@@ -137,7 +137,7 @@ final class persistence_service {
      */
     public static function send_welcome(int $userid, ?int $now = null): void {
         global $DB, $CFG;
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         $user = $DB->get_record('user', ['id' => $userid], 'id, username, firstname, lastname, email', IGNORE_MISSING);
         if (!$user || empty($user->email) || \core_text::strpos($user->email, '@flexaccess.invalid') !== false) {
             // No usable address (still a placeholder): nothing to send.
@@ -153,7 +153,7 @@ final class persistence_service {
         $subject = get_string('welcomesubject', 'auth_flexaccess', $data);
         $body = get_string('welcomebody', 'auth_flexaccess', $data);
         $bodyhtml = \html_writer::tag('p', nl2br(s($body)));
-        \auth_flexaccess\api::queue_mail($userid, $user->email, $subject, $body, $bodyhtml, 'welcome', $now);
+        \auth_flexaccess\api::queue_mail($userid, $user->email, $subject, $body, $bodyhtml, 'welcome', $now, $now);
     }
 
     /**
@@ -180,7 +180,7 @@ final class persistence_service {
     ): string {
         global $CFG;
         require_once($CFG->dirroot . '/user/lib.php');
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
 
         // Route through the single, locked conversion path (which uses is_convertible, not merely
         // is_temporary) so an already-expired account can never be revived, and set the password
@@ -243,7 +243,7 @@ final class persistence_service {
     ): string {
         global $CFG, $DB;
         require_once($CFG->dirroot . '/user/lib.php');
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         $email = \core_text::strtolower(trim($email));
 
         if (!account_service::is_convertible($userid, $now)) {
@@ -302,7 +302,7 @@ final class persistence_service {
      */
     public static function send_persistence_followups(?int $now = null, ?int $window = null, int $limit = 200): int {
         global $DB;
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         $window = $window ?? (int) get_config('auth_flexaccess', 'followupwindow');
         if ($window <= 0) {
             return 0;
@@ -364,7 +364,7 @@ final class persistence_service {
     public static function confirm_persistence(string $token, ?int $now = null): string {
         global $CFG;
         require_once($CFG->dirroot . '/user/lib.php');
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
 
         // Verify the token WITHOUT consuming it. Consumption happens inside the locked conversion
         // (see the $inside callback), so a conversion that fails afterwards never burns the

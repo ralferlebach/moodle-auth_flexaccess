@@ -149,7 +149,8 @@ final class api {
         // Do not finalise an unverified email as an identity: start the persistence/verification
         // funnel. With verification enabled (the default) this emails an activation link; only when
         // an admin has disabled verification does it convert immediately.
-        $status = self::request_persistence($userid, $email, $firstname, $lastname, $password, time());
+        $now = \core\di::get(\core\clock::class)->time();
+        $status = self::request_persistence($userid, $email, $firstname, $lastname, $password, $now);
         if ($status === 'converted') {
             return 'activated';
         }
@@ -281,6 +282,7 @@ final class api {
      * @param string $bodyhtml Optional HTML body.
      * @param string $mailtype A {@see mail_kind} label for inspection (delivery is payload-driven).
      * @param int|null $nextrun Earliest send time; defaults to now.
+     * @param int|null $now Current time; defaults to the clock.
      * @return int Queue row id.
      */
     public static function queue_mail(
@@ -290,10 +292,11 @@ final class api {
         string $body,
         string $bodyhtml = '',
         string $mailtype = mail_kind::ACTIVATION,
-        ?int $nextrun = null
+        ?int $nextrun = null,
+        ?int $now = null
     ): int {
         global $DB;
-        $now = time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         return (int) $DB->insert_record(self::QUEUE_TABLE, (object) [
             'userid' => $userid,
             'recipient' => $recipient,
@@ -398,7 +401,7 @@ final class api {
         ?int $now = null
     ): int {
         global $DB;
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         return (int) $DB->insert_record(self::QUEUE_TABLE, (object) [
             'userid' => $userid,
             'recipient' => $recipient,
@@ -443,7 +446,7 @@ final class api {
         ?int $now = null
     ): int {
         global $DB;
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         // P1: per-user/per-recipient rate limit. Without this, a single temporary user could burn a
         // large share of the site's mail budget by repeatedly requesting verification links. An
         // identical, still-pending request within the cooldown window is de-duplicated: the existing
@@ -602,7 +605,7 @@ final class api {
     ): int {
         global $CFG, $DB;
         require_once($CFG->dirroot . '/user/lib.php');
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
 
         // Numeric reference so temporary users can read it out to an administrator (see tool_flexaccess
         // reference search). Generated collision-free against existing accounts before the user is made.
@@ -661,7 +664,7 @@ final class api {
     ): int {
         global $CFG, $DB;
         require_once($CFG->dirroot . '/user/lib.php');
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         $username = \core_text::strtolower(trim($username));
 
         $user = new \stdClass();
@@ -901,7 +904,7 @@ final class api {
         string $lastname = '',
         ?int $now = null
     ): string {
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         $status = local\persistence_service::finalise_identity(
             $userid,
             $email,
@@ -942,7 +945,7 @@ final class api {
      */
     public static function resend_set_password(int $userid, ?int $now = null): string {
         global $DB;
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         $account = self::get_account($userid);
         if (!$account || $account->accountstate !== account_state::PENDING_CREDENTIAL) {
             return 'notapplicable';
@@ -986,7 +989,7 @@ final class api {
      */
     public static function credential_status(int $userid, ?int $now = null): string {
         global $DB;
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         $account = self::get_account($userid);
         if (!$account) {
             return 'none';
@@ -1045,7 +1048,7 @@ final class api {
     public static function complete_set_password(string $token, string $password, ?int $now = null): ?int {
         global $CFG, $DB;
         require_once($CFG->dirroot . '/user/lib.php');
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         $record = token_service::verify($token, 'setpassword', $now);
         if ($record === null) {
             return null;
@@ -1197,26 +1200,127 @@ final class api {
     /**
      * Record an administrator's approval to merge two durable identities (valid for one day).
      *
-     * The administrator confirms that both accounts belong to the same person, verified independently of
-     * the e-mail address. Without this approval FlexAccess refuses the merge inside tool_mergeusers.
+     * The administrator confirms that both accounts belong to the same person and names the independent
+     * ownership proof (re-authentication with both accounts, the identity provider, or documents/records)
+     * with a description of the evidence. A matching e-mail address or name is never a proof. Without this
+     * approval FlexAccess refuses the merge inside tool_mergeusers.
      *
      * @param int $fromuserid Identity to be merged away.
      * @param int $touserid Surviving identity.
      * @param bool $ownershipverified The explicit confirmation of the administrator.
-     * @return bool Whether the approval was recorded (refused for a disallowed direction).
+     * @param string $proof Kind of proof (see {@see local\merge_registry::PROOFS}).
+     * @param string $evidence Description of the evidence (at least {@see local\merge_registry::EVIDENCE_MIN_LENGTH}
+     *     characters besides e-mail addresses).
+     * @return bool Whether the approval was recorded (refused for a disallowed direction or without proof).
      */
-    public static function approve_merge(int $fromuserid, int $touserid, bool $ownershipverified): bool {
+    public static function approve_merge(
+        int $fromuserid,
+        int $touserid,
+        bool $ownershipverified,
+        string $proof = '',
+        string $evidence = ''
+    ): bool {
         global $USER;
         if (!$ownershipverified || $fromuserid === $touserid) {
+            return false;
+        }
+        // Only an administrator who may change user accounts approves; holding a (temporary) session of one of
+        // the accounts is never enough (auth_flexaccess #13).
+        if (!has_capability('moodle/user:update', \context_system::instance())) {
+            return false;
+        }
+        if (local\merge_registry::proof_problem($proof, $evidence) !== null) {
             return false;
         }
         $assessment = local\merge_guard::assess($fromuserid, $touserid);
         if (array_diff($assessment->blockers, [local\merge_guard::NEEDS_APPROVAL])) {
             return false;
         }
-        local\merge_registry::approve($fromuserid, $touserid, (int) $USER->id);
-        self::merge_action('approve', $fromuserid, $touserid, 0, 'preapproved', ['approvedby' => (int) $USER->id]);
+        local\merge_registry::approve($fromuserid, $touserid, (int) $USER->id, $proof, $evidence);
+        self::merge_action('approve', $fromuserid, $touserid, 0, 'preapproved', [
+            'approvedby' => (int) $USER->id,
+            'proof' => $proof,
+        ]);
         return true;
+    }
+
+    /**
+     * A deterministic consolidation plan for two or more identities of one person (read-only).
+     *
+     * @param int[] $userids Identities.
+     * @return \stdClass See {@see local\merge_policy::plan()}.
+     */
+    public static function plan_merge(array $userids): \stdClass {
+        return local\merge_policy::plan($userids);
+    }
+
+    /**
+     * Evidence of conflicting course work captured during the merge of a pair.
+     *
+     * @param int $fromuserid Merged-away user.
+     * @param int $touserid Surviving user.
+     * @return \stdClass[] See {@see local\merge_evidence::for_pair()}.
+     */
+    public static function merge_conflict_evidence(int $fromuserid, int $touserid): array {
+        return local\merge_evidence::for_pair($fromuserid, $touserid);
+    }
+
+    /**
+     * An administrator confirms having reviewed the conflict evidence of a merge; then re-verify it.
+     *
+     * @param int $fromuserid Merged-away user.
+     * @param int $touserid Surviving user.
+     * @return \stdClass ->acknowledged (int), ->status, ->reasons.
+     */
+    public static function acknowledge_merge_conflicts(int $fromuserid, int $touserid): \stdClass {
+        global $USER;
+        $count = local\merge_evidence::acknowledge($fromuserid, $touserid, (int) $USER->id);
+        $result = local\merge_registry::get($fromuserid, $touserid) ? local\merge_service::verify($fromuserid, $touserid)
+            : (object) ['status' => 'nothingtodo', 'reasons' => []];
+        $result->acknowledged = $count;
+        self::merge_action('acknowledge', $fromuserid, $touserid, 0, (string) $result->status, ['acknowledged' => $count]);
+        return $result;
+    }
+
+    /**
+     * Recorded FlexAccess enrolments of a merge that have no decision yet (merged, or discarded with a reason).
+     *
+     * @param int $fromuserid Merged-away user.
+     * @param int $touserid Surviving user.
+     * @return \stdClass[] Evidence records with ->pending (bool: the values cannot be merged right now).
+     */
+    public static function merge_open_enrolments(int $fromuserid, int $touserid): array {
+        $pending = local\merge_evidence::pending_enrolments($fromuserid, $touserid);
+        return array_map(static function (\stdClass $record) use ($pending): \stdClass {
+            $record->pending = in_array((int) $record->conflictkey, $pending, true);
+            return $record;
+        }, local\merge_evidence::open_enrolments($fromuserid, $touserid));
+    }
+
+    /**
+     * An administrator discards one recorded FlexAccess enrolment that could not be merged, with a reason;
+     * then re-verify the merge. Other records of the pair are not touched.
+     *
+     * @param int $evidenceid Evidence record of the enrolment.
+     * @param int $fromuserid Merged-away user.
+     * @param int $touserid Surviving user.
+     * @param string $reason Why the source's entitlement is not taken over.
+     * @return \stdClass ->problem (null or notfound, notpending, reason, nopermission), ->status, ->reasons.
+     */
+    public static function discard_merge_enrolment(int $evidenceid, int $fromuserid, int $touserid, string $reason): \stdClass {
+        global $USER;
+        if (!has_capability('moodle/user:update', \context_system::instance())) {
+            return (object) ['problem' => 'nopermission', 'status' => 'unchanged', 'reasons' => []];
+        }
+        $problem = local\merge_evidence::decide_enrolment($evidenceid, $fromuserid, $touserid, $reason, (int) $USER->id);
+        if ($problem !== null) {
+            return (object) ['problem' => $problem, 'status' => 'unchanged', 'reasons' => []];
+        }
+        $result = local\merge_registry::get($fromuserid, $touserid) ? local\merge_service::verify($fromuserid, $touserid)
+            : (object) ['status' => 'nothingtodo', 'reasons' => []];
+        $result->problem = null;
+        self::merge_action('discardenrolment', $fromuserid, $touserid, 0, (string) $result->status, ['evidenceid' => $evidenceid]);
+        return $result;
     }
 
     /**
@@ -1422,7 +1526,7 @@ final class api {
      */
     public static function credential_statuses(array $userids, ?int $now = null): array {
         global $DB;
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         $userids = array_values(array_unique(array_filter(array_map('intval', $userids))));
         if (!$userids) {
             return [];
@@ -1510,7 +1614,7 @@ final class api {
      * @return string 'queued' or 'notapplicable'.
      */
     public static function resend_verification(int $userid, ?int $now = null): string {
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         if (!self::verification_pending($userid) || !account_service::is_convertible($userid, $now)) {
             return 'notapplicable';
         }
@@ -1542,7 +1646,7 @@ final class api {
      * @return \stdClass ->outcome (recovered|skipped|noteligible), ->oldstate, ->newstate, ->action.
      */
     public static function recover_account(int $userid, ?int $lifetime = null, ?int $now = null): \stdClass {
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         $account = self::get_account($userid);
         if (!$account) {
             return (object) ['outcome' => 'noteligible', 'oldstate' => '', 'newstate' => '', 'action' => 'noaccount'];
@@ -1623,7 +1727,7 @@ final class api {
      */
     public static function mail_funnel_stats(?int $now = null): array {
         global $DB;
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         $queued = $DB->count_records_select(self::QUEUE_TABLE, "status IN ('queued', 'ackpending')");
         $failed = $DB->count_records_select(self::QUEUE_TABLE, "status IN ('failed', 'ackfailed')");
         $oldest = (int) $DB->get_field_sql(
@@ -1672,7 +1776,8 @@ final class api {
      */
     public static function list_account_userids(int $afteruserid, int $limit): array {
         global $DB;
-        return array_map('intval', $DB->get_fieldset_sql(
+        // Moodle's get_fieldset_sql() takes no limit; the batch size must be enforced by the query itself.
+        return array_map('intval', array_keys($DB->get_records_sql(
             "SELECT a.userid
                FROM {auth_flexaccess_account} a
               WHERE a.userid > :after
@@ -1680,7 +1785,7 @@ final class api {
             ['after' => $afteruserid],
             0,
             max(1, $limit)
-        ));
+        )));
     }
 
     /**

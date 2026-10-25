@@ -179,5 +179,103 @@ function xmldb_auth_flexaccess_upgrade($oldversion) {
         upgrade_plugin_savepoint(true, 2026101800, 'auth', 'flexaccess');
     }
 
+    if ($oldversion < 2026102400) {
+        // Ownership proof per approval and evidence of conflicting course work per merge (auth_flexaccess #13).
+        $table = new xmldb_table('auth_flexaccess_merge');
+        $fields = [
+            new xmldb_field('prooftype', XMLDB_TYPE_CHAR, '20', null, null, null, null, 'timeapproved'),
+            new xmldb_field('proofevidence', XMLDB_TYPE_TEXT, null, null, null, null, null, 'prooftype'),
+        ];
+        foreach ($fields as $field) {
+            if (!$dbman->field_exists($table, $field)) {
+                $dbman->add_field($table, $field);
+            }
+        }
+        if (!$dbman->table_exists('auth_flexaccess_mergeevid')) {
+            $dbman->install_one_table_from_xmldb_file(__DIR__ . '/install.xml', 'auth_flexaccess_mergeevid');
+        }
+        // Approvals without an ownership proof are no longer valid: they return to "needs approval".
+        $DB->set_field_select(
+            'auth_flexaccess_merge',
+            'approvedby',
+            null,
+            "status = 'preapproved' AND prooftype IS NULL"
+        );
+        upgrade_plugin_savepoint(true, 2026102400, 'auth', 'flexaccess');
+    }
+
+    if ($oldversion < 2026102401) {
+        // Every collision of a merge is archived with its kind and key; the survivor's institutional login is
+        // recorded with the approval (auth_flexaccess #13).
+        $table = new xmldb_table('auth_flexaccess_mergeevid');
+        $fields = [
+            new xmldb_field('kind', XMLDB_TYPE_CHAR, '10', null, XMLDB_NOTNULL, null, 'review', 'tablename'),
+            new xmldb_field('keyfields', XMLDB_TYPE_CHAR, '255', null, null, null, null, 'kind'),
+            new xmldb_field('keyvalues', XMLDB_TYPE_TEXT, null, null, null, null, null, 'keyfields'),
+        ];
+        foreach ($fields as $field) {
+            if (!$dbman->field_exists($table, $field)) {
+                $dbman->add_field($table, $field);
+            }
+        }
+        $index = new xmldb_index('kind_ix', XMLDB_INDEX_NOTUNIQUE, ['kind']);
+        if (!$dbman->index_exists($table, $index)) {
+            $dbman->add_index($table, $index);
+        }
+        // Records of 2026102400: FlexAccess enrolments are their own kind; the key was the single number.
+        $DB->set_field('auth_flexaccess_mergeevid', 'kind', 'enrolment', ['tablename' => 'user_enrolments']);
+        $DB->execute("UPDATE {auth_flexaccess_mergeevid} SET keyvalues = " . $DB->sql_concat("'['", 'conflictkey', "']'")
+            . " WHERE keyvalues IS NULL");
+        $merge = new xmldb_table('auth_flexaccess_merge');
+        $field = new xmldb_field('ssobinding', XMLDB_TYPE_TEXT, null, null, null, null, null, 'proofevidence');
+        if (!$dbman->field_exists($merge, $field)) {
+            $dbman->add_field($merge, $field);
+        }
+        // A waiting approval into an institutional account recorded no binding to check: it must be given again.
+        [$insql, $params] = $DB->get_in_or_equal(
+            ['flexaccess', 'manual', 'email', 'lti', 'nologin', 'webservice'],
+            SQL_PARAMS_NAMED,
+            'auth',
+            false
+        );
+        $DB->set_field_select(
+            'auth_flexaccess_merge',
+            'approvedby',
+            null,
+            "status = 'preapproved' AND ssobinding IS NULL AND touserid IN (SELECT id FROM {user} WHERE auth $insql)",
+            $params
+        );
+        upgrade_plugin_savepoint(true, 2026102401, 'auth', 'flexaccess');
+    }
+
+    if ($oldversion < 2026102500) {
+        // Decisions per archived record; archived rows reduced to the positive column list (auth_flexaccess #13).
+        $table = new xmldb_table('auth_flexaccess_mergeevid');
+        $fields = [
+            new xmldb_field('decision', XMLDB_TYPE_CHAR, '10', null, null, null, null, 'timeacknowledged'),
+            new xmldb_field('decisionreason', XMLDB_TYPE_TEXT, null, null, null, null, null, 'decision'),
+        ];
+        foreach ($fields as $field) {
+            if (!$dbman->field_exists($table, $field)) {
+                $dbman->add_field($table, $field);
+            }
+        }
+        // Earlier archives could hold whole rows, including credentials (OAuth 2 refresh tokens, push ids).
+        \auth_flexaccess\local\merge_evidence::reset_cache();
+        $changed = \auth_flexaccess\local\merge_evidence::sanitise_archive();
+        $now = \core\di::get(\core\clock::class)->time();
+        set_config('mergeevidencesanitised', json_encode(['time' => $now, 'tables' => $changed]), 'auth_flexaccess');
+        // Decisions of earlier records: enrolments acknowledged automatically were merged; reviews acknowledged by
+        // an administrator were reviewed. An enrolment an administrator closed with the general confirmation of
+        // 2026102401 has no decision of its own: it is open again and needs one.
+        $DB->execute("UPDATE {auth_flexaccess_mergeevid} SET decision = 'merged'
+                       WHERE kind = 'enrolment' AND timeacknowledged > 0 AND acknowledgedby IS NULL AND decision IS NULL");
+        $DB->execute("UPDATE {auth_flexaccess_mergeevid} SET timeacknowledged = 0, acknowledgedby = NULL
+                       WHERE kind = 'enrolment' AND acknowledgedby IS NOT NULL AND decision IS NULL");
+        $DB->execute("UPDATE {auth_flexaccess_mergeevid} SET decision = 'reviewed'
+                       WHERE kind = 'review' AND timeacknowledged > 0 AND acknowledgedby IS NOT NULL AND decision IS NULL");
+        upgrade_plugin_savepoint(true, 2026102500, 'auth', 'flexaccess');
+    }
+
     return true;
 }

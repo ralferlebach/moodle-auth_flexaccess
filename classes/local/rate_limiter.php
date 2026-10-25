@@ -48,7 +48,7 @@ final class rate_limiter {
      * @return bool True when the limit has been exceeded (the action should be refused).
      */
     public static function hit(string $bucket, string $identifier, int $max, int $window, ?int $now = null): bool {
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         self::insert($bucket, $identifier, $now);
         return self::count($bucket, $identifier, $window, $now) > $max;
     }
@@ -70,7 +70,7 @@ final class rate_limiter {
         int $window,
         ?int $now = null
     ): bool {
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         return self::count($bucket, $identifier, $window, $now) >= $max;
     }
 
@@ -83,7 +83,7 @@ final class rate_limiter {
      * @return void
      */
     public static function record(string $bucket, string $identifier, ?int $now = null): void {
-        self::insert($bucket, $identifier, $now ?? time());
+        self::insert($bucket, $identifier, $now ?? \core\di::get(\core\clock::class)->time());
     }
 
     /**

@@ -31,6 +31,14 @@ use auth_flexaccess\local\lifecycle;
  * @covers \auth_flexaccess\local\account_service
  */
 final class lifecycle_test extends \advanced_testcase {
+    /** @var \frozen_clock The scenario's frozen Moodle clock: every reference time of a test reads it. */
+    private \frozen_clock $clock;
+
+    protected function setUp(): void {
+        parent::setUp();
+        $this->clock = $this->mock_clock_with_frozen();
+    }
+
     /**
      * Skip when the restriction role (owned by enrol_flexaccess) is not available.
      *
@@ -60,9 +68,9 @@ final class lifecycle_test extends \advanced_testcase {
             'accounttype' => $type,
             'accountstate' => $state,
             'referencecode' => account_service::generate_unique_reference(),
-            'timecreated' => time(),
+            'timecreated' => $this->clock->time(),
             'timeexpires' => $expires,
-            'timemodified' => time(),
+            'timemodified' => $this->clock->time(),
         ]);
         if ($restricted) {
             \enrol_flexaccess\local\participant_role::restrict((int) $user->id);
@@ -122,7 +130,7 @@ final class lifecycle_test extends \advanced_testcase {
     public function test_invariant_matrix(string $type, string $state, int $suspended, bool $restricted, array $expected): void {
         $this->resetAfterTest();
         $this->require_enrol();
-        $expires = $type === account_type::TEMPORARY_USER ? time() + 3600 : null;
+        $expires = $type === account_type::TEMPORARY_USER ? $this->clock->time() + 3600 : null;
         $userid = $this->combo($type, $state, $suspended, $restricted, $expires);
         sort($expected);
         $this->assertSame($expected, $this->codes($userid));
@@ -137,7 +145,7 @@ final class lifecycle_test extends \advanced_testcase {
         global $DB;
         $this->resetAfterTest();
         $this->require_enrol();
-        $userid = $this->combo(account_type::TEMPORARY_USER, account_state::EPHEMERAL, 1, false, time() + 3600);
+        $userid = $this->combo(account_type::TEMPORARY_USER, account_state::EPHEMERAL, 1, false, $this->clock->time() + 3600);
         // A suspension FlexAccess set: transitions may and must lift it.
         $DB->set_field('auth_flexaccess_account', 'lockedby', lifecycle::LOCKED_BY_FLEXACCESS, ['userid' => $userid]);
         lifecycle::transition_to_pending_credential($userid);
@@ -146,7 +154,7 @@ final class lifecycle_test extends \advanced_testcase {
         $this->assertSame([], $this->codes($userid));
         $this->assertEquals(0, $DB->get_field('user', 'suspended', ['id' => $userid]));
 
-        $temp = $this->combo(account_type::TEMPORARY_USER, account_state::EPHEMERAL, 0, true, time() - 1);
+        $temp = $this->combo(account_type::TEMPORARY_USER, account_state::EPHEMERAL, 0, true, $this->clock->time() - 1);
         $this->assertSame(['overdue'], $this->codes($temp));
         $this->assertSame(1, account_service::expire_due());
         $this->assertSame([], $this->codes($temp));
@@ -171,7 +179,7 @@ final class lifecycle_test extends \advanced_testcase {
         global $DB;
         $this->resetAfterTest();
         $this->require_enrol();
-        $userid = $this->combo(account_type::TEMPORARY_USER, account_state::EPHEMERAL, 1, true, time() + 3600);
+        $userid = $this->combo(account_type::TEMPORARY_USER, account_state::EPHEMERAL, 1, true, $this->clock->time() + 3600);
         $DB->set_field('auth_flexaccess_account', 'lockedby', lifecycle::LOCKED_BY_FLEXACCESS, ['userid' => $userid]);
         $this->assertSame('converted', api::persist_temporary_user($userid, 'normal@example.com', 'N', 'U', 'Str0ng-Pass!23'));
         $account = api::get_account($userid);
@@ -181,7 +189,7 @@ final class lifecycle_test extends \advanced_testcase {
         $this->assertSame([], $this->codes($userid));
 
         // Same with the administrative conversion once the credential is set.
-        $admin = $this->combo(account_type::TEMPORARY_USER, account_state::EPHEMERAL, 1, true, time() + 3600);
+        $admin = $this->combo(account_type::TEMPORARY_USER, account_state::EPHEMERAL, 1, true, $this->clock->time() + 3600);
         $DB->set_field('auth_flexaccess_account', 'lockedby', lifecycle::LOCKED_BY_FLEXACCESS, ['userid' => $admin]);
         $this->assertSame('converted', api::admin_convert($admin, 'admin.conv@example.com'));
         $this->assertEquals(0, $DB->get_field('user', 'suspended', ['id' => $admin]));
@@ -193,7 +201,7 @@ final class lifecycle_test extends \advanced_testcase {
         // REST-001: a suspension FlexAccess may not lift blocks the conversion itself. Nothing changes,
         // so no FlexAccess transition ever commits ACTIVE or PENDING_CREDENTIAL next to a suspended user.
         foreach ([null, lifecycle::LOCKED_BY_ADMIN] as $origin) {
-            $blocked = $this->combo(account_type::TEMPORARY_USER, account_state::EPHEMERAL, 1, true, time() + 3600);
+            $blocked = $this->combo(account_type::TEMPORARY_USER, account_state::EPHEMERAL, 1, true, $this->clock->time() + 3600);
             $DB->set_field('auth_flexaccess_account', 'lockedby', $origin, ['userid' => $blocked]);
             $before = api::get_account($blocked);
             $codesbefore = $this->codes($blocked);
@@ -253,10 +261,11 @@ final class lifecycle_test extends \advanced_testcase {
     public function test_expiry_ends_sessions(): void {
         global $DB;
         $this->resetAfterTest();
-        $userid = $this->combo(account_type::TEMPORARY_USER, account_state::EPHEMERAL, 0, false, time() - 1);
+        $userid = $this->combo(account_type::TEMPORARY_USER, account_state::EPHEMERAL, 0, false, $this->clock->time() - 1);
         $DB->insert_record('sessions', (object) [
             'state' => 0, 'sid' => 'lifecycletest', 'sessdata' => null, 'userid' => $userid,
-            'timecreated' => time(), 'timemodified' => time(), 'firstip' => '127.0.0.1', 'lastip' => '127.0.0.1',
+            'timecreated' => $this->clock->time(), 'timemodified' => $this->clock->time(),
+            'firstip' => '127.0.0.1', 'lastip' => '127.0.0.1',
         ]);
         account_service::expire_due();
         $this->assertFalse($DB->record_exists('sessions', ['userid' => $userid]));
@@ -270,7 +279,7 @@ final class lifecycle_test extends \advanced_testcase {
     public function test_lock_origin(): void {
         global $DB;
         $this->resetAfterTest();
-        $temp = $this->combo(account_type::TEMPORARY_USER, account_state::EPHEMERAL, 0, false, time() - 1);
+        $temp = $this->combo(account_type::TEMPORARY_USER, account_state::EPHEMERAL, 0, false, $this->clock->time() - 1);
         account_service::expire_due();
         $this->assertSame(lifecycle::LOCKED_BY_FLEXACCESS, api::get_account($temp)->lockedby);
         lifecycle::transition_to_recovered_temporary($temp, 600);
@@ -298,13 +307,13 @@ final class lifecycle_test extends \advanced_testcase {
         global $CFG, $DB;
         require_once($CFG->dirroot . '/auth/flexaccess/db/upgradelib.php');
         $this->resetAfterTest();
-        $stepran = time() - 100;
+        $stepran = $this->clock->time() - 100;
         // Legacy data: an expired temporary account whose suspension the old step inferred.
         $legacy = $this->combo(account_type::TEMPORARY_USER, account_state::EXPIRED, 1, false, $stepran - 50);
         $DB->set_field('auth_flexaccess_account', 'lockedby', lifecycle::LOCKED_BY_FLEXACCESS, ['userid' => $legacy]);
         $DB->set_field('auth_flexaccess_account', 'timemodified', $stepran - 50, ['userid' => $legacy]);
         // A real expiry after the step: recorded by the lifecycle, with a later timemodified.
-        $real = $this->combo(account_type::TEMPORARY_USER, account_state::EPHEMERAL, 0, false, time() - 1);
+        $real = $this->combo(account_type::TEMPORARY_USER, account_state::EPHEMERAL, 0, false, $this->clock->time() - 1);
         account_service::expire_due();
         $this->assertSame(lifecycle::LOCKED_BY_FLEXACCESS, api::get_account($real)->lockedby);
 
@@ -335,7 +344,7 @@ final class lifecycle_test extends \advanced_testcase {
         global $DB;
         $this->resetAfterTest();
         // An administrator suspended the live temporary account; later it expires.
-        $userid = $this->combo(account_type::TEMPORARY_USER, account_state::EPHEMERAL, 1, false, time() - 1);
+        $userid = $this->combo(account_type::TEMPORARY_USER, account_state::EPHEMERAL, 1, false, $this->clock->time() - 1);
         account_service::expire_due();
         $this->assertSame(account_state::EXPIRED, api::get_account($userid)->accountstate);
         $this->assertNull(api::get_account($userid)->lockedby);

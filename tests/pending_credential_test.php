@@ -30,6 +30,9 @@ use auth_flexaccess\local\mail_worker;
  * @covers \auth_flexaccess\observer
  */
 final class pending_credential_test extends \advanced_testcase {
+    /** @var \frozen_clock The scenario's frozen Moodle clock: every reference time of a test reads it. */
+    private \frozen_clock $clock;
+
     /**
      * Session creation reads the user agent, which the CLI test runner does not provide.
      *
@@ -37,6 +40,7 @@ final class pending_credential_test extends \advanced_testcase {
      */
     protected function setUp(): void {
         parent::setUp();
+        $this->clock = $this->mock_clock_with_frozen();
         $this->resetAfterTest();
         // FlexAccess authentication enabled, as on a real site (a disabled plugin sends no login mail).
         set_config('auth', 'flexaccess');
@@ -50,7 +54,7 @@ final class pending_credential_test extends \advanced_testcase {
      * @return int User id.
      */
     private function converted(string $email): int {
-        $userid = api::create_temporary_user(time() + 3600);
+        $userid = api::create_temporary_user($this->clock->time() + 3600);
         $this->assertSame('converted', api::admin_convert($userid, $email, 'Real', 'Person'));
         return $userid;
     }
@@ -63,7 +67,7 @@ final class pending_credential_test extends \advanced_testcase {
      * @return string|null Token.
      */
     private function deliver_token(\phpunit_phpmailer_sink $sink, string $email): ?string {
-        mail_worker::run(time());
+        mail_worker::run($this->clock->time());
         $token = null;
         foreach ($sink->get_messages() as $message) {
             $body = quoted_printable_decode($message->body);
@@ -128,7 +132,7 @@ final class pending_credential_test extends \advanced_testcase {
         $this->assertSame([], api::find_state_mismatches(null, 10, [$userid]));
         $this->assertTrue(\auth_flexaccess\local\login_guard::is_eligible($userid, login_guard::CHANNEL_PASSWORD));
         // The welcome mail with the username follows the completion, not the conversion.
-        mail_worker::run(time());
+        mail_worker::run($this->clock->time());
         $this->assertGreaterThanOrEqual(1, $sink->count());
         $sink->close();
     }
@@ -144,7 +148,8 @@ final class pending_credential_test extends \advanced_testcase {
         $sink = $this->redirectEmails();
         $userid = $this->converted('pending.late@example.com');
         $token = $this->deliver_token($sink, 'pending.late@example.com');
-        $DB->set_field('auth_flexaccess_token', 'timeexpires', time() - 1, ['userid' => $userid, 'purpose' => 'setpassword']);
+        $expired = $this->clock->time() - 1;
+        $DB->set_field('auth_flexaccess_token', 'timeexpires', $expired, ['userid' => $userid, 'purpose' => 'setpassword']);
         $this->assertSame('expired', api::credential_status($userid));
         $this->assertNull(api::complete_set_password($token, 'Str0ng-Pass!23'));
         $this->assertSame(account_state::PENDING_CREDENTIAL, api::get_account($userid)->accountstate);
@@ -175,7 +180,7 @@ final class pending_credential_test extends \advanced_testcase {
         $other = $this->converted('pending.limit@example.com');
         $results = [];
         for ($i = 0; $i < 5; $i++) {
-            mail_worker::run(time());
+            mail_worker::run($this->clock->time());
             $results[] = api::resend_set_password($other);
         }
         $this->assertContains('ratelimited', $results);

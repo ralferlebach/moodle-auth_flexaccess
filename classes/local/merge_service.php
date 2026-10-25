@@ -30,8 +30,13 @@ namespace auth_flexaccess\local;
  *  - Account permanence and course permanence stay separate: by default the course end time carries
  *    over unchanged. Only when the caller states that the merge establishes permanent course access
  *    are the FlexAccess end times of the transferred enrolments removed.
- *  - The target keeps no temporary FlexAccess state and no restriction role. It is unsuspended only
- *    when FlexAccess itself had suspended it; a suspension with another origin is left alone.
+ *  - A merge never promotes the survivor: a temporary survivor stays temporary (own expiry, restriction,
+ *    state), a durable one keeps its state and loses only a restriction role it inherited by the table
+ *    merge. It is unsuspended only when FlexAccess itself had suspended it; a suspension with another
+ *    origin is left alone.
+ *  - A durable source is never treated as disposable: its FlexAccess account row is archived in the
+ *    registry (details.sourceaccount) before it is removed, and only after every postcondition holds.
+ *  - Pairs without FlexAccess state are not FlexAccess' business: nothing is recorded or changed.
  *  - No FlexAccess metadata survives on the source (account row, tokens, queued mail, restriction) -
  *    but only once every postcondition of the merge holds (see {@see merge_guard::postconditions()}):
  *    no LTI binding or LTI membership still points to the source, the target holds no duplicate LTI
@@ -67,7 +72,7 @@ final class merge_service {
         string $origin = 'event'
     ): \stdClass {
         global $DB;
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         $result = (object) [
             'status' => 'invalid',
             'reasons' => [],
@@ -81,6 +86,12 @@ final class merge_service {
             return $result;
         }
         if (!$DB->record_exists('user', ['id' => $targetuserid, 'deleted' => 0])) {
+            return $result;
+        }
+        if (!merge_policy::involved($sourceuserid, $targetuserid) && !merge_registry::get($sourceuserid, $targetuserid)) {
+            // Neither identity has FlexAccess state (case G): the site's general merge tool decides alone.
+            $result->status = 'nothingtodo';
+            $result->reasons = ['notinvolved'];
             return $result;
         }
 
@@ -101,9 +112,9 @@ final class merge_service {
                 // already happened: a violation of the direction rule is then a review case, and nothing
                 // of the pair is changed, so that an administrator can still reverse it.
                 $assessment = merge_guard::assess($sourceuserid, $targetuserid, $now);
-                $blockers = $origin === 'hook'
-                    ? $assessment->blockers
-                    : array_values(array_diff($assessment->blockers, [merge_guard::NEEDS_APPROVAL]));
+                // A missing approval (ownership proof) is a blocker for every origin (auth_flexaccess #13): after
+                // the fact the pair becomes a review case and FlexAccess changes nothing of it.
+                $blockers = $assessment->blockers;
                 if ($blockers) {
                     $status = $origin === 'hook' ? merge_registry::REFUSED : merge_registry::REVIEW;
                     $result->status = $status;
@@ -127,27 +138,31 @@ final class merge_service {
                     $result->transferred = (int) $moved->transferred;
                     $result->merged = (int) $moved->merged;
                 }
+                // Enrolments of both in one instance, which tool_mergeusers resolved by keeping the survivor's
+                // row: the source's recorded values are merged in with the same rule (auth_flexaccess #13).
+                $recorded = merge_evidence::apply_enrolments($sourceuserid, $targetuserid, $now);
+                $result->merged += $recorded->merged;
 
                 // 2. The surviving identity carries no temporary FlexAccess state. The lifecycle lifts
                 // a suspension of the target only when FlexAccess itself set it; an administrative
                 // suspension of the surviving identity stays and is reported, never lifted here.
                 $target = $DB->get_record('auth_flexaccess_account', ['userid' => $targetuserid]);
                 $result->targetlocked = !lifecycle::suspension_liftable($targetuserid);
-                $targetmoved = true;
-                if ($target && $target->accounttype === account_type::TEMPORARY_USER) {
-                    // Refused for a suspension of foreign origin: the target keeps its state and
-                    // restriction until an administrator decides (reported as targetlocked).
-                    $targetmoved = lifecycle::transition_to_active_authenticated($targetuserid, $now);
-                } else if ($target) {
+                // A merge never promotes the survivor (auth_flexaccess #13): a temporary survivor stays
+                // temporary with its own expiry and restriction - turning it into an ACTIVE account would
+                // need a verified decision and a credential handoff, which a merge is not.
+                $temporarytarget = $target && $target->accounttype === account_type::TEMPORARY_USER;
+                if ($target) {
                     lifecycle::normalise($targetuserid);
                 }
-                if ($targetmoved && self::holds_restriction($targetuserid)) {
+                if (!$temporarytarget && self::holds_restriction($targetuserid)) {
                     self::unrestrict_completely($targetuserid);
                     $result->restrictionlifted = true;
                 }
 
                 // 3. Postconditions decide: only a complete merge loses the source's FlexAccess metadata.
                 $result->reasons = merge_guard::postconditions($sourceuserid, $targetuserid, $registry);
+                $archive = $DB->get_record('auth_flexaccess_account', ['userid' => $sourceuserid]);
                 if (!$result->reasons) {
                     $result->sourcecleaned = self::clean_source($sourceuserid);
                 }
@@ -169,6 +184,14 @@ final class merge_service {
                         'targetlocked' => $result->targetlocked,
                         'from' => self::facts($assessment->from),
                         'to' => self::facts(merge_guard::identity($targetuserid)),
+                        'origins' => $assessment->origins,
+                        'lostroutes' => $assessment->lostroutes,
+                        // The source's lifecycle as it was, kept although the row itself is removed.
+                        'sourceaccount' => $archive ? array_diff_key((array) $archive, ['id' => true]) : null,
+                        'evidence' => count(merge_evidence::for_pair($sourceuserid, $targetuserid)),
+                        // Status, start and end of each recorded FlexAccess enrolment: source, survivor, result.
+                        'enrolmentmerges' => $recorded->results,
+                        'pendingenrolments' => $recorded->pending,
                     ],
                     $now
                 );
@@ -197,8 +220,9 @@ final class merge_service {
      */
     public static function verify(int $sourceuserid, int $targetuserid, ?int $now = null): \stdClass {
         global $DB;
-        $now = $now ?? time();
-        $row = merge_registry::get($sourceuserid, $targetuserid) ?? merge_registry::record($sourceuserid, $targetuserid, 'event');
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
+        $row = merge_registry::get($sourceuserid, $targetuserid)
+            ?? merge_registry::record($sourceuserid, $targetuserid, 'event', null, $now);
         if ((int) $row->timeconfirmed === 0 && merge_registry::confirm($sourceuserid, $targetuserid, null, 'verify', $now)) {
             $row = merge_registry::get($sourceuserid, $targetuserid);
         }

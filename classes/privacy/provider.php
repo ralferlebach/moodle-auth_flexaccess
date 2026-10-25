@@ -106,7 +106,21 @@ final class provider implements
             'approvedby' => 'privacy:metadata:merge:approvedby',
             'timeapproved' => 'privacy:metadata:merge:timeapproved',
             'mergelogid' => 'privacy:metadata:merge:mergelogid',
+            'prooftype' => 'privacy:metadata:merge:prooftype',
+            'proofevidence' => 'privacy:metadata:merge:proofevidence',
+            'ssobinding' => 'privacy:metadata:merge:ssobinding',
         ], 'privacy:metadata:merge');
+        $collection->add_database_table('auth_flexaccess_mergeevid', [
+            'fromuserid' => 'privacy:metadata:mergeevid:fromuserid',
+            'touserid' => 'privacy:metadata:mergeevid:touserid',
+            'tablename' => 'privacy:metadata:mergeevid:tablename',
+            'keyvalues' => 'privacy:metadata:mergeevid:keyvalues',
+            'sourcerows' => 'privacy:metadata:mergeevid:sourcerows',
+            'targetrows' => 'privacy:metadata:mergeevid:targetrows',
+            'acknowledgedby' => 'privacy:metadata:mergeevid:acknowledgedby',
+            'decisionreason' => 'privacy:metadata:mergeevid:decisionreason',
+            'timecreated' => 'privacy:metadata:mergeevid:timecreated',
+        ], 'privacy:metadata:mergeevid');
         $collection->add_database_table('auth_flexaccess_ratehit', [
             'bucket' => 'privacy:metadata:ratehit:bucket',
             'identifier' => 'privacy:metadata:ratehit:identifier',
@@ -135,6 +149,9 @@ final class provider implements
         $checks[] = "EXISTS (SELECT 1 FROM {auth_flexaccess_merge} m
                               WHERE m.fromuserid = ctx.instanceid OR m.touserid = ctx.instanceid
                                  OR m.approvedby = ctx.instanceid)";
+        $checks[] = "EXISTS (SELECT 1 FROM {auth_flexaccess_mergeevid} me
+                              WHERE me.fromuserid = ctx.instanceid OR me.touserid = ctx.instanceid
+                                 OR me.acknowledgedby = ctx.instanceid)";
         $checks[] = "EXISTS (SELECT 1 FROM {user_preferences} up
                               WHERE up.userid = ctx.instanceid AND up.name = :pref)";
         $params['pref'] = self::PENDING_PREF;
@@ -171,8 +188,21 @@ final class provider implements
              UNION
              SELECT touserid AS userid FROM {auth_flexaccess_merge} WHERE touserid = :u2
              UNION
-             SELECT approvedby AS userid FROM {auth_flexaccess_merge} WHERE approvedby = :u3",
-            ['u1' => $context->instanceid, 'u2' => $context->instanceid, 'u3' => $context->instanceid]
+             SELECT approvedby AS userid FROM {auth_flexaccess_merge} WHERE approvedby = :u3
+             UNION
+             SELECT fromuserid AS userid FROM {auth_flexaccess_mergeevid} WHERE fromuserid = :u4
+             UNION
+             SELECT touserid AS userid FROM {auth_flexaccess_mergeevid} WHERE touserid = :u5
+             UNION
+             SELECT acknowledgedby AS userid FROM {auth_flexaccess_mergeevid} WHERE acknowledgedby = :u6",
+            [
+                'u1' => $context->instanceid,
+                'u2' => $context->instanceid,
+                'u3' => $context->instanceid,
+                'u4' => $context->instanceid,
+                'u5' => $context->instanceid,
+                'u6' => $context->instanceid,
+            ]
         );
     }
 
@@ -264,10 +294,32 @@ final class provider implements
             $sections['merge'][] = (object) [
                 'role' => $role,
                 'timeapproved' => $date((int) ($row->timeapproved ?? 0) ?: null),
+                'prooftype' => $row->prooftype ?? null,
+                'proofevidence' => $role === 'approver' ? ($row->proofevidence ?? null) : null,
+                'ssobinding' => $role === 'survivor' ? json_decode((string) ($row->ssobinding ?? '')) : null,
                 'status' => $row->status,
                 'reasons' => $row->reasons,
                 'timecreated' => $date($row->timecreated),
                 'timemodified' => $date($row->timemodified),
+            ];
+        }
+        $evidence = $DB->get_records_select(
+            'auth_flexaccess_mergeevid',
+            'fromuserid = :u1 OR touserid = :u2 OR acknowledgedby = :u3',
+            ['u1' => $userid, 'u2' => $userid, 'u3' => $userid]
+        );
+        foreach ($evidence as $row) {
+            $own = (int) $row->fromuserid === $userid ? 'sourcerows' : ((int) $row->touserid === $userid ? 'targetrows' : null);
+            $sections['mergeevid'][] = (object) [
+                'role' => $own === 'sourcerows' ? 'mergedaway' : ($own ? 'survivor' : 'acknowledger'),
+                'tablename' => $row->tablename,
+                'keyvalues' => json_decode((string) ($row->keyvalues ?? '')),
+                // The archived columns only (never credentials), reduced again for rows of earlier versions.
+                'records' => $own ? \auth_flexaccess\local\merge_evidence::rows($row, $own) : null,
+                'timecreated' => $date($row->timecreated),
+                'timeacknowledged' => $date((int) $row->timeacknowledged ?: null),
+                'decision' => $row->decision ?? null,
+                'decisionreason' => $own ? null : ($row->decisionreason ?? null),
             ];
         }
         return $sections;
@@ -389,5 +441,11 @@ final class provider implements
         );
         // An approver's id is personal data of the approver; the merge record itself stays.
         $DB->set_field('auth_flexaccess_merge', 'approvedby', null, ['approvedby' => $userid]);
+        $DB->delete_records_select(
+            'auth_flexaccess_mergeevid',
+            'fromuserid = :u1 OR touserid = :u2',
+            ['u1' => $userid, 'u2' => $userid]
+        );
+        $DB->set_field('auth_flexaccess_mergeevid', 'acknowledgedby', null, ['acknowledgedby' => $userid]);
     }
 }

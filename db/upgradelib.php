@@ -124,7 +124,7 @@ function auth_flexaccess_backfill_merges(): int {
                  OR EXISTS (SELECT 1 FROM {user} u WHERE u.id IN (m.fromuserid, m.touserid) AND u.auth IN ('flexaccess', 'lti'))
                  OR EXISTS (SELECT 1 FROM {auth_lti_linked_login} l WHERE l.userid IN (m.fromuserid, m.touserid)))"
     );
-    $now = time();
+    $now = \core\di::get(\core\clock::class)->time();
     $count = 0;
     foreach ($rows as $row) {
         if ($DB->record_exists('auth_flexaccess_merge', ['fromuserid' => $row->fromuserid, 'touserid' => $row->touserid])) {

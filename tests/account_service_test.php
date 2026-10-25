@@ -35,6 +35,14 @@ use auth_flexaccess\local\account_type;
  * @covers \auth_flexaccess\local\account_service
  */
 final class account_service_test extends \advanced_testcase {
+    /** @var \frozen_clock The scenario's frozen Moodle clock: every reference time of a test reads it. */
+    private \frozen_clock $clock;
+
+    protected function setUp(): void {
+        parent::setUp();
+        $this->clock = $this->mock_clock_with_frozen();
+    }
+
     /**
      * Creating a temporary account stores temporary/ephemeral metadata.
      */
@@ -187,7 +195,7 @@ final class account_service_test extends \advanced_testcase {
      */
     public function test_mark_provisional(): void {
         $this->resetAfterTest();
-        $now = time();
+        $now = $this->clock->time();
         $ephemeral = $this->getDataGenerator()->create_user();
         $active = $this->getDataGenerator()->create_user();
         account_service::create_temporary($ephemeral->id, 'REF-P1', $now + DAYSECS, null, null, $now);

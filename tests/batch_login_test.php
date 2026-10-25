@@ -30,6 +30,9 @@ use auth_flexaccess\local\login_guard;
  * @covers \auth_flexaccess\local\lifecycle
  */
 final class batch_login_test extends \advanced_testcase {
+    /** @var \frozen_clock The scenario's frozen Moodle clock: every reference time of a test reads it. */
+    private \frozen_clock $clock;
+
     /** Card password. */
     private const PASSWORD = 'Card-Pass!42';
 
@@ -41,6 +44,7 @@ final class batch_login_test extends \advanced_testcase {
     protected function setUp(): void {
         global $CFG;
         parent::setUp();
+        $this->clock = $this->mock_clock_with_frozen();
         $this->resetAfterTest();
         $_SERVER['HTTP_USER_AGENT'] = $_SERVER['HTTP_USER_AGENT'] ?? 'phpunit';
         set_config('auth', 'flexaccess');
@@ -64,7 +68,7 @@ final class batch_login_test extends \advanced_testcase {
      * @return void
      */
     public function test_valid_batch_account_logs_in(): void {
-        $userid = api::create_batch_account('card_valid', self::PASSWORD, 'A', 'B', false, time() + 3600);
+        $userid = api::create_batch_account('card_valid', self::PASSWORD, 'A', 'B', false, $this->clock->time() + 3600);
         $this->assertEquals(1, api::get_account($userid)->batchcredential);
         if (class_exists('\enrol_flexaccess\local\participant_role')) {
             \enrol_flexaccess\local\participant_role::restrict($userid);
@@ -84,7 +88,7 @@ final class batch_login_test extends \advanced_testcase {
      * @return void
      */
     public function test_expired_batch_account_refused(): void {
-        $userid = api::create_batch_account('card_late', self::PASSWORD, 'A', 'B', false, time() - 1);
+        $userid = api::create_batch_account('card_late', self::PASSWORD, 'A', 'B', false, $this->clock->time() - 1);
         $this->assertFalse($this->login('card_late'));
         account_service::expire_due();
         $this->assertSame(login_guard::REASON_EXPIRED, login_guard::evaluate($userid, login_guard::CHANNEL_PASSWORD));
@@ -97,7 +101,7 @@ final class batch_login_test extends \advanced_testcase {
      */
     public function test_suspended_batch_account_refused(): void {
         global $DB;
-        $userid = api::create_batch_account('card_blocked', self::PASSWORD, 'A', 'B', false, time() + 3600);
+        $userid = api::create_batch_account('card_blocked', self::PASSWORD, 'A', 'B', false, $this->clock->time() + 3600);
         $DB->set_field('user', 'suspended', 1, ['id' => $userid]);
         $this->assertSame(login_guard::REASON_SUSPENDED, login_guard::evaluate($userid, login_guard::CHANNEL_PASSWORD));
         $this->assertFalse($this->login('card_blocked'));
@@ -110,7 +114,7 @@ final class batch_login_test extends \advanced_testcase {
      */
     public function test_anonymous_temporary_refused(): void {
         global $DB;
-        $userid = api::create_temporary_user(time() + 3600);
+        $userid = api::create_temporary_user($this->clock->time() + 3600);
         $user = $DB->get_record('user', ['id' => $userid]);
         update_internal_user_password($user, self::PASSWORD);
         $this->assertSame(login_guard::REASON_INACTIVE, login_guard::evaluate($userid, login_guard::CHANNEL_PASSWORD));
@@ -124,7 +128,7 @@ final class batch_login_test extends \advanced_testcase {
      */
     public function test_provisional_refused(): void {
         global $DB;
-        $userid = api::create_temporary_user(time() + 3600);
+        $userid = api::create_temporary_user($this->clock->time() + 3600);
         $this->assertSame('verificationsent', api::request_persistence($userid, 'prov@example.com', 'P', 'V', self::PASSWORD));
         $this->assertSame(account_state::PROVISIONAL, api::get_account($userid)->accountstate);
         // Even if it were wrongly flagged, a provisional account never qualifies.
@@ -138,7 +142,7 @@ final class batch_login_test extends \advanced_testcase {
      * @return void
      */
     public function test_no_magic_login(): void {
-        $userid = api::create_batch_account('card_magic', self::PASSWORD, 'A', 'B', false, time() + 3600);
+        $userid = api::create_batch_account('card_magic', self::PASSWORD, 'A', 'B', false, $this->clock->time() + 3600);
         $this->assertSame(login_guard::REASON_INACTIVE, login_guard::evaluate($userid, login_guard::CHANNEL_MAGIC));
     }
 
@@ -152,13 +156,13 @@ final class batch_login_test extends \advanced_testcase {
         if (!$DB->get_manager()->table_exists('tool_flexaccess_batch_member')) {
             $this->markTestSkipped('Requires the tool_flexaccess sibling plugin.');
         }
-        $member = api::create_batch_account('card_old', self::PASSWORD, 'A', 'B', false, time() + 3600);
+        $member = api::create_batch_account('card_old', self::PASSWORD, 'A', 'B', false, $this->clock->time() + 3600);
         $converted = api::create_batch_account('card_conv', self::PASSWORD, 'A', 'B', true);
-        $anonymous = api::create_temporary_user(time() + 3600);
+        $anonymous = api::create_temporary_user($this->clock->time() + 3600);
         // Simulate data from before 1.1.0: no flag set.
         $DB->set_field('auth_flexaccess_account', 'batchcredential', 0, []);
         $batchid = $DB->insert_record('tool_flexaccess_batch', (object) [
-            'courseid' => SITEID, 'name' => 'old', 'permanent' => 0, 'membercount' => 2, 'timecreated' => time(),
+            'courseid' => SITEID, 'name' => 'old', 'permanent' => 0, 'membercount' => 2, 'timecreated' => $this->clock->time(),
         ]);
         $DB->insert_record('tool_flexaccess_batch_member', (object) [
             'batchid' => $batchid, 'userid' => $member, 'username' => 'card_old', 'converted' => 0,
@@ -180,7 +184,7 @@ final class batch_login_test extends \advanced_testcase {
      * @return void
      */
     public function test_conversion_clears_flag(): void {
-        $userid = api::create_batch_account('card_convert', self::PASSWORD, 'A', 'B', false, time() + 3600);
+        $userid = api::create_batch_account('card_convert', self::PASSWORD, 'A', 'B', false, $this->clock->time() + 3600);
         $this->assertSame('converted', api::admin_convert($userid, 'card.person@example.com'));
         $this->assertEquals(0, api::get_account($userid)->batchcredential);
         // Pending credential: the card password does not work any more until the new one is set.

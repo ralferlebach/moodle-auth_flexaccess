@@ -31,6 +31,9 @@ use auth_flexaccess\local\login_guard;
  * @covers \auth_plugin_flexaccess
  */
 final class login_guard_test extends \advanced_testcase {
+    /** @var \frozen_clock The scenario's frozen Moodle clock: every reference time of a test reads it. */
+    private \frozen_clock $clock;
+
     /**
      * Session creation reads the user agent, which the CLI test runner does not provide.
      *
@@ -38,6 +41,7 @@ final class login_guard_test extends \advanced_testcase {
      */
     protected function setUp(): void {
         parent::setUp();
+        $this->clock = $this->mock_clock_with_frozen();
         $_SERVER['HTTP_USER_AGENT'] = $_SERVER['HTTP_USER_AGENT'] ?? 'phpunit';
         $this->resetAfterTest();
         // Core only asks enabled auth plugins; without this every login would fail trivially.
@@ -64,9 +68,9 @@ final class login_guard_test extends \advanced_testcase {
             'accounttype' => $type,
             'accountstate' => $state,
             'referencecode' => account_service::generate_unique_reference(),
-            'timecreated' => time(),
+            'timecreated' => $this->clock->time(),
             'timeexpires' => $expires,
-            'timemodified' => time(),
+            'timemodified' => $this->clock->time(),
         ]);
         return $user;
     }
@@ -139,7 +143,7 @@ final class login_guard_test extends \advanced_testcase {
         api::request_magic_login('magic.suspended@example.com');
         $DB->set_field('user', 'suspended', 1, ['id' => $user->id]);
         $sink = $this->redirectEmails();
-        local\mail_worker::run(time());
+        local\mail_worker::run($this->clock->time());
         $this->assertSame(0, $sink->count());
         $sink->close();
         $this->assertFalse($DB->record_exists('auth_flexaccess_token', ['userid' => $user->id, 'timeused' => null]));
@@ -158,7 +162,7 @@ final class login_guard_test extends \advanced_testcase {
         }
         $this->assertFalse($this->password_login($user));
         // Expired by time although the task has not run yet: refused as well.
-        $late = $this->account(account_type::TEMPORARY_USER, account_state::EPHEMERAL, [], time() - 5);
+        $late = $this->account(account_type::TEMPORARY_USER, account_state::EPHEMERAL, [], $this->clock->time() - 5);
         $this->assertSame(login_guard::REASON_EXPIRED, login_guard::evaluate((int) $late->id, login_guard::CHANNEL_ENTRY));
     }
 
@@ -210,7 +214,7 @@ final class login_guard_test extends \advanced_testcase {
         set_config('allowguest', 1, 'enrol_flexaccess');
         $enrolid = \enrol_flexaccess\local\enrol_service::ensure_instance((int) $course->id);
         global $DB;
-        $DB->set_field('enrol_flexaccess_instance', 'allowguest', 1, ['enrolid' => $enrolid]);
+        \enrol_flexaccess\local\instance_config::save($enrolid, ['allowguest' => 1]);
         $guest = $DB->get_record('enrol', ['courseid' => $course->id, 'enrol' => 'guest']);
         if ($guest) {
             $DB->set_field('enrol', 'status', ENROL_INSTANCE_ENABLED, ['id' => $guest->id]);
@@ -232,7 +236,7 @@ final class login_guard_test extends \advanced_testcase {
      */
     public function test_temporary_account_channels(): void {
         $this->resetAfterTest();
-        $user = $this->account(account_type::TEMPORARY_USER, account_state::PROVISIONAL, [], time() + 3600);
+        $user = $this->account(account_type::TEMPORARY_USER, account_state::PROVISIONAL, [], $this->clock->time() + 3600);
         $this->assertSame(login_guard::OK, login_guard::evaluate((int) $user->id, login_guard::CHANNEL_ENTRY));
         $this->assertSame(login_guard::REASON_INACTIVE, login_guard::evaluate((int) $user->id, login_guard::CHANNEL_PASSWORD));
         $this->assertSame(login_guard::REASON_INACTIVE, login_guard::evaluate((int) $user->id, login_guard::CHANNEL_MAGIC));

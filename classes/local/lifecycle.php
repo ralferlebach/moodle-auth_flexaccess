@@ -122,7 +122,7 @@ final class lifecycle {
      */
     public static function transition_to_active_authenticated(int $userid, ?int $now = null): bool {
         global $DB;
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         // The target state includes an unsuspended Moodle user. If FlexAccess may not lift the current
         // suspension (unknown or administrative origin), the transition is refused before anything
         // is written - it never commits ACTIVE/PENDING_CREDENTIAL next to a suspended user.
@@ -162,7 +162,7 @@ final class lifecycle {
      */
     public static function transition_to_pending_credential(int $userid, ?int $now = null): bool {
         global $DB;
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         // The target state includes an unsuspended Moodle user. If FlexAccess may not lift the current
         // suspension (unknown or administrative origin), the transition is refused before anything
         // is written - it never commits ACTIVE/PENDING_CREDENTIAL next to a suspended user.
@@ -194,7 +194,7 @@ final class lifecycle {
      */
     public static function transition_to_expired(int $userid, ?int $now = null): bool {
         global $DB;
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         $account = $DB->get_record(self::TABLE, ['userid' => $userid]);
         if (!$account || $account->accounttype !== account_type::TEMPORARY_USER) {
             return false;
@@ -222,7 +222,7 @@ final class lifecycle {
      */
     public static function transition_to_recovered_temporary(int $userid, int $lifetime, ?int $now = null): ?string {
         global $DB;
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         if (!self::suspension_liftable($userid)) {
             return null;
         }
@@ -282,7 +282,7 @@ final class lifecycle {
      */
     public static function find_state_mismatches(?int $now = null, int $limit = 500, ?array $userids = null): array {
         global $DB;
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         $restrictionid = self::restriction_role_id();
         $systemid = \context_system::instance()->id;
 
@@ -367,7 +367,7 @@ final class lifecycle {
      */
     public static function count_state_mismatches(?int $now = null): array {
         global $DB;
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         $restrictionid = self::restriction_role_id();
         $sql = "SELECT a.userid, a.accounttype, a.accountstate, a.timeexpires, a.lockedby, u.suspended,
                        CASE WHEN ra.id IS NULL THEN 0 ELSE 1 END AS restricted

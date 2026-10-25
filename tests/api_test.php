@@ -34,6 +34,14 @@ use auth_flexaccess\local\account_type;
  * @covers \auth_flexaccess\api
  */
 final class api_test extends \advanced_testcase {
+    /** @var \frozen_clock The scenario's frozen Moodle clock: every reference time of a test reads it. */
+    private \frozen_clock $clock;
+
+    protected function setUp(): void {
+        parent::setUp();
+        $this->clock = $this->mock_clock_with_frozen();
+    }
+
     /**
      * Insert a FlexAccess account row for a user.
      *
@@ -72,7 +80,7 @@ final class api_test extends \advanced_testcase {
     public function test_classify_temporary(): void {
         $this->resetAfterTest();
         $user = $this->getDataGenerator()->create_user();
-        $this->make_account($user->id, account_type::TEMPORARY_USER, account_state::EPHEMERAL, time(), null);
+        $this->make_account($user->id, account_type::TEMPORARY_USER, account_state::EPHEMERAL, $this->clock->time(), null);
         $this->assertSame(account_type::TEMPORARY_USER, \auth_flexaccess\api::classify_user($user->id));
     }
 
@@ -84,7 +92,7 @@ final class api_test extends \advanced_testcase {
         $this->resetAfterTest();
         set_config('requireemailverification', 0, 'auth_flexaccess');
         $user = $this->getDataGenerator()->create_user(['email' => 'temp-sa@example.com']);
-        $this->make_account($user->id, account_type::TEMPORARY_USER, account_state::EPHEMERAL, time(), null);
+        $this->make_account($user->id, account_type::TEMPORARY_USER, account_state::EPHEMERAL, $this->clock->time(), null);
 
         $status = \auth_flexaccess\api::self_activate($user->id, 'Keep.Me@example.com', 'Str0ng-Pass!23', 'Kim', 'Keep');
         $this->assertSame('activated', $status);
@@ -104,7 +112,7 @@ final class api_test extends \advanced_testcase {
         $this->resetAfterTest();
         $this->getDataGenerator()->create_user(['email' => 'taken@example.com']);
         $user = $this->getDataGenerator()->create_user(['email' => 'temp-b@example.com']);
-        $this->make_account($user->id, account_type::TEMPORARY_USER, account_state::EPHEMERAL, time(), null);
+        $this->make_account($user->id, account_type::TEMPORARY_USER, account_state::EPHEMERAL, $this->clock->time(), null);
 
         $this->assertSame('emailtaken', \auth_flexaccess\api::self_activate($user->id, 'taken@example.com', 'Str0ng-Pass!23'));
         $this->assertSame(account_type::TEMPORARY_USER, \auth_flexaccess\api::classify_user($user->id));
@@ -116,7 +124,7 @@ final class api_test extends \advanced_testcase {
     public function test_self_activate_invalid_email(): void {
         $this->resetAfterTest();
         $user = $this->getDataGenerator()->create_user();
-        $this->make_account($user->id, account_type::TEMPORARY_USER, account_state::EPHEMERAL, time(), null);
+        $this->make_account($user->id, account_type::TEMPORARY_USER, account_state::EPHEMERAL, $this->clock->time(), null);
         $this->assertSame('invalidemail', \auth_flexaccess\api::self_activate($user->id, 'not-an-email', 'Str0ng-Pass!23'));
     }
 
@@ -134,7 +142,7 @@ final class api_test extends \advanced_testcase {
      */
     public function test_search_count_and_admin_convert(): void {
         $this->resetAfterTest();
-        $now = time();
+        $now = $this->clock->time();
         $alice = $this->getDataGenerator()->create_user(['email' => 'alice@example.com', 'firstname' => 'Alice']);
         $bob = $this->getDataGenerator()->create_user(['email' => 'bob@example.com', 'firstname' => 'Bob']);
         $carol = $this->getDataGenerator()->create_user(['email' => 'carol@example.com', 'firstname' => 'Carol']);
@@ -159,7 +167,7 @@ final class api_test extends \advanced_testcase {
         // Nothing is sent until the queue worker runs.
         $this->assertCount(0, $sink->get_messages());
 
-        \auth_flexaccess\local\mail_worker::run(time());
+        \auth_flexaccess\local\mail_worker::run($this->clock->time());
         $messages = $sink->get_messages();
         $this->assertGreaterThanOrEqual(1, count($messages));
         $this->assertSame('alice.real@example.com', $messages[0]->to);
@@ -181,7 +189,7 @@ final class api_test extends \advanced_testcase {
     public function test_search_by_reference_number(): void {
         global $DB;
         $this->resetAfterTest();
-        $now = time();
+        $now = $this->clock->time();
         $user = $this->getDataGenerator()->create_user(['email' => 'ref@example.com', 'firstname' => 'Ref']);
         $DB->insert_record('auth_flexaccess_account', (object) [
             'userid' => $user->id,
@@ -317,7 +325,7 @@ final class api_test extends \advanced_testcase {
      */
     public function test_self_activate_requires_verification_by_default(): void {
         $this->resetAfterTest();
-        $now = time();
+        $now = $this->clock->time();
         $user = $this->getDataGenerator()->create_user(['email' => 'temp-v@example.com']);
         \auth_flexaccess\local\account_service::create_temporary((int) $user->id, 'REF-V', $now + DAYSECS, null, null, $now);
 
@@ -338,7 +346,7 @@ final class api_test extends \advanced_testcase {
         $this->resetAfterTest();
         // Verification enabled is the production default.
         set_config('requireemailverification', 1, 'auth_flexaccess');
-        $now = time();
+        $now = $this->clock->time();
         $user = $this->getDataGenerator()->create_user(['email' => 'temp-e2e@flexaccess.invalid']);
         \auth_flexaccess\local\account_service::create_temporary((int) $user->id, 'REF-E2E', $now + DAYSECS, null, null, $now);
 

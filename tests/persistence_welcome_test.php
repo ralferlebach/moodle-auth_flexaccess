@@ -29,6 +29,14 @@ namespace auth_flexaccess;
  * @covers \auth_flexaccess\local\persistence_service
  */
 final class persistence_welcome_test extends \advanced_testcase {
+    /** @var \frozen_clock The scenario's frozen Moodle clock: every reference time of a test reads it. */
+    private \frozen_clock $clock;
+
+    protected function setUp(): void {
+        parent::setUp();
+        $this->clock = $this->mock_clock_with_frozen();
+    }
+
     public function test_flexaccess_accounts_support_password_change_and_recovery(): void {
         $this->resetAfterTest();
         $auth = get_auth_plugin('flexaccess');
@@ -44,7 +52,7 @@ final class persistence_welcome_test extends \advanced_testcase {
         global $CFG, $DB;
         $this->resetAfterTest();
         $course = $this->getDataGenerator()->create_course();
-        $now = time();
+        $now = $this->clock->time();
         $userid = \auth_flexaccess\api::create_temporary_user($now + DAYSECS, (int) $course->id, null, $now);
         $this->assertGreaterThan(0, $userid);
 
@@ -60,7 +68,7 @@ final class persistence_welcome_test extends \advanced_testcase {
         $this->assertSame('converted', $status);
 
         $sink = $this->redirectEmails();
-        \auth_flexaccess\local\mail_worker::run(time());
+        \auth_flexaccess\local\mail_worker::run($this->clock->time());
         $messages = $sink->get_messages();
         $sink->close();
 

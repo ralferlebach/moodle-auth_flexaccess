@@ -97,6 +97,9 @@
         <FIELD NAME="targetlockedby" TYPE="char" LENGTH="20" NOTNULL="false" SEQUENCE="false" COMMENT="Origin of that suspension"/>
         <FIELD NAME="approvedby" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="Administrator who confirmed that both accounts belong to one person"/>
         <FIELD NAME="timeapproved" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="When the merge was approved"/>
+        <FIELD NAME="prooftype" TYPE="char" LENGTH="20" NOTNULL="false" SEQUENCE="false" COMMENT="Kind of ownership proof: reauthentication, idp or documents"/>
+        <FIELD NAME="proofevidence" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="The administrator's description of the independent ownership evidence"/>
+        <FIELD NAME="ssobinding" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="JSON: the survivor's institutional login binding as approved"/>
         <FIELD NAME="mergelogid" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="Evidence: the successful tool_mergeusers log record of this pair"/>
         <FIELD NAME="timeconfirmed" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false" COMMENT="When the merge was confirmed by that evidence"/>
         <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
@@ -110,6 +113,34 @@
       <INDEXES>
         <INDEX NAME="pair_uix" UNIQUE="true" FIELDS="fromuserid, touserid"/>
         <INDEX NAME="status_ix" UNIQUE="false" FIELDS="status"/>
+      </INDEXES>
+    </TABLE>
+    <TABLE NAME="auth_flexaccess_mergeevid" COMMENT="Evidence of conflicting course work of both users of a merge, captured before tool_mergeusers resolved it">
+      <FIELDS>
+        <FIELD NAME="id" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="true"/>
+        <FIELD NAME="fromuserid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="Identity merged away"/>
+        <FIELD NAME="touserid" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="Surviving identity"/>
+        <FIELD NAME="tablename" TYPE="char" LENGTH="40" NOTNULL="true" SEQUENCE="false" COMMENT="Table of the colliding records"/>
+        <FIELD NAME="kind" TYPE="char" LENGTH="10" NOTNULL="true" DEFAULT="review" SEQUENCE="false" COMMENT="review, benign or enrolment"/>
+        <FIELD NAME="keyfields" TYPE="char" LENGTH="255" NOTNULL="false" SEQUENCE="false" COMMENT="Columns of the collision key, comma separated"/>
+        <FIELD NAME="keyvalues" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="JSON: values of the collision key"/>
+        <FIELD NAME="conflictkey" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false" COMMENT="First key value when numeric (grade item, quiz, assignment, course, enrol instance), else 0"/>
+        <FIELD NAME="sourcerows" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="JSON: the source user's records before the merge"/>
+        <FIELD NAME="targetrows" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="JSON: the survivor's records before the merge"/>
+        <FIELD NAME="acknowledgedby" TYPE="int" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="Administrator who reviewed the evidence"/>
+        <FIELD NAME="timeacknowledged" TYPE="int" LENGTH="10" NOTNULL="true" DEFAULT="0" SEQUENCE="false"/>
+        <FIELD NAME="decision" TYPE="char" LENGTH="10" NOTNULL="false" SEQUENCE="false" COMMENT="merged, discarded or reviewed; null while open or for benign records"/>
+        <FIELD NAME="decisionreason" TYPE="text" NOTNULL="false" SEQUENCE="false" COMMENT="Administrator's reason for discarding a recorded enrolment"/>
+        <FIELD NAME="timecreated" TYPE="int" LENGTH="10" NOTNULL="true" SEQUENCE="false"/>
+      </FIELDS>
+      <KEYS>
+        <KEY NAME="primary" TYPE="primary" FIELDS="id"/>
+        <KEY NAME="fromuserid" TYPE="foreign" FIELDS="fromuserid" REFTABLE="user" REFFIELDS="id"/>
+        <KEY NAME="touserid" TYPE="foreign" FIELDS="touserid" REFTABLE="user" REFFIELDS="id"/>
+      </KEYS>
+      <INDEXES>
+        <INDEX NAME="pair_ix" UNIQUE="false" FIELDS="fromuserid, touserid"/>
+        <INDEX NAME="kind_ix" UNIQUE="false" FIELDS="kind"/>
       </INDEXES>
     </TABLE>
   </TABLES>

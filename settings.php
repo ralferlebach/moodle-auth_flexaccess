@@ -111,4 +111,31 @@ if ($ADMIN->fulltree) {
         600,
         PARAM_INT
     ));
+
+    $settings->add(new admin_setting_heading(
+        'auth_flexaccess/mergeevidence',
+        get_string('settingsmergeevidence', 'auth_flexaccess'),
+        get_string('settingsmergeevidence_desc', 'auth_flexaccess')
+    ));
+    $settings->add(new admin_setting_configtext(
+        'auth_flexaccess/mergeevidenceretention',
+        get_string('settingmergeevidenceretention', 'auth_flexaccess'),
+        get_string('settingmergeevidenceretention_desc', 'auth_flexaccess'),
+        \auth_flexaccess\task\purge_merge_evidence::DEFAULT_RETENTION_DAYS,
+        PARAM_INT
+    ));
+    $settings->add(new admin_setting_configtext(
+        'auth_flexaccess/mergeevidencemaxrows',
+        get_string('settingmergeevidencemaxrows', 'auth_flexaccess'),
+        get_string('settingmergeevidencemaxrows_desc', 'auth_flexaccess'),
+        \auth_flexaccess\local\merge_evidence::DEFAULT_MAX_ROWS,
+        PARAM_INT
+    ));
+    $settings->add(new admin_setting_configtext(
+        'auth_flexaccess/mergeevidencemaxbytes',
+        get_string('settingmergeevidencemaxbytes', 'auth_flexaccess'),
+        get_string('settingmergeevidencemaxbytes_desc', 'auth_flexaccess'),
+        \auth_flexaccess\local\merge_evidence::DEFAULT_MAX_BYTES,
+        PARAM_INT
+    ));
 }

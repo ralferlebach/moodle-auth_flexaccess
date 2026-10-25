@@ -81,7 +81,7 @@ final class mail_worker {
      * @return int Number of jobs sent.
      */
     public static function run(?int $now = null): int {
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         $factory = \core\lock\lock_config::get_lock_factory('auth_flexaccess_mailqueue');
         $lock = $factory->get_lock('worker', 5);
         if (!$lock) {

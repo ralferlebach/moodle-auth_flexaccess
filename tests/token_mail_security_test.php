@@ -28,6 +28,9 @@ use auth_flexaccess\local\mail_worker;
  * @covers \auth_flexaccess\local\mail_worker
  */
 final class token_mail_security_test extends \advanced_testcase {
+    /** @var \frozen_clock The scenario's frozen Moodle clock: every reference time of a test reads it. */
+    private \frozen_clock $clock;
+
     /**
      * FlexAccess authentication enabled, as on a real site (a disabled plugin sends no login mail).
      *
@@ -35,6 +38,7 @@ final class token_mail_security_test extends \advanced_testcase {
      */
     protected function setUp(): void {
         parent::setUp();
+        $this->clock = $this->mock_clock_with_frozen();
         $this->resetAfterTest();
         set_config('auth', 'flexaccess');
     }
@@ -65,7 +69,7 @@ final class token_mail_security_test extends \advanced_testcase {
 
         // Deliver: the worker issues the token, stores only its hash, and the mail carries the link.
         $sink = $this->redirectEmails();
-        mail_worker::run(time());
+        mail_worker::run($this->clock->time());
         $messages = $sink->get_messages();
         $sink->close();
 
@@ -94,11 +98,11 @@ final class token_mail_security_test extends \advanced_testcase {
         \auth_flexaccess\api::request_magic_login('retry@example.com', '203.0.113.8');
 
         $sink = $this->redirectEmails();
-        mail_worker::run(time());
+        mail_worker::run($this->clock->time());
         // Simulate a second delivery of the same job by re-queuing and running again.
         $DB->set_field('auth_flexaccess_mailqueue', 'status', 'queued', ['userid' => $user->id]);
-        $DB->set_field('auth_flexaccess_mailqueue', 'nextrun', time(), ['userid' => $user->id]);
-        mail_worker::run(time());
+        $DB->set_field('auth_flexaccess_mailqueue', 'nextrun', $this->clock->time(), ['userid' => $user->id]);
+        mail_worker::run($this->clock->time());
         $sink->close();
 
         // Only one unused token remains after the retry (the earlier one was revoked).

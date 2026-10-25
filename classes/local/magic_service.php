@@ -63,7 +63,7 @@ final class magic_service {
      */
     public static function request_magic_login(string $email, ?string $clientip = null, ?int $now = null): string {
         global $DB;
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         if (!self::magic_login_enabled()) {
             return 'disabled';
         }
@@ -126,7 +126,7 @@ final class magic_service {
      * @return int|null User id to log in, or null.
      */
     public static function consume_magic_login(string $token, ?int $now = null): ?int {
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         $userid = token_service::consume($token, 'magiclogin', $now, null);
         if ($userid === null) {
             return null;

@@ -41,4 +41,10 @@ $observers = [
         'eventname' => '\tool_mergeusers\event\user_merged_success',
         'callback' => '\auth_flexaccess\observer::user_merged',
     ],
+    [
+        // A merge FlexAccess refused was rolled back together with its registry row: record the refusal
+        // again, outside the rolled-back transaction, so that the administrator sees it (auth_flexaccess #13).
+        'eventname' => '\tool_mergeusers\event\user_merged_failure',
+        'callback' => '\auth_flexaccess\observer::user_merge_failed',
+    ],
 ];

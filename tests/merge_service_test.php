@@ -28,6 +28,9 @@ use enrol_flexaccess\local\participant_role;
  * @covers \auth_flexaccess\observer
  */
 final class merge_service_test extends \advanced_testcase {
+    /** @var \frozen_clock The scenario's frozen Moodle clock: every reference time of a test reads it. */
+    private \frozen_clock $clock;
+
     /** @var \stdClass Course. */
     private $course;
     /** @var \stdClass FlexAccess enrol instance. */
@@ -41,6 +44,7 @@ final class merge_service_test extends \advanced_testcase {
     protected function setUp(): void {
         global $DB;
         parent::setUp();
+        $this->clock = $this->mock_clock_with_frozen();
         if (!class_exists('\enrol_flexaccess\api') || !method_exists('\enrol_flexaccess\api', 'transfer_user_enrolments')) {
             $this->markTestSkipped('Requires the enrol_flexaccess sibling plugin (1.1.0+).');
         }
@@ -59,10 +63,42 @@ final class merge_service_test extends \advanced_testcase {
      * @return int User id.
      */
     private function visitor(int $timeend, int $status = ENROL_USER_ACTIVE): int {
-        $userid = api::create_temporary_user(time() + 3600, (int) $this->course->id);
-        enrol_get_plugin('flexaccess')->enrol_user($this->instance, $userid, participant_role::get_id(), time(), $timeend, $status);
+        $userid = api::create_temporary_user($this->clock->time() + 3600, (int) $this->course->id);
+        $now = $this->clock->time();
+        enrol_get_plugin('flexaccess')->enrol_user($this->instance, $userid, participant_role::get_id(), $now, $timeend, $status);
         participant_role::restrict($userid);
         return $userid;
+    }
+
+    /**
+     * Approve the pair with an ownership proof, then reconcile it (every merge needs an approval, auth #13).
+     *
+     * @param int $source Source.
+     * @param int $target Survivor.
+     * @param bool $permanent Permanent course access.
+     * @return \stdClass Result of the reconciliation.
+     */
+    private function reconcile(int $source, int $target, bool $permanent = false): \stdClass {
+        local\merge_registry::approve($source, $target, (int) get_admin()->id, 'documents', 'ID card checked at the desk.');
+        return api::reconcile_external_identity_merge($source, $target, $permanent);
+    }
+
+    /**
+     * Without an approval (ownership proof) a reconciliation changes nothing, also for a temporary source.
+     *
+     * @return void
+     */
+    public function test_temporary_source_without_proof_changes_nothing(): void {
+        global $DB;
+        $source = $this->visitor($this->clock->time() + 3600);
+        $target = (int) $this->getDataGenerator()->create_user(['auth' => 'lti'])->id;
+        $result = api::reconcile_external_identity_merge($source, $target);
+        $this->assertSame(local\merge_registry::REVIEW, $result->status);
+        $this->assertSame([local\merge_guard::NEEDS_APPROVAL], $result->reasons);
+        $this->assertNotNull($this->ue($source), 'The enrolment stays with the source.');
+        $this->assertNull($this->ue($target));
+        $this->assertTrue($DB->record_exists('auth_flexaccess_account', ['userid' => $source]));
+        $this->assertTrue($this->restricted($source));
     }
 
     /**
@@ -93,12 +129,12 @@ final class merge_service_test extends \advanced_testcase {
      */
     public function test_temporary_into_durable_identity(): void {
         global $DB;
-        $source = $this->visitor(time() + 3600);
+        $source = $this->visitor($this->clock->time() + 3600);
         $target = (int) $this->getDataGenerator()->create_user(['auth' => 'lti'])->id;
         participant_role::restrict($target); // Inherited by a direct table merge.
         $this->assertTrue($this->restricted($source));
 
-        $result = api::reconcile_external_identity_merge($source, $target);
+        $result = $this->reconcile($source, $target);
         $this->assertSame('reconciled', $result->status);
         $this->assertSame(1, $result->transferred);
         $this->assertNotNull($this->ue($target));
@@ -118,12 +154,13 @@ final class merge_service_test extends \advanced_testcase {
      * @return void
      */
     public function test_both_in_same_course(): void {
-        $end = time() + 7200;
+        $end = $this->clock->time() + 7200;
         $source = $this->visitor($end);
         $target = (int) $this->getDataGenerator()->create_user()->id;
         $plugin = enrol_get_plugin('flexaccess');
-        $plugin->enrol_user($this->instance, $target, participant_role::get_id(), time(), time() + 60, ENROL_USER_SUSPENDED);
-        $result = api::reconcile_external_identity_merge($source, $target);
+        $now = $this->clock->time();
+        $plugin->enrol_user($this->instance, $target, participant_role::get_id(), $now, $now + 60, ENROL_USER_SUSPENDED);
+        $result = $this->reconcile($source, $target);
         $this->assertSame(1, $result->merged);
         $ue = $this->ue($target);
         $this->assertEquals(ENROL_USER_ACTIVE, $ue->status);
@@ -137,10 +174,10 @@ final class merge_service_test extends \advanced_testcase {
      * @return void
      */
     public function test_only_source_enrolled_keeps_course_end(): void {
-        $end = time() + 3600;
+        $end = $this->clock->time() + 3600;
         $source = $this->visitor($end);
         $target = (int) $this->getDataGenerator()->create_user()->id;
-        api::reconcile_external_identity_merge($source, $target);
+        $this->reconcile($source, $target);
         $this->assertEquals($end, $this->ue($target)->timeend);
     }
 
@@ -151,7 +188,7 @@ final class merge_service_test extends \advanced_testcase {
      */
     public function test_other_durable_enrolment_untouched(): void {
         global $DB;
-        $source = $this->visitor(time() + 3600);
+        $source = $this->visitor($this->clock->time() + 3600);
         $target = (int) $this->getDataGenerator()->create_user()->id;
         $this->getDataGenerator()->enrol_user($target, (int) $this->course->id, 'student', 'manual');
         $manual = $DB->get_record_sql(
@@ -159,7 +196,7 @@ final class merge_service_test extends \advanced_testcase {
               WHERE e.enrol = 'manual' AND e.courseid = :c AND ue.userid = :u",
             ['c' => $this->course->id, 'u' => $target]
         );
-        api::reconcile_external_identity_merge($source, $target);
+        $this->reconcile($source, $target);
         $after = $DB->get_record('user_enrolments', ['id' => $manual->id]);
         $this->assertEquals($manual->timeend, $after->timeend);
         $this->assertEquals($manual->status, $after->status);
@@ -172,10 +209,10 @@ final class merge_service_test extends \advanced_testcase {
      */
     public function test_idempotent(): void {
         global $DB;
-        $source = $this->visitor(time() + 3600);
+        $source = $this->visitor($this->clock->time() + 3600);
         $target = (int) $this->getDataGenerator()->create_user()->id;
-        api::reconcile_external_identity_merge($source, $target);
-        $second = api::reconcile_external_identity_merge($source, $target);
+        $this->reconcile($source, $target);
+        $second = $this->reconcile($source, $target);
         $this->assertSame('nothingtodo', $second->status);
         $this->assertSame(1, $DB->count_records('user_enrolments', ['enrolid' => $this->instance->id, 'userid' => $target]));
         $context = \context_course::instance((int) $this->course->id);
@@ -190,20 +227,20 @@ final class merge_service_test extends \advanced_testcase {
      * @return void
      */
     public function test_permanent_course_access_is_explicit(): void {
-        $expired = time() - 10;
+        $expired = $this->clock->time() - 10;
         $a = $this->visitor($expired, ENROL_USER_SUSPENDED);
         $durable = (int) $this->getDataGenerator()->create_user(['auth' => 'lti'])->id;
         // Default: identity permanence only - the course end carries over and may still expire.
-        api::reconcile_external_identity_merge($a, $durable, false);
+        $this->reconcile($a, $durable, false);
         $this->assertEquals($expired, $this->ue($durable)->timeend);
 
         // Explicit permanent course access: the temporary FlexAccess limit no longer cuts access.
         $b = $this->visitor($expired, ENROL_USER_SUSPENDED);
         $other = (int) $this->getDataGenerator()->create_user(['auth' => 'lti'])->id;
-        api::reconcile_external_identity_merge($b, $other, true);
+        $this->reconcile($b, $other, true);
         $this->assertEquals(0, $this->ue($other)->timeend);
         $this->assertEquals(ENROL_USER_ACTIVE, $this->ue($other)->status);
-        \enrol_flexaccess\local\enrol_expiry::process(time());
+        \enrol_flexaccess\local\enrol_expiry::process($this->clock->time());
         $this->assertEquals(0, $this->ue($other)->timeend);
     }
 
@@ -213,7 +250,7 @@ final class merge_service_test extends \advanced_testcase {
      * @return void
      */
     public function test_invalid_and_observer(): void {
-        $source = $this->visitor(time() + 3600);
+        $source = $this->visitor($this->clock->time() + 3600);
         $this->assertSame('invalid', api::reconcile_external_identity_merge($source, $source)->status);
         $this->assertSame('invalid', api::reconcile_external_identity_merge($source, 999999)->status);
         $this->assertNotNull($this->ue($source));
@@ -225,6 +262,7 @@ final class merge_service_test extends \advanced_testcase {
             'context' => \context_user::instance($target),
             'other' => ['usersinvolved' => ['toid' => $target, 'fromid' => $source]],
         ]);
+        local\merge_registry::approve($source, $target, (int) get_admin()->id, 'documents', 'ID card checked at the desk.');
         observer::user_merged($event);
         // The observer only queues the work; nothing has moved yet.
         $this->assertNull($this->ue($target));
@@ -244,21 +282,21 @@ final class merge_service_test extends \advanced_testcase {
      */
     public function test_admin_locked_target_stays_locked(): void {
         global $DB;
-        $source = $this->visitor(time() + 3600);
+        $source = $this->visitor($this->clock->time() + 3600);
         $target = (int) $this->getDataGenerator()->create_user(['auth' => 'flexaccess', 'suspended' => 1])->id;
         local\account_service::create_authenticated($target, local\account_service::generate_unique_reference());
-        $result = api::reconcile_external_identity_merge($source, $target);
+        $result = $this->reconcile($source, $target);
         $this->assertTrue($result->targetlocked);
         $this->assertEquals(1, $DB->get_field('user', 'suspended', ['id' => $target]));
         // The course access still moved; only the suspension is left for an administrator.
         $this->assertNotNull($this->ue($target));
 
         // A suspension FlexAccess set on the target is lifted.
-        $other = $this->visitor(time() + 3600);
+        $other = $this->visitor($this->clock->time() + 3600);
         $flextarget = (int) $this->getDataGenerator()->create_user(['auth' => 'flexaccess', 'suspended' => 1])->id;
         local\account_service::create_authenticated($flextarget, local\account_service::generate_unique_reference());
         $DB->set_field('auth_flexaccess_account', 'lockedby', local\lifecycle::LOCKED_BY_FLEXACCESS, ['userid' => $flextarget]);
-        $this->assertFalse(api::reconcile_external_identity_merge($other, $flextarget)->targetlocked);
+        $this->assertFalse($this->reconcile($other, $flextarget)->targetlocked);
         $this->assertEquals(0, $DB->get_field('user', 'suspended', ['id' => $flextarget]));
     }
 
@@ -269,7 +307,7 @@ final class merge_service_test extends \advanced_testcase {
      */
     public function test_historical_restriction_removed_completely(): void {
         global $DB;
-        $source = $this->visitor(time() + 3600);
+        $source = $this->visitor($this->clock->time() + 3600);
         $target = (int) $this->getDataGenerator()->create_user()->id;
         $system = \context_system::instance()->id;
         $roleid = participant_role::get_restriction_id();
@@ -277,12 +315,12 @@ final class merge_service_test extends \advanced_testcase {
         role_assign($roleid, $target, $system);
         role_assign($roleid, $source, $system);
         $this->assertTrue($this->restricted($target));
-        api::reconcile_external_identity_merge($source, $target);
+        $this->reconcile($source, $target);
         $this->assertSame(0, $DB->count_records('role_assignments', ['roleid' => $roleid, 'userid' => $target]));
         $this->assertSame(0, $DB->count_records('role_assignments', ['roleid' => $roleid, 'userid' => $source]));
 
         // The lifecycle transition to a permanent identity removes it just as completely.
-        $temp = $this->visitor(time() + 3600);
+        $temp = $this->visitor($this->clock->time() + 3600);
         role_assign($roleid, $temp, $system);
         local\lifecycle::transition_to_active_authenticated($temp);
         $this->assertSame(0, $DB->count_records('role_assignments', ['roleid' => $roleid, 'userid' => $temp]));
@@ -296,10 +334,10 @@ final class merge_service_test extends \advanced_testcase {
      */
     public function test_foreign_locked_temporary_target_is_not_converted(): void {
         global $DB;
-        $source = $this->visitor(time() + 3600);
-        $target = $this->visitor(time() + 3600);
+        $source = $this->visitor($this->clock->time() + 3600);
+        $target = $this->visitor($this->clock->time() + 3600);
         $DB->set_field('user', 'suspended', 1, ['id' => $target]);
-        $result = api::reconcile_external_identity_merge($source, $target);
+        $result = $this->reconcile($source, $target);
         $this->assertTrue($result->targetlocked);
         $account = api::get_account($target);
         $this->assertSame(local\account_type::TEMPORARY_USER, $account->accounttype);

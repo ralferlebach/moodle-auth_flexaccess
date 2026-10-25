@@ -31,6 +31,14 @@ use auth_flexaccess\local\mail_worker;
  * @covers \auth_flexaccess\local\mail_worker
  */
 final class mail_throttle_test extends \advanced_testcase {
+    /** @var \frozen_clock The scenario's frozen Moodle clock: every reference time of a test reads it. */
+    private \frozen_clock $clock;
+
+    protected function setUp(): void {
+        parent::setUp();
+        $this->clock = $this->mock_clock_with_frozen();
+    }
+
     /**
      * Insert a queue row in a given state.
      *
@@ -56,7 +64,7 @@ final class mail_throttle_test extends \advanced_testcase {
 
     public function test_delivered_but_unacknowledged_mail_counts_against_the_limit(): void {
         $this->resetAfterTest();
-        $now = time();
+        $now = $this->clock->time();
 
         $this->row('sent', $now - 10, $now);
         $this->row('ackpending', $now - 10, $now);
@@ -76,7 +84,7 @@ final class mail_throttle_test extends \advanced_testcase {
     public function test_acknowledgements_run_even_when_the_send_budget_is_exhausted(): void {
         global $DB;
         $this->resetAfterTest();
-        $now = time();
+        $now = $this->clock->time();
         require_once(__DIR__ . '/../../../admin/tool/flexaccess/tests/fixtures/failing_ack_renderer.php');
 
         // No send capacity left at all.

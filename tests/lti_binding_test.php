@@ -31,6 +31,9 @@ use auth_flexaccess\local\lti_guard;
  * @covers \auth_flexaccess\local\login_guard
  */
 final class lti_binding_test extends \advanced_testcase {
+    /** @var \frozen_clock The scenario's frozen Moodle clock: every reference time of a test reads it. */
+    private \frozen_clock $clock;
+
     /** Platform issuer used throughout. */
     private const ISS = 'https://platform.example.org';
 
@@ -40,6 +43,7 @@ final class lti_binding_test extends \advanced_testcase {
     protected function setUp(): void {
         global $CFG;
         parent::setUp();
+        $this->clock = $this->mock_clock_with_frozen();
         $this->resetAfterTest();
         local\login_guard::reset_guarded_logins();
         require_once($CFG->dirroot . '/auth/lti/auth.php');
@@ -123,7 +127,7 @@ final class lti_binding_test extends \advanced_testcase {
     public function test_temporary_session_is_not_bound(): void {
         global $CFG, $SESSION, $DB;
         require_once($CFG->dirroot . '/auth/flexaccess/lib.php');
-        $temporary = api::create_temporary_user(time() + HOURSECS);
+        $temporary = api::create_temporary_user($this->clock->time() + HOURSECS);
         $this->setUser($temporary);
         $this->binding_request('visitor-1');
         $sink = $this->redirectEvents();
@@ -147,7 +151,7 @@ final class lti_binding_test extends \advanced_testcase {
      */
     public function test_identity_matrix(): void {
         global $DB;
-        $now = time();
+        $now = $this->clock->time();
         $active = $this->durable();
         $this->assertSame('', lti_guard::durable_identity_problem($active, $now));
 
@@ -201,7 +205,7 @@ final class lti_binding_test extends \advanced_testcase {
     public function test_binding_check_is_scoped(): void {
         global $CFG, $SCRIPT;
         require_once($CFG->dirroot . '/auth/flexaccess/lib.php');
-        $temporary = api::create_temporary_user(time() + HOURSECS);
+        $temporary = api::create_temporary_user($this->clock->time() + HOURSECS);
         $this->setUser($temporary);
         $SCRIPT = '/course/view.php';
         $_POST['existing_account'] = 1;
@@ -220,11 +224,11 @@ final class lti_binding_test extends \advanced_testcase {
      */
     public function test_bound_launch_of_lapsed_account_is_refused(): void {
         global $DB;
-        $temporary = api::create_temporary_user(time() + HOURSECS);
+        $temporary = api::create_temporary_user($this->clock->time() + HOURSECS);
         // A binding from before this policy (or created by other means) to a temporary identity.
         (new \auth_plugin_lti())->create_user_binding(self::ISS, 'legacy-1', $temporary);
         // Lapsed, but the scheduled task has not suspended it yet: Core's suspension check passes.
-        $DB->set_field('auth_flexaccess_account', 'timeexpires', time() - 60, ['userid' => $temporary]);
+        $DB->set_field('auth_flexaccess_account', 'timeexpires', $this->clock->time() - 60, ['userid' => $temporary]);
         $this->assertEquals(0, $DB->get_field('user', 'suspended', ['id' => $temporary]));
 
         $sink = $this->redirectEvents();
@@ -287,7 +291,7 @@ final class lti_binding_test extends \advanced_testcase {
      */
     public function test_guarded_entry_login_is_not_refused(): void {
         global $USER;
-        $temporary = api::create_temporary_user(time() + HOURSECS);
+        $temporary = api::create_temporary_user($this->clock->time() + HOURSECS);
         // Hide session header errors, as Core's own complete_user_login() test does.
         $this->assertTrue(@login_guard::complete_login($temporary, login_guard::CHANNEL_ENTRY));
         $this->assertSame($temporary, (int) $USER->id);
@@ -337,7 +341,7 @@ final class lti_binding_test extends \advanced_testcase {
         $this->assertTrue(isloggedin());
 
         // Expired, the scheduled task has not run yet, the session is still open.
-        $DB->set_field('auth_flexaccess_account', 'timeexpires', time() - 60, ['userid' => $userid]);
+        $DB->set_field('auth_flexaccess_account', 'timeexpires', $this->clock->time() - 60, ['userid' => $userid]);
         $DB->set_field('auth_flexaccess_account', 'accountstate', 'expired', ['userid' => $userid]);
         try {
             @auth_flexaccess_after_require_login();

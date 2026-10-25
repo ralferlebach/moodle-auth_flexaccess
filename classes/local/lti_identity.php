@@ -230,7 +230,7 @@ final class lti_identity {
             return $result;
         }
         $transaction = $DB->start_delegated_transaction();
-        $now = time();
+        $now = \core\di::get(\core\clock::class)->time();
         foreach ($bindings as $binding) {
             $DB->update_record('auth_lti_linked_login', (object) [
                 'id' => $binding->id,

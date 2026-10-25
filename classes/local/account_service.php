@@ -71,7 +71,7 @@ final class account_service {
      */
     public static function mark_provisional(int $userid, ?int $now = null): void {
         global $DB;
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         $account = $DB->get_record(self::TABLE, ['userid' => $userid]);
         if (
             !$account
@@ -107,7 +107,7 @@ final class account_service {
         bool $batchcredential = false
     ): int {
         global $DB;
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         return self::insert_with_reference_retry((object) [
             'userid' => $userid,
             'accounttype' => account_type::TEMPORARY_USER,
@@ -176,7 +176,7 @@ final class account_service {
      */
     public static function create_authenticated(int $userid, ?string $referencecode = null, ?int $now = null): int {
         global $DB;
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         return self::insert_with_reference_retry((object) [
             'userid' => $userid,
             'accounttype' => account_type::AUTHENTICATED_USER,
@@ -241,7 +241,7 @@ final class account_service {
      */
     public static function is_convertible(int $userid, ?int $now = null): bool {
         global $DB;
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         $account = $DB->get_record(self::TABLE, ['userid' => $userid]);
         if (!$account || $account->accounttype !== account_type::TEMPORARY_USER) {
             return false;
@@ -268,7 +268,7 @@ final class account_service {
      */
     public static function expire_due(?int $now = null, int $limit = 500): int {
         global $DB;
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         $select = "accounttype = :type AND timeexpires > 0 AND timeexpires <= :now AND accountstate <> :expired";
         $params = [
             'type' => account_type::TEMPORARY_USER,
@@ -300,7 +300,7 @@ final class account_service {
     public static function purge_expired(?int $now = null, int $retention = 0, int $limit = 200): int {
         global $CFG, $DB;
         require_once($CFG->dirroot . '/user/lib.php');
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         if ($retention <= 0) {
             return 0;
         }

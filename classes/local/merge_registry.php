@@ -61,6 +61,17 @@ final class merge_registry {
     /** How long an approval stays valid, in seconds. */
     public const APPROVAL_LIFETIME = DAYSECS;
 
+    /** Ownership proof: the person re-authenticated with both accounts in front of the administrator. */
+    public const PROOF_REAUTHENTICATION = 'reauthentication';
+    /** Ownership proof: the identity provider confirmed that both identities belong to the person. */
+    public const PROOF_IDP = 'idp';
+    /** Ownership proof: independent documents or records (ID check, student record, signed request). */
+    public const PROOF_DOCUMENTS = 'documents';
+    /** Accepted ownership proofs. A matching e-mail address or name is never one of them. */
+    public const PROOFS = [self::PROOF_REAUTHENTICATION, self::PROOF_IDP, self::PROOF_DOCUMENTS];
+    /** Minimum length of the evidence description, without e-mail addresses. */
+    public const EVIDENCE_MIN_LENGTH = 20;
+
     /**
      * The registry row of a pair, if any.
      *
@@ -91,7 +102,7 @@ final class merge_registry {
         ?int $now = null
     ): \stdClass {
         global $DB;
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         $row = self::get($fromuserid, $touserid);
         if ($row) {
             if ($status !== null) {
@@ -112,6 +123,9 @@ final class merge_registry {
             'targetlockedby' => null,
             'approvedby' => null,
             'timeapproved' => 0,
+            'prooftype' => null,
+            'proofevidence' => null,
+            'ssobinding' => null,
             'mergelogid' => null,
             'timeconfirmed' => 0,
             'timecreated' => $now,
@@ -122,22 +136,60 @@ final class merge_registry {
     }
 
     /**
+     * Why an ownership proof is not acceptable, or null when it is.
+     *
+     * The evidence must describe an independent check; e-mail addresses are removed before its length is
+     * judged, so "same address" or a pasted address is never accepted as proof.
+     *
+     * @param string $proof Proof kind (one of {@see self::PROOFS}).
+     * @param string $evidence The administrator's description of the evidence.
+     * @return string|null 'prooftype' or 'proofevidence', or null.
+     */
+    public static function proof_problem(string $proof, string $evidence): ?string {
+        if (!in_array($proof, self::PROOFS, true)) {
+            return 'prooftype';
+        }
+        $withoutaddresses = preg_replace('/[^\s@]+@[^\s@]+/u', '', $evidence);
+        $text = trim(preg_replace('/\s+/u', ' ', (string) $withoutaddresses));
+        return \core_text::strlen($text) < self::EVIDENCE_MIN_LENGTH ? 'proofevidence' : null;
+    }
+
+    /**
      * Record an administrator's approval (consent) for merging a pair of durable identities.
      *
      * @param int $fromuserid Identity to be merged away.
      * @param int $touserid Identity to keep.
      * @param int $approverid The administrator who confirmed the ownership of both accounts.
+     * @param string $proof Kind of ownership proof (one of {@see self::PROOFS}).
+     * @param string $evidence Description of the independent evidence.
      * @param int|null $now Current time.
      * @return \stdClass The row.
+     * @throws \invalid_parameter_exception Without an accepted proof (nothing is recorded).
      */
-    public static function approve(int $fromuserid, int $touserid, int $approverid, ?int $now = null): \stdClass {
+    public static function approve(
+        int $fromuserid,
+        int $touserid,
+        int $approverid,
+        string $proof,
+        string $evidence,
+        ?int $now = null
+    ): \stdClass {
         global $DB;
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
+        if (self::proof_problem($proof, $evidence) !== null) {
+            throw new \invalid_parameter_exception('An approval needs an accepted ownership proof with evidence.');
+        }
         $row = self::get($fromuserid, $touserid);
         $merged = $row && (int) $row->timeconfirmed > 0;
         $row = self::record($fromuserid, $touserid, 'admin', $merged ? null : self::PREAPPROVED, $now);
         $row->approvedby = $approverid;
         $row->timeapproved = $now;
+        $row->prooftype = $proof;
+        $row->proofevidence = trim($evidence);
+        // The survivor's institutional login as approved; the merge must leave it intact (auth_flexaccess #13).
+        $to = merge_guard::identity($touserid);
+        $row->ssobinding = merge_policy::origin($to) === merge_policy::INSTITUTIONAL
+            ? json_encode(merge_policy::sso_binding($touserid)->binding) : null;
         $DB->update_record(self::TABLE, $row);
         return $row;
     }
@@ -171,7 +223,7 @@ final class merge_registry {
         $row->status = $status;
         $row->reasons = $reasons ? implode(',', array_values(array_unique($reasons))) : null;
         $row->details = json_encode($details);
-        $row->timemodified = $now ?? time();
+        $row->timemodified = $now ?? \core\di::get(\core\clock::class)->time();
         $DB->update_record(self::TABLE, $row);
     }
 
@@ -185,8 +237,16 @@ final class merge_registry {
      */
     public static function is_approved(int $fromuserid, int $touserid, ?int $now = null): bool {
         $row = self::get($fromuserid, $touserid);
-        return $row && !empty($row->approvedby)
-            && (int) $row->timeapproved > ($now ?? time()) - self::APPROVAL_LIFETIME;
+        if (!$row || empty($row->approvedby) || !in_array((string) ($row->prooftype ?? ''), self::PROOFS, true)) {
+            return false;
+        }
+        if ((int) $row->timeconfirmed > 0) {
+            // A merge that happened: the approval must not have been older than its lifetime when the merge
+            // happened (re-checks may come much later); an approval given afterwards - the review of a merge
+            // done without FlexAccess' check - counts as well.
+            return (int) $row->timeapproved > (int) $row->timeconfirmed - self::APPROVAL_LIFETIME;
+        }
+        return (int) $row->timeapproved > ($now ?? \core\di::get(\core\clock::class)->time()) - self::APPROVAL_LIFETIME;
     }
 
     /**
@@ -238,7 +298,7 @@ final class merge_registry {
         if (!$log) {
             return false;
         }
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         $row = self::get($fromuserid, $touserid) ?? self::record($fromuserid, $touserid, $origin, null, $now);
         if ((int) $row->mergelogid === (int) $log->id && (int) $row->timeconfirmed > 0) {
             return true;

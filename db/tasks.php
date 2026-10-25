@@ -35,4 +35,9 @@ $tasks = [
         'blocking' => 0,
         'minute' => '*/5', 'hour' => '*', 'day' => '*', 'month' => '*', 'dayofweek' => '*',
     ],
+    [
+        'classname' => '\auth_flexaccess\task\purge_merge_evidence',
+        'blocking' => 0,
+        'minute' => 'R', 'hour' => '3', 'day' => '*', 'month' => '*', 'dayofweek' => '*',
+    ],
 ];

@@ -193,7 +193,9 @@ jobs:
           # Exactly the commits pinned by the "family" job (no moving branches).
           python3 plugin/.github/scripts/flexaccess_family.py fetch --lock-json "$FAMILY_LOCK" \
             --self auth_flexaccess --dest moodle-plugin-ci-plugins
-          moodle-plugin-ci install --plugin ./plugin --db-host=127.0.0.1 --no-init
+          # fetch writes the siblings to moodle-plugin-ci-plugins without add-plugin, so the directory
+          # must be named explicitly - otherwise install silently installs the plugin under test alone.
+          moodle-plugin-ci install --plugin ./plugin --extra-plugins=moodle-plugin-ci-plugins --db-host=127.0.0.1 --no-init
           # The tested combination: exact commits of the family, Moodle, PHP and database versions.
           set -o pipefail; php plugin/.github/scripts/record_environment.php moodle | tee -a "$GITHUB_STEP_SUMMARY"
         env:
@@ -298,9 +300,11 @@ jobs:
           # Exactly the commits pinned by the "family" job (no moving branches).
           python3 plugin/.github/scripts/flexaccess_family.py fetch --lock-json "$FAMILY_LOCK" \
             --self auth_flexaccess --dest moodle-plugin-ci-plugins --with-mergeusers
-          moodle-plugin-ci install --plugin ./plugin --db-host=127.0.0.1 --db-port=${{ matrix.dbport }}
+          # fetch writes the siblings to moodle-plugin-ci-plugins without add-plugin, so the directory
+          # must be named explicitly - otherwise install silently installs the plugin under test alone.
+          moodle-plugin-ci install --plugin ./plugin --extra-plugins=moodle-plugin-ci-plugins --db-host=127.0.0.1 --db-port=${{ matrix.dbport }}
           # The tested combination: exact commits of the family, Moodle, PHP and database versions.
-          set -o pipefail; php plugin/.github/scripts/record_environment.php moodle | tee -a "$GITHUB_STEP_SUMMARY"
+          set -o pipefail; php plugin/.github/scripts/record_environment.php moodle --with-mergeusers | tee -a "$GITHUB_STEP_SUMMARY"
         env:
           FAMILY_LOCK: ${{ needs.family.outputs.lock }}
           DB: ${{ matrix.database }}
@@ -363,7 +367,9 @@ jobs:
           # Exactly the commits pinned by the "family" job (no moving branches).
           python3 plugin/.github/scripts/flexaccess_family.py fetch --lock-json "$FAMILY_LOCK" \
             --self auth_flexaccess --dest moodle-plugin-ci-plugins
-          moodle-plugin-ci install --plugin ./plugin --db-host=127.0.0.1
+          # fetch writes the siblings to moodle-plugin-ci-plugins without add-plugin, so the directory
+          # must be named explicitly - otherwise install silently installs the plugin under test alone.
+          moodle-plugin-ci install --plugin ./plugin --extra-plugins=moodle-plugin-ci-plugins --db-host=127.0.0.1
           # The tested combination: exact commits of the family, Moodle, PHP and database versions.
           set -o pipefail; php plugin/.github/scripts/record_environment.php moodle | tee -a "$GITHUB_STEP_SUMMARY"
         env:

@@ -76,7 +76,7 @@ final class login_guard {
      */
     public static function evaluate(int $userid, string $channel, ?int $now = null): string {
         global $DB;
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         $user = $DB->get_record('user', ['id' => $userid], 'id, auth, deleted, suspended, confirmed');
         if (!$user) {
             return self::REASON_NOUSER;

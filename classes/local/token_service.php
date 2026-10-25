@@ -55,7 +55,7 @@ final class token_service {
      */
     public static function issue(int $userid, string $purpose, ?int $ttl = null, ?int $now = null): string {
         global $DB;
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         $ttl = $ttl ?? self::DEFAULT_TTL;
         $secret = bin2hex(random_bytes(32));
         $DB->insert_record(self::TABLE, (object) [
@@ -101,7 +101,7 @@ final class token_service {
         if ($secret === '') {
             return null;
         }
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         $record = $DB->get_record(self::TABLE, [
             'tokenhash' => self::hash($secret),
             'purpose' => $purpose,
@@ -134,7 +134,7 @@ final class token_service {
         ?int $expecteduserid = null
     ): ?int {
         global $DB;
-        $now = $now ?? time();
+        $now = $now ?? \core\di::get(\core\clock::class)->time();
         // Serialise consumption per token hash so two concurrent requests cannot both accept the same
         // single-use token (portable Moodle Lock API instead of a DB-specific SELECT ... FOR UPDATE).
         $lockfactory = \core\lock\lock_config::get_lock_factory('auth_flexaccess_token');
@@ -173,14 +173,15 @@ final class token_service {
      * Delete used or expired tokens older than the retention cutoff (housekeeping).
      *
      * @param int $olderthan Delete dead tokens whose timecreated is below this value.
+     * @param int|null $now Current time (expiry reference); defaults to the clock.
      * @return void
      */
-    public static function prune(int $olderthan): void {
+    public static function prune(int $olderthan, ?int $now = null): void {
         global $DB;
         $DB->delete_records_select(
             self::TABLE,
             '(timeused IS NOT NULL OR timeexpires < :now) AND timecreated < :cutoff',
-            ['now' => time(), 'cutoff' => $olderthan]
+            ['now' => $now ?? \core\di::get(\core\clock::class)->time(), 'cutoff' => $olderthan]
         );
     }
 }

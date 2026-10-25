@@ -105,6 +105,10 @@ class hook_callbacks {
         if ($from <= 0 || $to <= 0 || $from === $to) {
             return;
         }
+        if (!\auth_flexaccess\local\merge_policy::involved($from, $to)) {
+            // No FlexAccess state on either side: the general merge tool decides alone (auth_flexaccess #13).
+            return;
+        }
         // Inside tool_mergeusers' transaction: the merge is in progress, not confirmed (no log record yet).
         $registry = \auth_flexaccess\local\merge_registry::record(
             $from,
@@ -146,7 +150,21 @@ class hook_callbacks {
      * @return void
      */
     public static function mergeusers_add_settings($hook): void {
-        $tables = ['auth_flexaccess_account', 'auth_flexaccess_token', 'auth_flexaccess_mailqueue', 'auth_flexaccess_merge'];
+        $tables = [
+            'auth_flexaccess_account',
+            'auth_flexaccess_token',
+            'auth_flexaccess_mailqueue',
+            'auth_flexaccess_merge',
+            \auth_flexaccess\local\merge_evidence::TABLE,
+        ];
         $hook->add_setting('exceptions', array_combine($tables, $tables));
+        // Every colliding row of both users is archived right before tool_mergeusers resolves it
+        // (auth_flexaccess #13): FlexAccess wraps the default merger and each dedicated merger it knows. A new
+        // merge starts with a fresh involvement cache.
+        \auth_flexaccess\local\merge_evidence::reset_cache();
+        $mergers = \auth_flexaccess\local\merge_coverage::mergers();
+        if ($mergers) {
+            $hook->add_setting('tablemergers', $mergers);
+        }
     }
 }
