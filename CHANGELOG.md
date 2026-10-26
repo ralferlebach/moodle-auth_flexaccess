@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.0 (2026102600) — 2026-10-26 — Versions-Gleichschritt
+- Keine funktionale Änderung; Versions-Gleichschritt mit der FlexAccess-Familie (Korrektur der Zwei-Site-LTI-Suite in enrol_flexaccess).
+- Version `2026102600`, Release `1.2.0`.
+
 ## 1.2.0 (2026102502) — 2026-10-25 — Deinstallierbarkeit der Familie
 - **Keine Abhängigkeitsschleife mehr (enrol #15).** `version.php` erklärt keine Abhängigkeit von `enrol_flexaccess` mehr. Bisher erklärten auth und enrol sich gegenseitig als Abhängigkeit; Moodle deinstalliert ein Plugin nur, wenn kein anderes es verlangt, deshalb ließ sich keines der beiden über Moodle entfernen (nachgestellt: „Can not be uninstalled“ für beide, auch nach Entfernen von tool und mod). enrol verlangt weiterhin auth, tool und mod verlangen beide; der Systemstatus meldet ein fehlendes Geschwister. Reihenfolge der Deinstallation: tool und mod, dann enrol, dann auth (Moodle verlangt dafür außerdem, dass kein Konto mehr die Anmeldemethode `flexaccess` hat).
 - Versions-Gleichschritt mit der FlexAccess-Familie (Produktivcode-Audit vom 25.10.2026: tool #14–#17, enrol #15).
