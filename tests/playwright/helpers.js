@@ -175,4 +175,20 @@ async function chooseCourse(page, courseId, courseName) {
   await expect(hidden).toHaveValue(courseId);
 }
 
-module.exports = { fillStable, loginAs, fillPasswordUnmask, open, submitForm, chooseCourse };
+/**
+ * Start a new, anonymous browser session.
+ *
+ * Leaves the current page first: requests the previous page still has running (a redirect target loading,
+ * a dashboard fetching its blocks) would otherwise answer after the cookies are cleared and set a new
+ * session cookie - between the login form and its submission, so that Moodle rejects the login token
+ * ("Invalid login", logged as "Invalid Login Token"), or abort the next navigation (net::ERR_ABORTED).
+ *
+ * @param {import('@playwright/test').Page} page The page under test.
+ * @returns {Promise<void>}
+ */
+async function freshSession(page) {
+  await page.goto('about:blank');
+  await page.context().clearCookies();
+}
+
+module.exports = { fillStable, loginAs, fillPasswordUnmask, open, submitForm, chooseCourse, freshSession };

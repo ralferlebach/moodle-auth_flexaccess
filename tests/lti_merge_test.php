@@ -564,4 +564,29 @@ final class lti_merge_test extends \advanced_testcase {
         $this->assertContains(\auth_flexaccess\local\lti_identity::REPOINT_NOT_CONFIRMED, $result->reasons);
         $this->assertSame($lti, (int) (new \auth_plugin_lti())->get_user_binding(self::ISS, 'pair-1'));
     }
+
+    /**
+     * Readiness (auth #12): a published LTI 1.3 resource that creates accounts automatically (AUTO_ONLY) in a
+     * course with FlexAccess is reported; after switching to "prompt for an existing account" it is not.
+     */
+    public function test_auto_provisioning_resource_is_reported(): void {
+        global $DB;
+        $listed = static fn(): array => array_map(
+            static fn(\stdClass $r): int => (int) $r->toolid,
+            api::lti_auto_provisioning_resources(0)
+        );
+        $this->assertContains((int) $this->tool->id, $listed());
+        $DB->set_field('enrol_lti_tools', 'provisioningmodelearner', \auth_plugin_lti::PROVISIONING_MODE_PROMPT_EXISTING_ONLY, [
+            'id' => $this->tool->id,
+        ]);
+        $this->assertNotContains((int) $this->tool->id, $listed());
+        // A course without FlexAccess is not FlexAccess' concern.
+        $other = $this->getDataGenerator()->create_course();
+        $tool = $this->getDataGenerator()->create_lti_tool((object) [
+            'courseid' => $other->id,
+            'ltiversion' => 'LTI-1p3',
+            'provisioningmodelearner' => \auth_plugin_lti::PROVISIONING_MODE_AUTO_ONLY,
+        ]);
+        $this->assertNotContains((int) $tool->id, $listed());
+    }
 }

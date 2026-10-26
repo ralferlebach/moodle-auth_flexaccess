@@ -22,7 +22,7 @@
  */
 
 const { test, expect } = require('@playwright/test');
-const { loginAs, fillPasswordUnmask, open, submitForm, chooseCourse } = require('./helpers');
+const { loginAs, fillPasswordUnmask, open, submitForm, chooseCourse, freshSession } = require('./helpers');
 
 const ADMIN_USER = process.env.FLEXACCESS_ADMIN_USER || 'admin';
 const ADMIN_PASS = process.env.FLEXACCESS_ADMIN_PASS || 'Admin!23';
@@ -40,19 +40,21 @@ const COURSE_NAME = process.env.FLEXACCESS_COURSE_NAME || 'My favourite course';
  * @returns {string}
  */
 function personEmail(local, testInfo) {
-  return testInfo.retry ? `${local}.${testInfo.retry}@example.org` : `${local}@example.org`;
+  // One address per attempt: a retry or a repetition (--repeat-each) must not meet the account of an earlier one.
+  const attempt = testInfo.retry * 1000 + testInfo.repeatEachIndex;
+  return attempt ? `${local}.${attempt}@example.org` : `${local}@example.org`;
 }
 
 test('the entry page offers a visitor a way into the course', async ({ page, context }) => {
   test.skip(!COURSE_ID, 'FLEXACCESS_COURSE_ID not provided by the seed step');
-  await context.clearCookies();
+  await freshSession(page);
   await page.goto(`/auth/flexaccess/access.php?courseid=${COURSE_ID}`);
   await expect(page.locator('body')).toContainText(COURSE_NAME);
 });
 
 test('an anonymous visitor gains temporary access', async ({ page, context }) => {
   test.skip(!COURSE_ID, 'FLEXACCESS_COURSE_ID not provided by the seed step');
-  await context.clearCookies();
+  await freshSession(page);
   await page.goto(`/auth/flexaccess/access.php?courseid=${COURSE_ID}`);
 
   const button = page.getByRole('button', { name: /Continue/i });
@@ -67,7 +69,7 @@ test('an anonymous visitor gains temporary access', async ({ page, context }) =>
 });
 
 test('the one-time login link can be requested', async ({ page, context }) => {
-  await context.clearCookies();
+  await freshSession(page);
   await page.goto('/auth/flexaccess/magic.php');
   await expect(page.locator('body')).toContainText('email link');
   await expect(page.locator('input[name="email"]')).toBeVisible();
@@ -78,7 +80,7 @@ test('quick registration creates an account that can log in again', async ({ pag
   const email = personEmail('john.doe', testInfo);
   const password = 'P@$$w0rd!';
 
-  await context.clearCookies();
+  await freshSession(page);
   await page.goto(`/auth/flexaccess/register.php?courseid=${COURSE_ID}`);
   await page.waitForLoadState('domcontentloaded');
   await page.fill('input[name="email"]', email);
@@ -89,7 +91,7 @@ test('quick registration creates an account that can log in again', async ({ pag
   await expect(page.locator('body')).toContainText(COURSE_NAME);
 
   // The decisive part: the account survives the session and its owner can return to it.
-  await context.clearCookies();
+  await freshSession(page);
   await loginAs(page, email, password);
   await expect(page.locator('body')).toContainText('John Doe');
 });
@@ -99,7 +101,7 @@ test('temporary access can be made permanent', async ({ page, context }, testInf
   const email = personEmail('jane.doe', testInfo);
   const password = 'P@$$w0rd!';
 
-  await context.clearCookies();
+  await freshSession(page);
   await page.goto(`/auth/flexaccess/access.php?courseid=${COURSE_ID}`);
   const cont = page.getByRole('button', { name: /Continue/i });
   if (await cont.count()) {
@@ -116,9 +118,11 @@ test('temporary access can be made permanent', async ({ page, context }, testInf
   await page.fill('input[name="lastname"]', 'Doe');
   await fillPasswordUnmask(page, 'password', password);
   await page.getByRole('button', { name: /Make my account permanent/i }).click();
-  await expect(page.locator('body')).toContainText(/permanent/i);
+  // The confirmation after the redirect - not the form page, whose button says "permanent" as well.
+  await expect(page.locator('body')).toContainText('Your account is now permanent');
+  await page.waitForLoadState('load');
 
-  await context.clearCookies();
+  await freshSession(page);
   await loginAs(page, email, password);
   await expect(page.locator('body')).toContainText('Jane Doe');
 });

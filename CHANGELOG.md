@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.2.0 (2026102502) — 2026-10-25 — Deinstallierbarkeit der Familie
+- **Keine Abhängigkeitsschleife mehr (enrol #15).** `version.php` erklärt keine Abhängigkeit von `enrol_flexaccess` mehr. Bisher erklärten auth und enrol sich gegenseitig als Abhängigkeit; Moodle deinstalliert ein Plugin nur, wenn kein anderes es verlangt, deshalb ließ sich keines der beiden über Moodle entfernen (nachgestellt: „Can not be uninstalled“ für beide, auch nach Entfernen von tool und mod). enrol verlangt weiterhin auth, tool und mod verlangen beide; der Systemstatus meldet ein fehlendes Geschwister. Reihenfolge der Deinstallation: tool und mod, dann enrol, dann auth (Moodle verlangt dafür außerdem, dass kein Konto mehr die Anmeldemethode `flexaccess` hat).
+- Versions-Gleichschritt mit der FlexAccess-Familie (Produktivcode-Audit vom 25.10.2026: tool #14–#17, enrol #15).
+- Version `2026102502`, Release `1.2.0`.
+
+## 1.2.0 (2026102501) — 2026-10-25 — Stabile Persistenz-Journey
+- Test `lti_merge_test::test_auto_provisioning_resource_is_reported`: Der Systemstatus meldet veröffentlichte LTI-1.3-Ressourcen mit automatischer Kontoanlage (AUTO_ONLY) in FlexAccess-Kursen, nach Wechsel auf PROMPT_EXISTING_ONLY nicht mehr, Kurse ohne FlexAccess nie (#12).
+- Playwright `freshSession()` (in allen vier Plugins): Vor einem Sitzungswechsel verlässt der Test die aktuelle Seite (`about:blank`), bevor er die Cookies löscht. Sonst konnte eine noch laufende Anfrage der vorigen Seite ein neues Sitzungscookie setzen – zwischen Anmeldeformular und Absenden; Moodle wies die Anmeldung dann als ungültiges Login-Token ab (im Server-Log „Invalid Login Token“) oder brach die nächste Navigation ab (`net::ERR_ABORTED`). Das war die Ursache des seit 2026102401 beobachteten Ausfalls von „temporary access can be made permanent“; im Plugin-Code liegt kein Fehler. Nur Testcode.
+- Playwright `auth-journeys.spec.js`, „temporary access can be made permanent“: prüft zusätzlich die Bestätigung nach der Weiterleitung statt eines Worts, das auch auf dem Formular steht. Nur Testcode.
+- Playwright `personEmail()`: eine Adresse je Versuch, auch je Wiederholung (`--repeat-each`); bisher traf die zweite Wiederholung auf das Konto der ersten. Nur Testcode.
+- Version `2026102501`, Release `1.2.0`.
+
 ## 1.2.0 (2026102500) — 2026-10-25 — Datensparsames Kollisionsarchiv, Einzelentscheidung für Einschreibungen, Grenzen
 - **Keine Zugangsdaten im Archiv (#13, P0).**
   - **Bisher:** Kollisionen wurden mit ganzen Zeilen archiviert (`SELECT a.*`), bei `oauth2_refresh_token` samt Refresh-Token, bei `user_devices` samt Push-ID und Geräte-UUID; der Datenschutz-Export gab sie aus.

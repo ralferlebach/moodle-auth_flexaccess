@@ -25,13 +25,14 @@
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'auth_flexaccess';
-$plugin->version = 2026102500;
+$plugin->version = 2026102502;
 $plugin->requires = 2024100700; // Moodle 4.5.
 $plugin->supported = [405, 503];
 $plugin->maturity = MATURITY_STABLE;
 $plugin->release = '1.2.0';
-$plugin->dependencies = [
-    // Hard dependency: the access-method policy lives entirely in enrol_flexaccess.
-    // Moodle supports the resulting auth <-> enrol cycle (presence+version check only).
-    'enrol_flexaccess' => 2026102500,
-];
+// No declared dependency on enrol_flexaccess, although auth_flexaccess needs it at run time (the access-method
+// policy lives there): enrol_flexaccess requires auth_flexaccess, and a declared dependency in both directions is a
+// cycle that Moodle cannot uninstall - neither plugin could ever be removed (enrol_flexaccess #15). The family is
+// installed together (tool_flexaccess and mod_flexaccess require both); the system status of tool_flexaccess
+// reports a missing sibling.
+$plugin->dependencies = [];
