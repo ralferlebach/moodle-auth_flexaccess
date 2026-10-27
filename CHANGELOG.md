@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.2.0 (2026102601) — 2026-10-26 — Verwaiste Einschränkungsrollen in der Datenbank, Survey-Fall ohne Skip
+- **Verwaiste Einschränkungsrollen (tool #17):** neue API `orphan_restriction_sql()` (Definition als SQL-Unterabfrage) und `orphan_restriction_exists_sql()` (korreliertes Prädikat mit reinen Indexzugriffen), damit tool_flexaccess die Fälle in der Datenbank abgleicht, statt alle Nutzer-IDs zu laden; `count_orphan_restrictions()` zählt in der Datenbank (bisher `count()` über die vollständige Liste); `find_orphan_restriction_userids()` nimmt eine Obergrenze und einen Schlüssel zum Weiterblättern, die Diagnose mit Limit lädt nicht mehr alle.
+- **Survey-Kollision ohne Skip (Nacharbeit 26.10.):** `merge_matrix_test::test_collisions_are_archived` führt den Fall „survey answer“ dort aus, wo `mod_survey` installiert ist (4.5, oder als Zusatz-Plugin), und kennt ihn sonst nicht; ein eigener Test belegt, dass die Tabelle genau dann existiert. Auf 5.x gibt es ohne `mod_survey` keine Survey-Daten, die eine Zusammenführung verlieren könnte.
+- Version `2026102601`, Release `1.2.0`.
+
 ## 1.2.0 (2026102600) — 2026-10-26 — Versions-Gleichschritt
 - Keine funktionale Änderung; Versions-Gleichschritt mit der FlexAccess-Familie (Korrektur der Zwei-Site-LTI-Suite in enrol_flexaccess).
 - Version `2026102600`, Release `1.2.0`.

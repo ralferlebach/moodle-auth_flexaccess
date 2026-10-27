@@ -318,7 +318,7 @@ final class lifecycle {
         // Users carrying the restriction role although no FlexAccess account needs it (for example
         // after an external identity merge that moved role assignments by direct table updates).
         if ($restrictionid > 0 && ($limit <= 0 || count($found) < $limit) && $userids === null) {
-            foreach (self::find_orphan_restriction_userids() as $userid) {
+            foreach (self::find_orphan_restriction_userids($limit > 0 ? $limit - count($found) : 0) as $userid) {
                 $found[] = (object) [
                     'userid' => (int) $userid,
                     'code' => self::MISMATCH_ORPHAN_RESTRICTION,
@@ -337,26 +337,88 @@ final class lifecycle {
     }
 
     /**
-     * Every user holding the restriction role without a FlexAccess account - complete, never truncated.
+     * The users holding the restriction role without a FlexAccess account, as an SQL subquery.
      *
-     * @return int[]
+     * For set-based processing in the database (tool_flexaccess #17): callers embed it instead of loading the
+     * complete list into PHP. One row per user (DISTINCT).
+     *
+     * @param string $prefix Prefix of the named parameters, so the subquery can be combined with others.
+     * @return array{0:string,1:array}|null [sql selecting the column userid, params], or null without a restriction role.
      */
-    public static function find_orphan_restriction_userids(): array {
-        global $DB;
+    public static function orphan_restriction_sql(string $prefix = 'orph'): ?array {
         $restrictionid = self::restriction_role_id();
         if ($restrictionid <= 0) {
-            return [];
+            return null;
         }
         $sql = "SELECT DISTINCT ra.userid
                   FROM {role_assignments} ra
                   JOIN {user} u ON u.id = ra.userid AND u.deleted = 0
              LEFT JOIN {" . self::TABLE . "} a ON a.userid = ra.userid
-                 WHERE ra.roleid = :rid AND ra.contextid = :ctx AND a.id IS NULL
-              ORDER BY ra.userid ASC";
-        return array_map('intval', $DB->get_fieldset_sql($sql, [
-            'rid' => $restrictionid,
-            'ctx' => \context_system::instance()->id,
-        ]));
+                 WHERE ra.roleid = :{$prefix}rid AND ra.contextid = :{$prefix}ctx AND a.id IS NULL";
+        return [$sql, [$prefix . 'rid' => $restrictionid, $prefix . 'ctx' => \context_system::instance()->id]];
+    }
+
+    /**
+     * Whether the user in a column of an outer query is such an orphan, as a correlated EXISTS predicate.
+     *
+     * Only index lookups per outer row (role assignments and accounts by user id), whatever the planner does with
+     * derived tables - for statements that check many rows against the orphan definition (tool_flexaccess #17).
+     *
+     * @param string $useridcolumn Fully qualified column of the outer query holding the user id.
+     * @param string $prefix Prefix of the aliases and named parameters.
+     * @return array{0:string,1:array}|null [EXISTS (...), params], or null without a restriction role.
+     */
+    public static function orphan_restriction_exists_sql(string $useridcolumn, string $prefix = 'orx'): ?array {
+        $restrictionid = self::restriction_role_id();
+        if ($restrictionid <= 0) {
+            return null;
+        }
+        $sql = "EXISTS (SELECT 1
+                          FROM {role_assignments} {$prefix}ra
+                          JOIN {user} {$prefix}u ON {$prefix}u.id = {$prefix}ra.userid AND {$prefix}u.deleted = 0
+                         WHERE {$prefix}ra.userid = $useridcolumn
+                           AND {$prefix}ra.roleid = :{$prefix}rid AND {$prefix}ra.contextid = :{$prefix}ctx
+                           AND NOT EXISTS (SELECT 1
+                                             FROM {" . self::TABLE . "} {$prefix}a
+                                            WHERE {$prefix}a.userid = {$prefix}ra.userid))";
+        return [$sql, [$prefix . 'rid' => $restrictionid, $prefix . 'ctx' => \context_system::instance()->id]];
+    }
+
+    /**
+     * Users holding the restriction role without a FlexAccess account - complete unless a limit is given.
+     *
+     * @param int $limit Maximum number of user ids (0 = all).
+     * @param int $after Only user ids greater than this (keyset paging, in ascending order).
+     * @return int[]
+     */
+    public static function find_orphan_restriction_userids(int $limit = 0, int $after = 0): array {
+        global $DB;
+        $query = self::orphan_restriction_sql();
+        if ($query === null) {
+            return [];
+        }
+        [$sql, $params] = $query;
+        if ($after > 0) {
+            $sql .= ' AND ra.userid > :orphafter';
+            $params['orphafter'] = $after;
+        }
+        // The first column is the key: one entry per user (the subquery is DISTINCT).
+        return array_map('intval', array_keys($DB->get_records_sql("$sql ORDER BY ra.userid ASC", $params, 0, $limit)));
+    }
+
+    /**
+     * Number of users holding the restriction role without a FlexAccess account, counted in the database.
+     *
+     * @return int
+     */
+    public static function count_orphan_restrictions(): int {
+        global $DB;
+        $query = self::orphan_restriction_sql();
+        if ($query === null) {
+            return 0;
+        }
+        [$sql, $params] = $query;
+        return (int) $DB->count_records_sql("SELECT COUNT(1) FROM ($sql) orphans", $params);
     }
 
     /**
@@ -382,7 +444,7 @@ final class lifecycle {
             }
         }
         $rs->close();
-        $orphans = count(self::find_orphan_restriction_userids());
+        $orphans = self::count_orphan_restrictions();
         if ($orphans > 0) {
             $counts[self::MISMATCH_ORPHAN_RESTRICTION] = $orphans;
         }

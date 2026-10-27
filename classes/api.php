@@ -1826,12 +1826,44 @@ final class api {
     }
 
     /**
-     * Every user holding the restriction role without a FlexAccess account (complete, no limit).
+     * Users holding the restriction role without a FlexAccess account (complete unless a limit is given).
      *
+     * @param int $limit Maximum number of user ids (0 = all).
+     * @param int $after Only user ids greater than this (keyset paging, in ascending order).
      * @return int[]
      */
-    public static function find_orphan_restriction_userids(): array {
-        return local\lifecycle::find_orphan_restriction_userids();
+    public static function find_orphan_restriction_userids(int $limit = 0, int $after = 0): array {
+        return local\lifecycle::find_orphan_restriction_userids($limit, $after);
+    }
+
+    /**
+     * The same users as an SQL subquery selecting the column userid, for set-based processing in the database.
+     *
+     * @param string $prefix Prefix of the named parameters.
+     * @return array{0:string,1:array}|null [sql, params], or null without a restriction role.
+     */
+    public static function orphan_restriction_sql(string $prefix = 'orph'): ?array {
+        return local\lifecycle::orphan_restriction_sql($prefix);
+    }
+
+    /**
+     * Whether the user in a column of an outer query is such an orphan, as a correlated EXISTS predicate.
+     *
+     * @param string $useridcolumn Fully qualified column of the outer query holding the user id.
+     * @param string $prefix Prefix of the aliases and named parameters.
+     * @return array{0:string,1:array}|null [EXISTS (...), params], or null without a restriction role.
+     */
+    public static function orphan_restriction_exists_sql(string $useridcolumn, string $prefix = 'orx'): ?array {
+        return local\lifecycle::orphan_restriction_exists_sql($useridcolumn, $prefix);
+    }
+
+    /**
+     * Number of users holding the restriction role without a FlexAccess account, counted in the database.
+     *
+     * @return int
+     */
+    public static function count_orphan_restrictions(): int {
+        return local\lifecycle::count_orphan_restrictions();
     }
 
     /**

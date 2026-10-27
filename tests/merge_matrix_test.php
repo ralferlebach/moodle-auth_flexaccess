@@ -823,7 +823,8 @@ final class merge_matrix_test extends \advanced_testcase {
      * @return array
      */
     public static function collision_provider(): array {
-        return [
+        global $CFG;
+        $cases = [
             'assignment grade' => ['assign_grades', ['assignment' => 7001, 'attemptnumber' => 0], 'review'],
             'assignment flags (extension)' => ['assign_user_flags', ['assignment' => 7002], 'review'],
             'H5P attempt' => ['h5pactivity_attempts', ['h5pactivityid' => 7003, 'attempt' => 1], 'review'],
@@ -837,6 +838,23 @@ final class merge_matrix_test extends \advanced_testcase {
             'cohort membership' => ['cohort_members', ['cohortid' => 7011], 'benign'],
             'forum subscription' => ['forum_subscriptions', ['forum' => 7012], 'benign'],
         ];
+        // The module mod_survey left Moodle core with 5.0. Where it is not installed there are no survey answers and nothing to
+        // lose, so the case does not exist there (no skip); where it is installed (4.5, or as an add-on), it runs.
+        if (!file_exists($CFG->dirroot . '/mod/survey/version.php')) {
+            unset($cases['survey answer']);
+        }
+        return $cases;
+    }
+
+    /**
+     * The survey case is decided by the installation, never skipped: without mod_survey there is no table and
+     * therefore no survey data a merge could lose; with it, the collision case above runs.
+     */
+    public function test_survey_answers_exist_exactly_where_mod_survey_is_installed(): void {
+        global $CFG, $DB;
+        $installed = file_exists($CFG->dirroot . '/mod/survey/version.php');
+        $this->assertSame($installed, $DB->get_manager()->table_exists('survey_answers'));
+        $this->assertSame($installed, array_key_exists('survey answer', self::collision_provider()));
     }
 
     /**
