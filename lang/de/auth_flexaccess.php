@@ -103,6 +103,7 @@ $string['mergerefused_targetmergedaway'] = 'FlexAccess lehnt diese Zusammenführ
 $string['mergerefused_targetmissing'] = 'FlexAccess lehnt diese Zusammenführung ab: Der zu behaltende Nutzer existiert nicht.';
 $string['mergerefused_targetnologin'] = 'FlexAccess lehnt diese Zusammenführung ab: Der zu behaltende Nutzer hat kein eigenes Anmeldeverfahren; die Person könnte sich nicht mehr anmelden.';
 $string['mergerefused_wrongdirection'] = 'FlexAccess lehnt diese Zusammenführung ab: Ein dauerhaftes Konto würde in einen temporären FlexAccess-Zugang zusammengeführt. Führen Sie in der anderen Richtung zusammen (das dauerhafte Konto behalten).';
+$string['mergetasklocked'] = 'Der FlexAccess-Abgleich der Zusammenführung {$a} wartet auf einen anderen Abgleich derselben Konten; die Aufgabe läuft später erneut.';
 $string['mismatch_active_restricted'] = 'Aktives Konto trägt noch die FlexAccess-Restriktionsrolle';
 $string['mismatch_active_suspended'] = 'Aktives Konto, aber der Moodle-Nutzer ist gesperrt';
 $string['mismatch_live_suspended'] = 'Gültiges temporäres oder wartendes Konto, aber der Moodle-Nutzer ist gesperrt';

@@ -103,6 +103,7 @@ $string['mergerefused_targetmergedaway'] = 'FlexAccess refuses this merge: the u
 $string['mergerefused_targetmissing'] = 'FlexAccess refuses this merge: the user to keep does not exist.';
 $string['mergerefused_targetnologin'] = 'FlexAccess refuses this merge: the user to keep has no login method of its own, so the person could no longer log in.';
 $string['mergerefused_wrongdirection'] = 'FlexAccess refuses this merge: a durable account would be merged into a temporary FlexAccess access. Merge in the other direction (keep the durable account).';
+$string['mergetasklocked'] = 'The FlexAccess reconciliation of the merge {$a} waits for another one of the same accounts; the task runs again later.';
 $string['mismatch_active_restricted'] = 'Active account still holds the FlexAccess restriction role';
 $string['mismatch_active_suspended'] = 'Active account, but the Moodle user is suspended';
 $string['mismatch_live_suspended'] = 'Live temporary or pending account, but the Moodle user is suspended';

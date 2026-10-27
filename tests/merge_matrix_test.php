@@ -422,6 +422,73 @@ final class merge_matrix_test extends \advanced_testcase {
     }
 
     /**
+     * The removed account's running sessions end with the merge; the survivor's stay (auth #13, enrol #10 AK 13).
+     *
+     * tool_mergeusers only suspends the removed account. A browser that is still signed in as it would otherwise go
+     * on acting as an account whose data now belongs to someone else.
+     */
+    public function test_the_removed_account_has_no_running_session_after_the_merge(): void {
+        global $DB;
+        $this->require_mergeusers();
+        // The removed account is not a FlexAccess account (FlexAccess ends the sessions of its own accounts when it
+        // retires them): a local account merged into the durable FlexAccess account, as an auth_lti one would be.
+        $flex = $this->flexaccess();
+        $local = $this->manual();
+        $session = function (int $userid): string {
+            global $DB;
+            $sid = random_string(32);
+            $now = \core\di::get(\core\clock::class)->time();
+            $DB->insert_record('sessions', (object) [
+                'state' => 0, 'sid' => $sid, 'userid' => $userid, 'sessdata' => null,
+                'timecreated' => $now, 'timemodified' => $now, 'firstip' => '127.0.0.1', 'lastip' => '127.0.0.1',
+            ]);
+            return $sid;
+        };
+        $removed = $session($local);
+        $kept = $session($flex);
+
+        $this->assertFalse($this->mergeusers($flex, $local), 'Without approval: rolled back.');
+        $this->assertTrue($DB->record_exists('sessions', ['sid' => $removed]), 'A refused merge ends no session.');
+        $this->approve($local, $flex);
+        $this->assertTrue($this->mergeusers($flex, $local));
+
+        // Ended - not moved onto the survivor, where it would read as the survivor's session.
+        $this->assertFalse($DB->record_exists('sessions', ['sid' => $removed]));
+        $this->assertFalse($DB->record_exists('sessions', ['userid' => $local]));
+        $this->assertSame([$kept], array_values($DB->get_fieldset_select('sessions', 'sid', 'userid = ?', [$flex])));
+    }
+
+    /**
+     * A merge that starts while another process holds the pair is refused and rolled back completely; once the pair
+     * is free, the same merge succeeds (auth #13 DoD 5, enrol #10 AK 13: parallel runs).
+     *
+     * File locks conflict between two handles of one process, so the "other process" is a second lock held here.
+     */
+    public function test_a_merge_while_the_pair_is_held_by_another_process_is_refused(): void {
+        global $CFG, $DB;
+        $this->require_mergeusers();
+        $CFG->lock_factory = '\core\lock\file_lock_factory';
+        $flex = $this->flexaccess($this->other);
+        $manual = $this->manual();
+        $this->approve($flex, $manual);
+        $ids = [$flex, $manual];
+        sort($ids);
+        $held = \core\lock\lock_config::get_lock_factory('auth_flexaccess_merge')->get_lock(implode('_', $ids), 0);
+        $this->assertNotFalse($held);
+
+        $this->assertFalse($this->mergeusers($manual, $flex), 'Refused while the pair is held.');
+        $this->assertTrue($DB->record_exists('auth_flexaccess_account', ['userid' => $flex]));
+        $this->assertTrue(is_enrolled(\context_course::instance((int) $this->other->id), $flex, '', true));
+        $this->assertFalse(is_enrolled(\context_course::instance((int) $this->other->id), $manual));
+        $this->assertEquals(0, $DB->get_field('user', 'suspended', ['id' => $flex]));
+
+        $held->release();
+        $this->assertTrue($this->mergeusers($manual, $flex));
+        $this->assertSame(merge_registry::RECONCILED, merge_registry::get($flex, $manual)->status);
+        $this->assertTrue(is_enrolled(\context_course::instance((int) $this->other->id), $manual, '', true));
+    }
+
+    /**
      * C reverse: a local account merged into the durable FlexAccess account - the FlexAccess login stays.
      */
     public function test_manual_into_flexaccess(): void {

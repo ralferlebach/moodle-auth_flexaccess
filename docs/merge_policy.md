@@ -232,51 +232,58 @@ Quelle wird vorher im Register archiviert (`details.sourceaccount`, mit `details
 - Löschen der Quelle vor oder nach der Ad-hoc-Prüfung `reconcile_merge`: beide Reihenfolgen getestet.
 - Jede Prüfung ist wiederholbar (`api::recheck_merge()`, Aufgabe `verify_merges`); bereits abgeglichene Paare
   werden mit der im Register gespeicherten Herkunft der Quelle beurteilt. Gleichzeitige Abgleiche desselben
-  Paars sind über eine Sperre je Paar serialisiert (`locked`); in einem einzelnen PHP-Prozess ist das nicht
-  testbar (Sperren sind je Datenbanksitzung wiedereintrittsfähig).
+  Paars sind über eine Sperre je Paar serialisiert (`locked`): Eine Zusammenführung, die das Paar gesperrt
+  findet, wird abgewiesen und zurückgerollt; die Ad-hoc-Prüfung schlägt fehl (`mergetasklocked`) und läuft nach
+  der Fehlerverzögerung erneut. Getestet mit Dateisperren, die auch innerhalb eines PHP-Prozesses kollidieren
+  (Datenbanksperren sind je Datenbanksitzung wiedereintrittsfähig).
+- Sitzungen: tool_mergeusers sperrt das entfernte Konto nur. FlexAccess nimmt Moodles Tabelle `sessions` von der
+  generischen Zusammenführung aus (sonst läse sich die Sitzung des entfernten Kontos als die des behaltenen, während
+  der Browser weiter als das entfernte arbeitet) und beendet nach dem Commit alle Sitzungen des entfernten Kontos
+  eines FlexAccess-Paars. Ein LTI-Launch, der während der Zusammenführung unterwegs ist, landet beim behaltenen
+  Konto (Zwei-Site-Test).
 - Rückgängig machen: siehe lti_identities.md, Abschnitt 5; Archiv und archivierte Konto-Zeile zeigen den
   Zustand vor der Zusammenführung.
 
 ## 11. Tabellenabdeckung von tool_mergeusers
 
-Ermittelt am 25.10.2026 mit `php auth/flexaccess/cli/mergeusers_coverage.php --format=markdown` (FlexAccess
-2026102500, tool_mergeusers 2026081302 gepinnt) auf den vier unterstützten Moodle-Versionen. „moved“: ohne
+Ermittelt am 27.10.2026 mit `php auth/flexaccess/cli/mergeusers_coverage.php --format=markdown` (FlexAccess
+2026102700, tool_mergeusers 2026081302 gepinnt) auf den vier unterstützten Moodle-Versionen. „moved“: ohne
 Kollisionsschlüssel, die Zeilen ziehen nur um. Auf allen vier Versionen gibt es keine Lücke; die Unterschiede
 sind entfernte Kernmodule (Umfrage und Atto ab 5.0).
 
 ### Moodle 4.5
 
-Moodle 4.5.15 (Build: 20261005), tool_mergeusers 2026081302: moved 453, review 21, benign 24, excluded 9, dedicated 4, gap 0
+Moodle 4.5.15 (Build: 20261005), tool_mergeusers 2026081302: moved 452, review 21, benign 24, excluded 10, dedicated 4, gap 0
 - review: `assign_grades` (assignment,attemptnumber), `assign_submission` (assignment,attemptnumber,groupid), `assign_user_flags` (assignment), `badge_issued` (badgeid), `choice_answers` (choiceid,optionid), `competency_usercomp` (competencyid), `competency_usercompcourse` (competencyid,courseid), `competency_usercompplan` (competencyid,planid), `course_completion_crit_compl` (course,criteriaid), `course_completions` (course), `course_modules_completion` (coursemoduleid), `forum_grades` (forum,itemnumber), `grade_grades` (itemid), `h5pactivity_attempts` (attempt,h5pactivityid), `lesson_attempts` (lessonid), `quiz_attempts` (attempt,quiz), `survey_answers` (survey,question), `tool_policy_acceptances` (policyversionid), `wiki_pages` (subwikiid,title), `wiki_subwikis` (groupid,wikiid), `workshop_aggregations` (workshopid)
 - benign: `assign_user_mapping` (assignment), `auth_lti_linked_login` (issuer256,sub256), `auth_oauth2_linked_login` (issuerid,username), `badge_backpack` (externalbackpackid), `block_recentlyaccesseditems` (cmid,courseid), `cohort_members` (cohortid), `course_modules_viewed` (coursemoduleid), `editor_atto_autosave` (contextid,elementid,pagehash), `favourite` (component,contextid,itemid,itemtype), `forum_digests` (forum,maildigest), `forum_discussion_subs` (discussion), `forum_subscriptions` (forum), `groups_members` (groupid), `message_user_actions` (action,messageid), `oauth2_refresh_token` (issuerid,scopehash), `post` (id), `role_assignments` (contextid,roleid), `tag_instance` (component,contextid,itemid,itemtype,tagid), `tiny_autosave` (contextid,elementid,pagehash), `tool_cohortroles` (cohortid,roleid), `tool_monitor_history` (sid,timesent), `user_devices` (pushid), `user_enrolments` (enrolid), `user_lastaccess` (courseid)
-- excluded: `auth_flexaccess_account` (not merged), `auth_flexaccess_mailqueue` (not merged), `auth_flexaccess_merge` (not merged), `auth_flexaccess_mergeevid` (not merged), `auth_flexaccess_token` (not merged), `my_pages` (not merged), `user_info_data` (not merged), `user_preferences` (not merged), `user_private_key` (not merged)
+- excluded: `auth_flexaccess_account` (not merged), `auth_flexaccess_mailqueue` (not merged), `auth_flexaccess_merge` (not merged), `auth_flexaccess_mergeevid` (not merged), `auth_flexaccess_token` (not merged), `my_pages` (not merged), `sessions` (not merged), `user_info_data` (not merged), `user_preferences` (not merged), `user_private_key` (not merged)
 - dedicated: `lesson_branch` (handled by the merger of another table), `lesson_grades` (handled by the merger of another table), `lesson_timer` (handled by the merger of another table), `quiz_grades` (handled by the merger of another table)
 - gap: -
 
 ### Moodle 5.0
 
-Moodle 5.0.11 (Build: 20261005), tool_mergeusers 2026081302: moved 448, review 20, benign 23, excluded 9, dedicated 4, gap 0
+Moodle 5.0.11 (Build: 20261005), tool_mergeusers 2026081302: moved 447, review 20, benign 23, excluded 10, dedicated 4, gap 0
 - review: `assign_grades` (assignment,attemptnumber), `assign_submission` (assignment,attemptnumber,groupid), `assign_user_flags` (assignment), `badge_issued` (badgeid), `choice_answers` (choiceid,optionid), `competency_usercomp` (competencyid), `competency_usercompcourse` (competencyid,courseid), `competency_usercompplan` (competencyid,planid), `course_completion_crit_compl` (course,criteriaid), `course_completions` (course), `course_modules_completion` (coursemoduleid), `forum_grades` (forum,itemnumber), `grade_grades` (itemid), `h5pactivity_attempts` (attempt,h5pactivityid), `lesson_attempts` (lessonid), `quiz_attempts` (attempt,quiz), `tool_policy_acceptances` (policyversionid), `wiki_pages` (subwikiid,title), `wiki_subwikis` (groupid,wikiid), `workshop_aggregations` (workshopid)
 - benign: `assign_user_mapping` (assignment), `auth_lti_linked_login` (issuer256,sub256), `auth_oauth2_linked_login` (issuerid,username), `badge_backpack` (externalbackpackid), `block_recentlyaccesseditems` (cmid,courseid), `cohort_members` (cohortid), `course_modules_viewed` (coursemoduleid), `favourite` (component,contextid,itemid,itemtype), `forum_digests` (forum,maildigest), `forum_discussion_subs` (discussion), `forum_subscriptions` (forum), `groups_members` (groupid), `message_user_actions` (action,messageid), `oauth2_refresh_token` (issuerid,scopehash), `post` (id), `role_assignments` (contextid,roleid), `tag_instance` (component,contextid,itemid,itemtype,tagid), `tiny_autosave` (contextid,elementid,pagehash), `tool_cohortroles` (cohortid,roleid), `tool_monitor_history` (sid,timesent), `user_devices` (pushid), `user_enrolments` (enrolid), `user_lastaccess` (courseid)
-- excluded: `auth_flexaccess_account` (not merged), `auth_flexaccess_mailqueue` (not merged), `auth_flexaccess_merge` (not merged), `auth_flexaccess_mergeevid` (not merged), `auth_flexaccess_token` (not merged), `my_pages` (not merged), `user_info_data` (not merged), `user_preferences` (not merged), `user_private_key` (not merged)
+- excluded: `auth_flexaccess_account` (not merged), `auth_flexaccess_mailqueue` (not merged), `auth_flexaccess_merge` (not merged), `auth_flexaccess_mergeevid` (not merged), `auth_flexaccess_token` (not merged), `my_pages` (not merged), `sessions` (not merged), `user_info_data` (not merged), `user_preferences` (not merged), `user_private_key` (not merged)
 - dedicated: `lesson_branch` (handled by the merger of another table), `lesson_grades` (handled by the merger of another table), `lesson_timer` (handled by the merger of another table), `quiz_grades` (handled by the merger of another table)
 - gap: -
 
 ### Moodle 5.2
 
-Moodle 5.2.4+ (Build: 20261021), tool_mergeusers 2026081302: moved 451, review 20, benign 23, excluded 9, dedicated 4, gap 0
+Moodle 5.2.4+ (Build: 20261021), tool_mergeusers 2026081302: moved 450, review 20, benign 23, excluded 10, dedicated 4, gap 0
 - review: `assign_grades` (assignment,attemptnumber), `assign_submission` (assignment,attemptnumber,groupid), `assign_user_flags` (assignment), `badge_issued` (badgeid), `choice_answers` (choiceid,optionid), `competency_usercomp` (competencyid), `competency_usercompcourse` (competencyid,courseid), `competency_usercompplan` (competencyid,planid), `course_completion_crit_compl` (course,criteriaid), `course_completions` (course), `course_modules_completion` (coursemoduleid), `forum_grades` (forum,itemnumber), `grade_grades` (itemid), `h5pactivity_attempts` (attempt,h5pactivityid), `lesson_attempts` (lessonid), `quiz_attempts` (attempt,quiz), `tool_policy_acceptances` (policyversionid), `wiki_pages` (subwikiid,title), `wiki_subwikis` (groupid,wikiid), `workshop_aggregations` (workshopid)
 - benign: `assign_user_mapping` (assignment), `auth_lti_linked_login` (issuer256,sub256), `auth_oauth2_linked_login` (issuerid,username), `badge_backpack` (externalbackpackid), `block_recentlyaccesseditems` (cmid,courseid), `cohort_members` (cohortid), `course_modules_viewed` (coursemoduleid), `favourite` (component,contextid,itemid,itemtype), `forum_digests` (forum,maildigest), `forum_discussion_subs` (discussion), `forum_subscriptions` (forum), `groups_members` (groupid), `message_user_actions` (action,messageid), `oauth2_refresh_token` (issuerid,scopehash), `post` (id), `role_assignments` (contextid,roleid), `tag_instance` (component,contextid,itemid,itemtype,tagid), `tiny_autosave` (contextid,elementid,pagehash), `tool_cohortroles` (cohortid,roleid), `tool_monitor_history` (sid,timesent), `user_devices` (pushid), `user_enrolments` (enrolid), `user_lastaccess` (courseid)
-- excluded: `auth_flexaccess_account` (not merged), `auth_flexaccess_mailqueue` (not merged), `auth_flexaccess_merge` (not merged), `auth_flexaccess_mergeevid` (not merged), `auth_flexaccess_token` (not merged), `my_pages` (not merged), `user_info_data` (not merged), `user_preferences` (not merged), `user_private_key` (not merged)
+- excluded: `auth_flexaccess_account` (not merged), `auth_flexaccess_mailqueue` (not merged), `auth_flexaccess_merge` (not merged), `auth_flexaccess_mergeevid` (not merged), `auth_flexaccess_token` (not merged), `my_pages` (not merged), `sessions` (not merged), `user_info_data` (not merged), `user_preferences` (not merged), `user_private_key` (not merged)
 - dedicated: `lesson_branch` (handled by the merger of another table), `lesson_grades` (handled by the merger of another table), `lesson_timer` (handled by the merger of another table), `quiz_grades` (handled by the merger of another table)
 - gap: -
 
 ### Moodle 5.3
 
-Moodle 5.3+ (Build: 20261013), tool_mergeusers 2026081302: moved 460, review 20, benign 23, excluded 9, dedicated 4, gap 0
+Moodle 5.3+ (Build: 20261013), tool_mergeusers 2026081302: moved 459, review 20, benign 23, excluded 10, dedicated 4, gap 0
 - review: `assign_grades` (assignment,attemptnumber), `assign_submission` (assignment,attemptnumber,groupid), `assign_user_flags` (assignment), `badge_issued` (badgeid), `choice_answers` (choiceid,optionid), `competency_usercomp` (competencyid), `competency_usercompcourse` (competencyid,courseid), `competency_usercompplan` (competencyid,planid), `course_completion_crit_compl` (course,criteriaid), `course_completions` (course), `course_modules_completion` (coursemoduleid), `forum_grades` (forum,itemnumber), `grade_grades` (itemid), `h5pactivity_attempts` (attempt,h5pactivityid), `lesson_attempts` (lessonid), `quiz_attempts` (attempt,quiz), `tool_policy_acceptances` (policyversionid), `wiki_pages` (subwikiid,title), `wiki_subwikis` (groupid,wikiid), `workshop_aggregations` (workshopid)
 - benign: `assign_user_mapping` (assignment), `auth_lti_linked_login` (issuer256,sub256), `auth_oauth2_linked_login` (issuerid,username), `badge_backpack` (externalbackpackid), `block_recentlyaccesseditems` (cmid,courseid), `cohort_members` (cohortid), `course_modules_viewed` (coursemoduleid), `favourite` (component,contextid,itemid,itemtype), `forum_digests` (forum,maildigest), `forum_discussion_subs` (discussion), `forum_subscriptions` (forum), `groups_members` (groupid), `message_user_actions` (action,messageid), `oauth2_refresh_token` (issuerid,scopehash), `post` (id), `role_assignments` (contextid,roleid), `tag_instance` (component,contextid,itemid,itemtype,tagid), `tiny_autosave` (contextid,elementid,pagehash), `tool_cohortroles` (cohortid,roleid), `tool_monitor_history` (sid,timesent), `user_devices` (pushid), `user_enrolments` (enrolid), `user_lastaccess` (courseid)
-- excluded: `auth_flexaccess_account` (not merged), `auth_flexaccess_mailqueue` (not merged), `auth_flexaccess_merge` (not merged), `auth_flexaccess_mergeevid` (not merged), `auth_flexaccess_token` (not merged), `my_pages` (not merged), `user_info_data` (not merged), `user_preferences` (not merged), `user_private_key` (not merged)
+- excluded: `auth_flexaccess_account` (not merged), `auth_flexaccess_mailqueue` (not merged), `auth_flexaccess_merge` (not merged), `auth_flexaccess_mergeevid` (not merged), `auth_flexaccess_token` (not merged), `my_pages` (not merged), `sessions` (not merged), `user_info_data` (not merged), `user_preferences` (not merged), `user_private_key` (not merged)
 - dedicated: `lesson_branch` (handled by the merger of another table), `lesson_grades` (handled by the merger of another table), `lesson_timer` (handled by the merger of another table), `quiz_grades` (handled by the merger of another table)
 - gap: -
 

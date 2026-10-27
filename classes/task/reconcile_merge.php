@@ -22,7 +22,7 @@ namespace auth_flexaccess\task;
  * Queued by the tool_mergeusers observer: the reconciliation touches every FlexAccess enrolment of the
  * merged-away identity (about 35 queries per course), which does not belong into the synchronous
  * request of another plugin. The reconciliation itself is idempotent, so a retry by the task
- * framework is safe.
+ * framework is safe; a run that finds the pair locked by another process fails on purpose and is retried.
  *
  * @package    auth_flexaccess
  * @copyright  2026 Ralf Erlebach
@@ -56,6 +56,12 @@ class reconcile_merge extends \core\task\adhoc_task {
             $result = \auth_flexaccess\local\merge_service::verify($from, $to);
             $reasons = $result->reasons ? ' (' . implode(', ', $result->reasons) . ')' : '';
             mtrace("FlexAccess merge {$from} -> {$to}: {$result->status}{$reasons}");
+            if ($result->status === 'locked') {
+                // Another process holds the pair (a reconciliation in progress): nothing was checked or changed.
+                // Failing hands the task back to the task framework, which runs it again after its fail delay;
+                // returning would drop the verification of a committed merge.
+                throw new \moodle_exception('mergetasklocked', 'auth_flexaccess', '', "{$from} -> {$to}");
+            }
         }
     }
 }

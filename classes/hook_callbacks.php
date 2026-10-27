@@ -139,9 +139,9 @@ class hook_callbacks {
     /**
      * Keep tool_mergeusers' generic table merge away from FlexAccess' own identity tables.
      *
-     * The account lifecycle row, tokens, queued mail and the merge registry describe one identity each;
-     * moving them onto the surviving user would blur which identity was durable and break the policy
-     * check that runs before the merge commits. FlexAccess reconciles them itself
+     * The account lifecycle row, tokens, queued mail, the merge registry and Moodle's session records describe
+     * one identity each; moving them onto the surviving user would blur which identity was durable and break
+     * the policy check that runs before the merge commits. FlexAccess reconciles them itself
      * ({@see self::mergeusers_after_merged_all_tables()}). String keys are deliberate: tool_mergeusers
      * combines settings with array_replace_recursive(), which would let numeric keys overwrite its own
      * default exceptions.
@@ -156,6 +156,11 @@ class hook_callbacks {
             'auth_flexaccess_mailqueue',
             'auth_flexaccess_merge',
             \auth_flexaccess\local\merge_evidence::TABLE,
+            // A Moodle session belongs to one browser signed in as one identity. Moved onto the survivor, the
+            // removed account's session row would read as the survivor's while the browser still acts as the
+            // removed account (Core writes its own user id back on the next request), and nothing could end it.
+            // It stays with the removed account and ends after the merge (observer::user_merged()).
+            'sessions',
         ];
         $hook->add_setting('exceptions', array_combine($tables, $tables));
         // Every colliding row of both users is archived right before tool_mergeusers resolves it

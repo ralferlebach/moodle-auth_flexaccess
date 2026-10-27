@@ -65,6 +65,9 @@ final class observer {
             // is the evidence of the merge (auth_flexaccess #14), re-verified against the log table.
             $logid = isset($event->other['logid']) ? (int) $event->other['logid'] : 0;
             local\merge_registry::confirm($from, $to, $logid > 0 ? $logid : null, 'event');
+            // The merge tool (tool_mergeusers) only suspends the removed account and leaves its sessions running: a
+            // browser still signed in as it would go on acting as an account whose data now belongs to the survivor.
+            \core\session\manager::destroy_user_sessions($from);
             task\reconcile_merge::queue($from, $to);
         }
     }

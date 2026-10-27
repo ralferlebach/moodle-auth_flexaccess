@@ -276,6 +276,62 @@ final class merge_service_test extends \advanced_testcase {
     }
 
     /**
+     * A reconciliation task that finds the pair locked by another process fails and is retried; nothing changes
+     * meanwhile, and the retry completes the merge (auth #13, enrol #10 AK 13: parallel runs and task retries).
+     *
+     * File locks conflict between two handles of one process, so the "other process" is a second lock held here.
+     *
+     * @return void
+     */
+    public function test_a_reconciliation_that_finds_the_pair_locked_is_retried(): void {
+        global $CFG, $DB;
+        $CFG->lock_factory = '\core\lock\file_lock_factory';
+        $source = $this->visitor($this->clock->time() + 3600);
+        $target = (int) $this->getDataGenerator()->create_user()->id;
+        local\merge_registry::approve($source, $target, (int) get_admin()->id, 'documents', 'ID card checked at the desk.');
+        observer::user_merged(\core\event\user_updated::create([
+            'objectid' => $target,
+            'relateduserid' => $target,
+            'context' => \context_user::instance($target),
+            'other' => ['usersinvolved' => ['toid' => $target, 'fromid' => $source]],
+        ]));
+        $ids = [$source, $target];
+        sort($ids);
+        $held = \core\lock\lock_config::get_lock_factory('auth_flexaccess_merge')->get_lock(implode('_', $ids), 0);
+        $this->assertNotFalse($held);
+
+        // First run while the pair is held: the task fails, the framework keeps it with a fail delay.
+        $task = \core\task\manager::get_next_adhoc_task($this->clock->time() + DAYSECS);
+        $this->assertInstanceOf(task\reconcile_merge::class, $task);
+        ob_start();
+        try {
+            $task->execute();
+            $this->fail('A locked pair must fail the task.');
+        } catch (\moodle_exception $e) {
+            $this->assertSame('mergetasklocked', $e->errorcode);
+            \core\task\manager::adhoc_task_failed($task);
+        } finally {
+            ob_end_clean();
+        }
+        $queued = array_values(\core\task\manager::get_adhoc_tasks(task\reconcile_merge::class));
+        $this->assertCount(1, $queued);
+        $this->assertGreaterThan(0, $queued[0]->get_fail_delay());
+        $this->assertNotNull($this->ue($source), 'Nothing moved while the pair was held.');
+        $this->assertNull($this->ue($target));
+        $this->assertSame(local\merge_registry::PENDING, local\merge_registry::get($source, $target)->status);
+
+        // The other process finishes; the retry (after the fail delay) completes the merge exactly once.
+        $held->release();
+        $DB->set_field('task_adhoc', 'nextruntime', 0, ['classname' => '\\' . task\reconcile_merge::class]);
+        ob_start();
+        $this->runAdhocTasks(task\reconcile_merge::class);
+        ob_end_clean();
+        $this->assertCount(0, \core\task\manager::get_adhoc_tasks(task\reconcile_merge::class));
+        $this->assertNotNull($this->ue($target));
+        $this->assertSame(local\merge_registry::RECONCILED, local\merge_registry::get($source, $target)->status);
+    }
+
+    /**
      * AUDIT-003: an administrative suspension of the surviving identity is not lifted by the merge.
      *
      * @return void

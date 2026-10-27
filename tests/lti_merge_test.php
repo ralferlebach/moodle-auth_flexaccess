@@ -276,6 +276,7 @@ final class lti_merge_test extends \advanced_testcase {
         $this->assertSame(1, api::count_merges_needing_review());
 
         // Without the ownership confirmation nothing moves.
+        $sink = $this->redirectEvents();
         $refused = api::repoint_merged_lti_identity($source, $target, false);
         $this->assertSame('refused', $refused->status);
         $this->assertSame([local\lti_identity::REPOINT_OWNERSHIP], $refused->reasons);
@@ -293,6 +294,16 @@ final class lti_merge_test extends \advanced_testcase {
         // Repeated request: nothing left to move, nothing changes.
         $again = api::repoint_merged_lti_identity($source, $target, true);
         $this->assertSame('nothingtodo', $again->status);
+
+        // Every attempt is audited with its outcome, the pair and the merge log record that proves the merge (auth #14).
+        $audit = array_values(array_filter($sink->get_events(), static fn($e) => $e instanceof event\identity_merge_action));
+        $sink->close();
+        $this->assertSame(['refused', 'repointed', 'nothingtodo'], array_map(static fn($e) => $e->other['outcome'], $audit));
+        foreach ($audit as $event) {
+            $this->assertSame('repoint', $event->other['action']);
+            $this->assertSame([$source, $target], [$event->other['fromuserid'], $event->other['touserid']]);
+            $this->assertGreaterThan(0, $event->other['mergelogid']);
+        }
 
         // Relaunch: the platform identity resolves to the survivor.
         @(new \auth_plugin_lti())->complete_login(
