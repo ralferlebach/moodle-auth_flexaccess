@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.0 (2026102800) — 2026-10-28 — Versions-Gleichschritt
+- Keine funktionale Änderung; Versions-Gleichschritt mit der FlexAccess-Familie (NVDA-CI in tool_flexaccess, Einschränkungsseite in enrol_flexaccess).
+- Version `2026102800`, Release `1.2.0`.
+
 ## 1.2.0 (2026102700) — 2026-10-27 — Sitzung des entfernten Kontos, gesperrtes Paar, Logo
 - **Familien-Resolver vereinfacht** (Release-Gate in tool_flexaccess entfernt, 27.10.2026): `.github/scripts/flexaccess_family.py` kennt nur noch `resolve` und `fetch` und ruft Git ohne Hintergrundwartung auf (git ≥ 2.47 löste sonst beim Aufräumen `Directory not empty: 'objects'` aus); in allen vier Repositories identisch. Keine Änderung an Plugin-Code, Version unverändert.
 - **Sitzung des entfernten Kontos endet mit der Zusammenführung (auth #13, enrol #10 AK 13).** tool_mergeusers sperrt das entfernte Konto nur und verschob dessen Zeilen in `sessions` generisch auf das behaltene Konto; Moodle schreibt bei der nächsten Anfrage die eigene Nutzer-ID zurück, sodass ein noch angemeldeter Browser weiter als das entfernte Konto arbeitete (Zwei-Site-LTI nachgestellt: Sitzung eines zusammengeführten auth_lti-Kontos nach dem Merge weiter benutzt). Jetzt bleibt `sessions` von der generischen Zusammenführung ausgenommen, und der Observer beendet nach dem Commit alle Sitzungen des entfernten Kontos; die Sitzungen des behaltenen Kontos bleiben. Test `merge_matrix_test::test_the_removed_account_has_no_running_session_after_the_merge` (vor der Änderung rot).

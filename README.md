@@ -29,7 +29,7 @@ Requirements
 This plugin requires Moodle 4.5 LTS up to Moodle 5.3 (tested on 4.5, 5.0, 5.2 and 5.3).
 
 It also requires the other FlexAccess plugins. All four are released together and must be installed
-in the same version (currently 1.2.0 / 2026102700):
+in the same version (currently 1.2.0 / 2026102800):
 
 * **enrol_flexaccess (FlexAccess enrolment)** - required at run time; not declared in version.php, because enrol_flexaccess requires this plugin and a dependency in both directions would make both impossible to uninstall\
   https://github.com/ralferlebach/moodle-enrol_flexaccess
