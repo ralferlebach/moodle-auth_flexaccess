@@ -16,8 +16,8 @@
 """Self-tests of flexaccess_family.py against local fixture repositories (tool_flexaccess #12).
 
 Every negative case must fail hard: a missing branch, unequal versions, a missing or short SHA, an
-unpinned tool_mergeusers, a tampered lock (wrong repository, wrong version, unknown commit, extra or
-missing plugin) and a release ZIP checksum mismatch. Run: python3 test_flexaccess_family.py
+unpinned tool_mergeusers and a tampered run lock (wrong repository, wrong version, unknown commit, extra or
+missing plugin). Run: python3 test_flexaccess_family.py
 """
 
 import io
@@ -200,62 +200,27 @@ class FamilyTest(unittest.TestCase):
         self.assertEqual(1, code)
         self.assertIn('the lock says', err)
 
-    def write_release_lock(self, data):
-        """A committed release lock file."""
-        path = os.path.join(self.tmp, 'release.lock.json')
-        with open(path, 'w', encoding='utf-8') as handle:
-            json.dump(data, handle)
-        return path
-
-    def release_lock(self):
-        """A valid release lock for the fixture heads (tool_flexaccess as SELF)."""
-        code, out, err = self.cli('pin', '--ref', 'development')
-        self.assertEqual(0, code, err)
-        return json.loads(out)
-
-    def test_release_lock_is_verified_and_completed(self):
-        data = self.release_lock()
-        self.assertEqual('SELF', data['plugins']['tool_flexaccess']['sha'])
-        out = os.path.join(self.tmp, 'resolved.json')
-        code, _, err = self.cli('lock', '--lock-file', self.write_release_lock(data), '--self', 'tool_flexaccess',
-                                '--self-dir', self.self_dir, '--self-sha', 'b' * 40, '--out', out)
-        self.assertEqual(0, code, err)
-        self.assertEqual('b' * 40, load(out)['plugins']['tool_flexaccess']['sha'])
-
-    def test_release_lock_with_wrong_commit_version_fails(self):
-        data = self.release_lock()
-        old = self.make_repo('owner/moodle-mod_flexaccess', 'mod_flexaccess', 2026092900, branch='old')
-        data['plugins']['mod_flexaccess']['sha'] = old
-        code, _, err = self.cli('lock', '--lock-file', self.write_release_lock(data), '--self', 'tool_flexaccess',
-                                '--self-dir', self.self_dir, '--self-sha', 'b' * 40)
-        self.assertEqual(1, code)
-        self.assertIn('the lock says', err)
-
-    def test_release_lock_must_name_self(self):
-        data = self.release_lock()
-        data['plugins']['tool_flexaccess']['sha'] = self.heads['tool_flexaccess']
-        code, _, err = self.cli('lock', '--lock-file', self.write_release_lock(data), '--self', 'tool_flexaccess',
-                                '--self-dir', self.self_dir, '--self-sha', 'b' * 40)
-        self.assertEqual(1, code)
-        self.assertIn('SELF', err)
-
-    def test_missing_release_lock_fails(self):
-        code, _, err = self.cli('lock', '--lock-file', os.path.join(self.tmp, 'absent.json'), '--self', 'tool_flexaccess',
-                                '--self-dir', self.self_dir, '--self-sha', 'b' * 40)
-        self.assertEqual(1, code)
-        self.assertIn('no release lock', err)
-
-    def test_zip_checksum_mismatch_fails(self):
-        code, lock, err = self.resolve()
-        data = load(lock)
-        data['plugins']['tool_flexaccess']['sha'] = self.heads['tool_flexaccess']
-        code, out, err = self.cli('zipcheck', '--lock-json', json.dumps(data))
-        self.assertEqual(0, code, err)
-        data['plugins']['auth_flexaccess']['zip_sha256'] = '0' * 64
-        code, _, err = self.cli('zipcheck', '--lock-json', json.dumps(data))
-        self.assertEqual(1, code)
-        self.assertIn('checksum', err)
-
+    def test_git_runs_without_background_maintenance(self):
+        # git >= 2.47 runs automatic maintenance after a fetch as a detached process, which kept writing into the
+        # throw-away repositories while they were removed (GitHub runner with git 2.55). Whatever the
+        # runner's git configuration says, the resolver's git calls must not start it.
+        repo = os.path.join(self.tmp, 'maintenance')
+        os.makedirs(repo)
+        settings = os.path.join(self.tmp, 'gitconfig')
+        with open(settings, 'w', encoding='utf-8') as handle:
+            handle.write('[maintenance]\n\tauto = true\n[gc]\n\tauto = 1\n[fetch]\n\twriteCommitGraph = true\n')
+        previous = os.environ.get('GIT_CONFIG_GLOBAL')
+        os.environ['GIT_CONFIG_GLOBAL'] = settings
+        try:
+            family.git('init', '-q', cwd=repo)
+            self.assertEqual('false', family.git('config', '--get', 'maintenance.auto', cwd=repo).strip())
+            self.assertEqual('0', family.git('config', '--get', 'gc.auto', cwd=repo).strip())
+            self.assertEqual('false', family.git('config', '--get', 'fetch.writeCommitGraph', cwd=repo).strip())
+        finally:
+            if previous is None:
+                del os.environ['GIT_CONFIG_GLOBAL']
+            else:
+                os.environ['GIT_CONFIG_GLOBAL'] = previous
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

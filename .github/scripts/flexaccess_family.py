@@ -13,33 +13,27 @@
 #
 # You should have received a copy of the GNU General Public License
 # along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
-"""Pin the four FlexAccess plugins (and tool_mergeusers) to exact commits for CI (tool_flexaccess #12).
+"""Install the sibling FlexAccess plugins (and tool_mergeusers) for a CI run at exact commits.
 
-The four plugins are released together and depend on each other, so every CI run must test one exactly
-known combination. This script turns a moving reference (a branch) into exact commit SHAs ONCE, checks
-that every plugin carries the same family version, writes that combination as a lock (JSON) and fetches
-exactly those commits for the jobs that test them. There is no fallback: a missing branch, an unknown
-commit, a version that differs from the family version, a tampered lock or an unpinned tool_mergeusers
-fail hard.
+The four plugins depend on each other, so a CI run tests the plugin under test together with its siblings.
+This script resolves the siblings from a branch to commit SHAs ONCE per run, checks that every plugin
+carries the same version, writes that combination as a run lock (JSON, an artifact of the run, never
+committed) and fetches exactly those commits for the jobs of the run. There is no fallback: a missing
+branch, an unknown commit, a version that differs, a tampered run lock or an unpinned tool_mergeusers
+fail hard. (A committed release lock and a separate release gate existed until 2026102700 and were removed.)
 
 Commands
-  resolve  Resolve the siblings of the plugin under test from a branch and write the lock.
+  resolve  Resolve the siblings of the plugin under test from a branch and write the run lock.
            --wait SECONDS keeps polling while a sibling still carries another version (the four
            repositories can only be uploaded one after another); after the wait it fails.
-  lock     Validate a versioned release lock (release/flexaccess-family.lock.json) and complete it
-           with the commit of the plugin under test ("SELF").
-  fetch    Fetch exactly the commits of a lock into a directory (moodle-plugin-ci extra plugins,
+  fetch    Fetch exactly the commits of a run lock into a directory (moodle-plugin-ci extra plugins,
            a Moodle tree, or one directory per repository) and verify each fetched version.php.
-  pin      Print a lock for the current heads of a branch (to commit as the release lock).
-  zipcheck Build the distributed ZIP (git archive, honours export-ignore) of every pinned commit and
-           compare it with the checksums of the lock, if the lock carries any.
 
 Only the Python standard library and git are used. The configuration (repositories, Moodle paths,
 pinned tool_mergeusers) is .github/flexaccess-family.json, identical in all four repositories.
 """
 
 import argparse
-import hashlib
 import json
 import os
 import re
@@ -61,9 +55,16 @@ class FamilyError(Exception):
     """A hard failure: the combination cannot be pinned or verified."""
 
 
+# Options for every git call of the resolver. Since git 2.47, "git fetch" starts automatic maintenance (gc,
+# commit-graph) as a detached background process. In the throw-away repositories of the resolver that process
+# still writes into .git/objects while the directory is removed, and the removal fails ("Directory not empty:
+# 'objects'", seen on the GitHub runner with git 2.55). The resolver never needs maintenance.
+GIT_OPTIONS = ('-c', 'maintenance.auto=false', '-c', 'gc.auto=0', '-c', 'fetch.writeCommitGraph=false')
+
+
 def git(*args, cwd=None):
-    """Run git and return stdout; raise FamilyError on failure."""
-    result = subprocess.run(['git', *args], cwd=cwd, capture_output=True, text=True)
+    """Run git (without background maintenance) and return stdout; raise FamilyError on failure."""
+    result = subprocess.run(['git', *GIT_OPTIONS, *args], cwd=cwd, capture_output=True, text=True)
     if result.returncode != 0:
         raise FamilyError('git %s failed: %s' % (' '.join(args), (result.stderr or result.stdout).strip()))
     return result.stdout
@@ -123,7 +124,7 @@ def fetch_commit(repo, sha, dest):
 
 def remote_version(repo, sha):
     """Version and component of a commit, read without a working copy."""
-    with tempfile.TemporaryDirectory() as tmp:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         git('init', '-q', cwd=tmp)
         git('fetch', '-q', '--depth', '1', repo_url(repo), sha, cwd=tmp)
         return plugin_facts(git('show', 'FETCH_HEAD:version.php', cwd=tmp))
@@ -135,7 +136,7 @@ def read_version(directory):
         return plugin_facts(handle.read())
 
 
-def validate_lock(lock, config, allow_self=None):
+def validate_lock(lock, config):
     """Structural and semantic checks of a lock; raises on any deviation (tamper detection)."""
     if lock.get('schema') != 1:
         raise FamilyError('Unknown lock schema %r.' % lock.get('schema'))
@@ -150,8 +151,6 @@ def validate_lock(lock, config, allow_self=None):
             raise FamilyError('%s points to %r, expected %r.' % (component, entry.get('repo'),
                                                                   config['plugins'][component]['repo']))
         sha = entry.get('sha')
-        if sha == 'SELF' and component == allow_self:
-            continue
         if not SHA_RE.match(str(sha)):
             raise FamilyError('%s is not pinned to a full commit SHA (%r).' % (component, sha))
         if entry.get('version') != family:
@@ -225,35 +224,6 @@ def cmd_resolve(args, config):
     emit(lock, args, 'FlexAccess plugin family (resolved from %s)' % args.ref)
 
 
-def cmd_lock(args, config):
-    """Validate a committed release lock and complete it with the commit under test."""
-    if not os.path.isfile(args.lock_file):
-        raise FamilyError('There is no release lock %s yet. Run the release workflow with mode "propose" '
-                          '(or "pin --ref development"), commit the printed lock and run the gate again.'
-                          % args.lock_file)
-    with open(args.lock_file, encoding='utf-8') as handle:
-        lock = json.load(handle)
-    validate_lock(lock, config, allow_self=args.self)
-    own_version, own_component = read_version(args.self_dir)
-    if own_component != args.self or own_version != lock['family_version']:
-        raise FamilyError('%s is at %s (%s), the lock pins family version %s.' % (
-            args.self_dir, own_version, own_component, lock['family_version']))
-    if lock['plugins'][args.self]['sha'] != 'SELF':
-        raise FamilyError('The lock must pin %s as "SELF" (the commit that contains the lock).' % args.self)
-    lock['plugins'][args.self] = dict(lock['plugins'][args.self], sha=args.self_sha, version=own_version)
-    for component in COMPONENTS:
-        if component == args.self:
-            continue
-        entry = lock['plugins'][component]
-        version, declared = remote_version(entry['repo'], entry['sha'])
-        if declared != component or version != entry['version']:
-            raise FamilyError('%s@%s is %s at version %s, the lock says %s.' % (
-                entry['repo'], entry['sha'], declared, version, entry['version']))
-    lock['source'] = 'lock:' + os.path.basename(args.lock_file)
-    validate_lock(lock, config)
-    emit(lock, args, 'FlexAccess plugin family (release lock)')
-
-
 def lock_from_args(args, config):
     """The lock passed to fetch (JSON text or file)."""
     if args.lock_json:
@@ -293,50 +263,6 @@ def cmd_fetch(args, config):
         print('tool_mergeusers %s -> %s' % (merge['sha'], dest))
 
 
-def cmd_pin(args, config):
-    """A release lock for the current heads of a branch (tool_flexaccess itself as SELF)."""
-    lock = {'schema': 1, 'plugins': {}}
-    versions = set()
-    for component in COMPONENTS:
-        repo = config['plugins'][component]['repo']
-        sha = branch_sha(repo, args.ref)
-        version, declared = remote_version(repo, sha)
-        if declared != component:
-            raise FamilyError('%s@%s declares component %r.' % (repo, sha, declared))
-        versions.add(version)
-        lock['plugins'][component] = {'repo': repo, 'sha': 'SELF' if component == 'tool_flexaccess' else sha,
-                                      'version': version}
-    if len(versions) != 1:
-        raise FamilyError('The heads of %s are not at one version: %s' % (args.ref, sorted(versions)))
-    lock['family_version'] = versions.pop()
-    merge = config['mergeusers']
-    lock['mergeusers'] = {'repo': merge['repo'], 'sha': merge['sha'], 'version': merge.get('version')}
-    print(json.dumps(lock, indent=2, sort_keys=True))
-
-
-def cmd_zipcheck(args, config):
-    """SHA-256 of the distributed archive (git archive) of every pinned commit; compare when pinned."""
-    lock = lock_from_args(args, config)
-    report = {}
-    for component in COMPONENTS:
-        entry = lock['plugins'][component]
-        with tempfile.TemporaryDirectory() as tmp:
-            git('init', '-q', cwd=tmp)
-            git('fetch', '-q', '--depth', '1', repo_url(entry['repo']), entry['sha'], cwd=tmp)
-            archive = os.path.join(tmp, 'release.zip')
-            git('archive', '--format=zip', '--prefix=flexaccess/', '-o', archive, 'FETCH_HEAD', cwd=tmp)
-            with open(archive, 'rb') as handle:
-                digest = hashlib.sha256(handle.read()).hexdigest()
-        report[component] = digest
-        pinned = entry.get('zip_sha256')
-        if pinned and pinned != digest:
-            raise FamilyError('%s: release ZIP checksum %s does not match the lock (%s).' % (component, digest, pinned))
-        print('%s %s %s' % (component, digest, 'matches lock' if pinned else '(not pinned)'))
-    if args.out:
-        with open(args.out, 'w', encoding='utf-8') as handle:
-            json.dump(report, handle, indent=2, sort_keys=True)
-
-
 def main(argv=None):
     """Command line entry point."""
     parser = argparse.ArgumentParser(description=__doc__.split('\n')[0])
@@ -356,34 +282,21 @@ def main(argv=None):
     p.add_argument('--wait', type=int, default=0)
     p.add_argument('--interval', type=int, default=30)
     outputs(p)
-    p = sub.add_parser('lock')
-    p.add_argument('--lock-file', required=True)
-    p.add_argument('--self', required=True, choices=COMPONENTS)
-    p.add_argument('--self-dir', default='plugin')
-    p.add_argument('--self-sha', required=True)
-    outputs(p)
-    for name in ('fetch', 'zipcheck'):
-        p = sub.add_parser(name)
-        group = p.add_mutually_exclusive_group(required=True)
-        group.add_argument('--lock-json')
-        group.add_argument('--lock-file')
-        if name == 'fetch':
-            p.add_argument('--self', choices=COMPONENTS)
-            p.add_argument('--dest', required=True)
-            p.add_argument('--layout', choices=['extra', 'moodle'], default='extra')
-            p.add_argument('--with-mergeusers', action='store_true')
-        else:
-            p.add_argument('--out')
-    p = sub.add_parser('pin')
-    p.add_argument('--ref', required=True)
+    p = sub.add_parser('fetch')
+    group = p.add_mutually_exclusive_group(required=True)
+    group.add_argument('--lock-json')
+    group.add_argument('--lock-file')
+    p.add_argument('--self', choices=COMPONENTS)
+    p.add_argument('--dest', required=True)
+    p.add_argument('--layout', choices=['extra', 'moodle'], default='extra')
+    p.add_argument('--with-mergeusers', action='store_true')
 
     args = parser.parse_args(argv)
     if getattr(args, 'self_sha', None) is not None and not SHA_RE.match(args.self_sha):
         parser.error('--self-sha must be a full commit SHA')
     try:
         config = load_config(args.config)
-        {'resolve': cmd_resolve, 'lock': cmd_lock, 'fetch': cmd_fetch, 'pin': cmd_pin,
-         'zipcheck': cmd_zipcheck}[args.command](args, config)
+        {'resolve': cmd_resolve, 'fetch': cmd_fetch}[args.command](args, config)
     except FamilyError as error:
         print('::error::FlexAccess plugin family: %s' % error, file=sys.stderr)
         return 1
